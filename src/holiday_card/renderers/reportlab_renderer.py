@@ -116,17 +116,37 @@ class ReportLabRenderer(BaseRenderer):
         if panel.border:
             self._render_border(x, y, width, height, panel.border)
 
-        # Render image elements
-        # Render shape elements
+        # Collect all elements with z_index for sorted rendering
+        elements = []
+        
+        # Add shapes (default z_index = 0)
         for shape in panel.shape_elements:
-            self._shape_renderer.render_shape(self._canvas, shape, panel.x, panel.y)
-
+            z = getattr(shape, 'z_index', 0)
+            elements.append(('shape', shape, z))
+        
+        # Add images (default z_index = 100)
         for image in panel.image_elements:
-            self.render_image(image, panel)
-
-        # Render text elements
+            z = getattr(image, 'z_index', 100)
+            elements.append(('image', image, z))
+        
+        # Add text (default z_index = 100)
         for text in panel.text_elements:
-            self.render_text(text, panel)
+            z = getattr(text, 'z_index', 100)
+            elements.append(('text', text, z))
+        
+        # Sort by z_index (lowest first = bottom layer), then by definition order
+        elements_with_order = [(elem_type, elem, z, idx) for idx, (elem_type, elem, z) in enumerate(elements)]
+        elements_with_order.sort(key=lambda e: (e[2], e[3]))  # z_index, then original index
+        elements = [(e[0], e[1], e[2]) for e in elements_with_order]  # Remove order index
+        
+        # Render in sorted order
+        for elem_type, elem, _ in elements:
+            if elem_type == 'shape':
+                self._shape_renderer.render_shape(self._canvas, elem, panel.x, panel.y)
+            elif elem_type == 'image':
+                self.render_image(elem, panel)
+            elif elem_type == 'text':
+                self.render_text(elem, panel)
 
         # Restore graphics state
         self._canvas.restoreState()
