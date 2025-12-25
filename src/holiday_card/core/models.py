@@ -2,8 +2,11 @@
 
 This module contains all Pydantic models representing the domain entities:
 - Color: RGB color value object
-- Enums: FoldType, OccasionType, PanelPosition, OverflowStrategy
+- Enums: FoldType, OccasionType, PanelPosition, OverflowStrategy, ShapeType
 - TextElement: Text with positioning and styling
+- ImageElement: Image with positioning and scaling
+- Shape: Vector graphics primitives (Rectangle, Circle, Triangle, Star, Line)
+- DecorativeElement: Reusable shape compositions
 - Panel: Card section with content
 - Template: Pre-designed card layout
 - Card: Complete card design
@@ -12,7 +15,7 @@ This module contains all Pydantic models representing the domain entities:
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Literal, Optional, Union
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
@@ -143,6 +146,20 @@ class OverflowStrategy(str, Enum):
     TRUNCATE = "truncate"
 
 
+class ShapeType(str, Enum):
+    """Vector shape types for discriminated union.
+
+    Used as the discriminator field for shape polymorphism in Pydantic.
+    """
+
+    RECTANGLE = "rectangle"
+    CIRCLE = "circle"
+    TRIANGLE = "triangle"
+    STAR = "star"
+    LINE = "line"
+    DECORATIVE_ELEMENT = "decorative_element"
+
+
 class Border(BaseModel):
     """Border styling for panels and elements.
 
@@ -200,6 +217,7 @@ class ImageElement(BaseModel):
     preserve_aspect: bool = Field(default=True, description="Maintain aspect ratio when scaling")
     rotation: float = Field(default=0.0, description="Rotation in degrees")
     opacity: float = Field(default=1.0, ge=0.0, le=1.0, description="Image opacity (0-1)")
+    z_index: int = Field(default=100, description="Rendering layer (higher = on top)")
 
 
 class TextElement(BaseModel):
@@ -219,6 +237,7 @@ class TextElement(BaseModel):
     color: Optional[Color] = Field(default=None, description="Text color (uses theme if None)")
     alignment: TextAlignment = Field(default=TextAlignment.LEFT, description="Text alignment")
     rotation: float = Field(default=0.0, description="Rotation in degrees")
+    z_index: int = Field(default=100, description="Rendering layer (higher = on top)")
 
     # Overflow prevention fields
     overflow_strategy: OverflowStrategy = Field(
@@ -252,6 +271,126 @@ class TextElement(BaseModel):
         self._adjustment_applied = result
 
 
+# Vector Graphics Shape Models
+
+class BaseShape(BaseModel):
+    """Base model for all vector graphics shapes.
+
+    Provides common properties: position, styling, layering.
+    All measurements in inches except stroke_width (points).
+    """
+
+    id: str = Field(default_factory=lambda: str(uuid4()), description="Unique shape identifier")
+    type: ShapeType = Field(description="Shape type discriminator")
+    z_index: int = Field(default=0, description="Rendering layer (higher = on top)")
+    fill_color: Optional[str] = Field(default=None, description="Fill color as hex string (#RRGGBB)")
+    stroke_color: Optional[str] = Field(default=None, description="Stroke color as hex string (#RRGGBB)")
+    stroke_width: float = Field(default=0.0, ge=0.0, description="Stroke width in points")
+    opacity: float = Field(default=1.0, ge=0.0, le=1.0, description="Opacity 0.0-1.0")
+    rotation: float = Field(default=0.0, ge=0.0, lt=360.0, description="Rotation in degrees")
+
+    @field_validator("fill_color", "stroke_color")
+    @classmethod
+    def validate_hex_color(cls, v: Optional[str]) -> Optional[str]:
+        """Validate hex color format."""
+        if v is None:
+            return v
+        if not v.startswith("#"):
+            v = f"#{v}"
+        if len(v) != 7:
+            raise ValueError(f"Hex color must be 7 characters (#RRGGBB), got: {v}")
+        try:
+            int(v[1:], 16)  # Validate hex digits
+        except ValueError:
+            raise ValueError(f"Invalid hex color: {v}")
+        return v
+
+
+class Rectangle(BaseShape):
+    """Rectangle shape with position and dimensions."""
+
+    type: Literal[ShapeType.RECTANGLE] = ShapeType.RECTANGLE
+    x: float = Field(ge=0.0, description="X position in inches from panel left")
+    y: float = Field(ge=0.0, description="Y position in inches from panel bottom")
+    width: float = Field(gt=0.0, description="Width in inches")
+    height: float = Field(gt=0.0, description="Height in inches")
+
+
+class Circle(BaseShape):
+    """Circle shape with center and radius."""
+
+    type: Literal[ShapeType.CIRCLE] = ShapeType.CIRCLE
+    center_x: float = Field(ge=0.0, description="Center X position in inches")
+    center_y: float = Field(ge=0.0, description="Center Y position in inches")
+    radius: float = Field(gt=0.0, description="Radius in inches")
+
+
+class Triangle(BaseShape):
+    """Triangle shape with three vertices."""
+
+    type: Literal[ShapeType.TRIANGLE] = ShapeType.TRIANGLE
+    x1: float = Field(ge=0.0, description="Vertex 1 X position in inches")
+    y1: float = Field(ge=0.0, description="Vertex 1 Y position in inches")
+    x2: float = Field(ge=0.0, description="Vertex 2 X position in inches")
+    y2: float = Field(ge=0.0, description="Vertex 2 Y position in inches")
+    x3: float = Field(ge=0.0, description="Vertex 3 X position in inches")
+    y3: float = Field(ge=0.0, description="Vertex 3 Y position in inches")
+
+
+class Star(BaseShape):
+    """Star shape with configurable points."""
+
+    type: Literal[ShapeType.STAR] = ShapeType.STAR
+    center_x: float = Field(ge=0.0, description="Center X position in inches")
+    center_y: float = Field(ge=0.0, description="Center Y position in inches")
+    outer_radius: float = Field(gt=0.0, description="Outer point radius in inches")
+    inner_radius: float = Field(gt=0.0, description="Inner point radius in inches")
+    points: int = Field(default=5, ge=3, le=20, description="Number of star points")
+
+    @field_validator("inner_radius")
+    @classmethod
+    def validate_inner_smaller_than_outer(cls, v: float, info) -> float:
+        """Ensure inner radius is smaller than outer radius."""
+        if "outer_radius" in info.data and v >= info.data["outer_radius"]:
+            raise ValueError(f"inner_radius ({v}) must be less than outer_radius ({info.data['outer_radius']})")
+        return v
+
+
+class Line(BaseShape):
+    """Line shape with start and end points."""
+
+    type: Literal[ShapeType.LINE] = ShapeType.LINE
+    start_x: float = Field(ge=0.0, description="Start X position in inches")
+    start_y: float = Field(ge=0.0, description="Start Y position in inches")
+    end_x: float = Field(ge=0.0, description="End X position in inches")
+    end_y: float = Field(ge=0.0, description="End Y position in inches")
+
+
+class DecorativeElement(BaseModel):
+    """Reusable composition of shapes forming a design unit.
+
+    Examples: Christmas tree, ornament, gift box.
+    Supports position, scale, rotation, and color customization.
+    """
+
+    id: str = Field(default_factory=lambda: str(uuid4()), description="Unique element identifier")
+    type: Literal[ShapeType.DECORATIVE_ELEMENT] = ShapeType.DECORATIVE_ELEMENT
+    name: str = Field(description="Decorative element name (references library)")
+    x: float = Field(ge=0.0, description="Anchor X position in inches")
+    y: float = Field(ge=0.0, description="Anchor Y position in inches")
+    scale: float = Field(default=1.0, gt=0.0, description="Proportional scale multiplier")
+    rotation: float = Field(default=0.0, ge=0.0, lt=360.0, description="Rotation in degrees")
+    color_palette: Optional[dict[str, str]] = Field(default=None, description="Color role overrides")
+    z_index: int = Field(default=0, description="Rendering layer (higher = on top)")
+
+
+# Discriminated union for all shape types
+Shape = Annotated[
+    Union[Rectangle, Circle, Triangle, Star, Line, DecorativeElement],
+    Field(discriminator='type')
+]
+
+
 class Panel(BaseModel):
     """A distinct section of the card.
 
@@ -271,6 +410,7 @@ class Panel(BaseModel):
     border: Optional[Border] = Field(default=None, description="Panel border styling")
     text_elements: list[TextElement] = Field(default_factory=list, description="Text on panel")
     image_elements: list[ImageElement] = Field(default_factory=list, description="Images on panel")
+    shape_elements: list[Shape] = Field(default_factory=list, description="Vector shapes and decorative elements")
 
 
 class Template(BaseModel):

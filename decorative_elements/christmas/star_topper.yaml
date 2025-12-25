@@ -1,0 +1,32 @@
+name: star_topper
+description: "Christmas tree star topper with glow effect"
+default_width: 1.0
+default_height: 1.0
+
+color_roles:
+  star: "#FFD700"          # Bright gold
+  glow: "#FFEB3B"          # Yellow glow
+
+shapes:
+  # Glow effect (larger star, semi-transparent)
+  - type: star
+    center_x: 0.5
+    center_y: 0.5
+    outer_radius: 0.5
+    inner_radius: 0.25
+    points: 5
+    fill_color: "{glow}"
+    opacity: 0.3
+    z_index: 1
+
+  # Main star
+  - type: star
+    center_x: 0.5
+    center_y: 0.5
+    outer_radius: 0.4
+    inner_radius: 0.2
+    points: 5
+    fill_color: "{star}"
+    stroke_color: "#DAA520"
+    stroke_width: 1
+    z_index: 2

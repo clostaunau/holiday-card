@@ -48,16 +48,20 @@ class CardGenerator:
         theme_id: Optional[str] = None,
         fold_type: Optional[FoldType] = None,
         images: Optional[list[ImageElement]] = None,
+        front_message: Optional[str] = None,
+        inside_message: Optional[str] = None,
     ) -> Card:
         """Create a card from a template.
 
         Args:
             template_id: Template identifier.
-            message: Optional greeting message to add.
+            message: Optional greeting message (applied to front, for backwards compatibility).
             output_path: Output PDF file path.
             theme_id: Optional theme to apply.
             fold_type: Optional fold type override.
             images: Optional list of images to add.
+            front_message: Optional message for the front panel greeting.
+            inside_message: Optional message for the inside panel.
 
         Returns:
             Created Card object.
@@ -75,9 +79,14 @@ class CardGenerator:
             output_path=output_path,
         )
 
-        # Apply message if provided
-        if message:
-            self._apply_message(card, message)
+        # Apply front message (front_message takes precedence over message)
+        effective_front_message = front_message or message
+        if effective_front_message:
+            self._apply_front_message(card, effective_front_message)
+
+        # Apply inside message
+        if inside_message:
+            self._apply_inside_message(card, inside_message)
 
         # Apply images if provided
         if images:
@@ -104,33 +113,66 @@ class CardGenerator:
         """
         return [panel.model_copy(deep=True) for panel in panels]
 
-    def _apply_message(self, card: Card, message: str) -> None:
-        """Apply a greeting message to the card.
-
-        The message is typically placed on the front panel or
-        inside panel, depending on the template design.
+    def _apply_front_message(self, card: Card, message: str) -> None:
+        """Apply a greeting message to the front panel.
 
         Args:
             card: Card to modify.
             message: Greeting message to apply.
         """
-        # Find the front panel or first panel with text
-        for panel in card.panels:
-            if panel.position.value == "front" and panel.text_elements:
-                # Update the first text element with the message
-                panel.text_elements[0].content = message
-                return
-
-        # If no text element on front, add one
+        # Find the front panel
         for panel in card.panels:
             if panel.position.value == "front":
+                # Look for a text element with id "greeting" or use the first one
+                for text in panel.text_elements:
+                    if text.id == "greeting":
+                        text.content = message
+                        return
+                # Fall back to first text element
+                if panel.text_elements:
+                    panel.text_elements[0].content = message
+                    return
+                # No text element, add one
                 panel.text_elements.append(
                     TextElement(
                         content=message,
                         x=panel.width / 2,
                         y=panel.height / 2,
+                        width=panel.width - 0.5,  # Leave margins
                         font_family="Helvetica",
                         font_size=24,
+                    )
+                )
+                return
+
+    def _apply_inside_message(self, card: Card, message: str) -> None:
+        """Apply a message to the inside panel.
+
+        Args:
+            card: Card to modify.
+            message: Inside message to apply.
+        """
+        # Find the inside_right panel (typical location for messages)
+        for panel in card.panels:
+            if panel.position.value == "inside_right":
+                # Look for a text element with id "message" or use the first one
+                for text in panel.text_elements:
+                    if text.id == "message":
+                        text.content = message
+                        return
+                # Fall back to first text element
+                if panel.text_elements:
+                    panel.text_elements[0].content = message
+                    return
+                # No text element, add one
+                panel.text_elements.append(
+                    TextElement(
+                        content=message,
+                        x=0.5,
+                        y=panel.height / 2,
+                        width=panel.width - 1.0,  # Leave margins
+                        font_family="Helvetica",
+                        font_size=14,
                     )
                 )
                 return
@@ -214,16 +256,20 @@ class CardGenerator:
         fold_type: Optional[FoldType] = None,
         images: Optional[list[ImageElement]] = None,
         theme_id: Optional[str] = None,
+        front_message: Optional[str] = None,
+        inside_message: Optional[str] = None,
     ) -> tuple[Card, Path]:
         """Create a card and generate the PDF in one step.
 
         Args:
             template_id: Template identifier.
             output_path: Output PDF file path.
-            message: Optional greeting message.
+            message: Optional greeting message (applied to front, for backwards compatibility).
             fold_type: Optional fold type override.
             images: Optional list of images to add.
             theme_id: Optional theme to apply.
+            front_message: Optional message for the front panel greeting.
+            inside_message: Optional message for the inside panel.
 
         Returns:
             Tuple of (Card object, Path to PDF file).
@@ -235,6 +281,8 @@ class CardGenerator:
             theme_id=theme_id,
             fold_type=fold_type,
             images=images,
+            front_message=front_message,
+            inside_message=inside_message,
         )
 
         pdf_path = self.generate_pdf(card, output_path)

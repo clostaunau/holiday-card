@@ -1,0 +1,50 @@
+name: dreidel
+description: "Hanukkah dreidel spinning top"
+default_width: 0.8
+default_height: 1.2
+
+color_roles:
+  body: "#4169E1"          # Royal blue
+  letter: "#FFD700"        # Gold (for Hebrew letter)
+  handle: "#8B4513"        # Saddle brown
+
+shapes:
+  # Handle (top)
+  - type: rectangle
+    x: 0.35
+    y: 0.95
+    width: 0.1
+    height: 0.25
+    fill_color: "{handle}"
+    z_index: 1
+
+  # Body (square rotated to look like spinning)
+  - type: rectangle
+    x: 0.15
+    y: 0.3
+    width: 0.5
+    height: 0.65
+    fill_color: "{body}"
+    rotation: 5
+    z_index: 2
+
+  # Point (bottom)
+  - type: triangle
+    x1: 0.25
+    y1: 0.3
+    x2: 0.55
+    y2: 0.3
+    x3: 0.4
+    y3: 0.0
+    fill_color: "{body}"
+    z_index: 2
+
+  # Hebrew letter (simplified as line)
+  - type: line
+    start_x: 0.3
+    start_y: 0.5
+    end_x: 0.5
+    end_y: 0.7
+    stroke_color: "{letter}"
+    stroke_width: 3
+    z_index: 3

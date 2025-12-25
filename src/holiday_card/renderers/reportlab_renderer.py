@@ -33,6 +33,8 @@ from holiday_card.core.text_utils import (
     wrap_text,
 )
 from holiday_card.renderers.base import BaseRenderer
+from holiday_card.renderers.shape_renderer import ShapeRenderer
+from holiday_card.core.decorative import get_library
 from holiday_card.utils.measurements import (
     FOLD_LINE_WIDTH,
     PAGE_HEIGHT,
@@ -52,6 +54,7 @@ class ReportLabRenderer(BaseRenderer):
     def __init__(self) -> None:
         """Initialize the renderer."""
         super().__init__()
+        self._shape_renderer = ShapeRenderer()
         self._canvas: Optional[canvas.Canvas] = None
         self._output_path: Optional[Path] = None
 
@@ -114,13 +117,47 @@ class ReportLabRenderer(BaseRenderer):
         if panel.border:
             self._render_border(x, y, width, height, panel.border)
 
-        # Render image elements
+        # Collect all elements with z_index for sorted rendering
+        elements = []
+        
+        # Add shapes (default z_index = 0)
+        for shape in panel.shape_elements:
+            z = getattr(shape, 'z_index', 0)
+            elements.append(('shape', shape, z))
+        
+        # Add images (default z_index = 100)
         for image in panel.image_elements:
-            self.render_image(image, panel)
-
-        # Render text elements
+            z = getattr(image, 'z_index', 100)
+            elements.append(('image', image, z))
+        
+        # Add text (default z_index = 100)
         for text in panel.text_elements:
-            self.render_text(text, panel)
+            z = getattr(text, 'z_index', 100)
+            elements.append(('text', text, z))
+        
+        # Sort by z_index (lowest first = bottom layer), then by definition order
+        elements_with_order = [(elem_type, elem, z, idx) for idx, (elem_type, elem, z) in enumerate(elements)]
+        elements_with_order.sort(key=lambda e: (e[2], e[3]))  # z_index, then original index
+        elements = [(e[0], e[1], e[2]) for e in elements_with_order]  # Remove order index
+        
+        # Render in sorted order
+        for elem_type, elem, _ in elements:
+            if elem_type == 'shape':
+                # Check if this is a decorative element
+                if hasattr(elem, 'type') and elem.type == 'decorative_element':
+                    # Expand decorative element into component shapes
+                    library = get_library()
+                    component_shapes = library.expand_element(elem)
+                    # Render each component shape
+                    for component in component_shapes:
+                        self._shape_renderer.render_shape(self._canvas, component, panel.x, panel.y)
+                else:
+                    # Regular shape
+                    self._shape_renderer.render_shape(self._canvas, elem, panel.x, panel.y)
+            elif elem_type == 'image':
+                self.render_image(elem, panel)
+            elif elem_type == 'text':
+                self.render_text(elem, panel)
 
         # Restore graphics state
         self._canvas.restoreState()

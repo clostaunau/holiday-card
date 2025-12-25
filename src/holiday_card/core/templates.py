@@ -238,10 +238,22 @@ def _parse_text_element(data: dict) -> TextElement:
     Returns:
         Parsed TextElement object.
     """
+    from holiday_card.core.models import OverflowStrategy, TextAlignment
+
     color = None
     if "color" in data:
         c = data["color"]
         color = Color(r=c["r"], g=c["g"], b=c["b"])
+
+    # Parse overflow strategy if provided
+    overflow_strategy = OverflowStrategy.AUTO
+    if "overflow_strategy" in data:
+        overflow_strategy = OverflowStrategy(data["overflow_strategy"])
+
+    # Parse alignment if provided
+    alignment = TextAlignment.LEFT
+    if "alignment" in data:
+        alignment = TextAlignment(data["alignment"])
 
     return TextElement(
         id=data.get("id", ""),
@@ -252,4 +264,8 @@ def _parse_text_element(data: dict) -> TextElement:
         font_family=data.get("font_family", "Helvetica"),
         font_size=data.get("font_size", 12),
         color=color,
+        alignment=alignment,
+        overflow_strategy=overflow_strategy,
+        min_font_size=data.get("min_font_size", 8),
+        max_lines=data.get("max_lines"),
     )
