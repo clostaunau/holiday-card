@@ -4,6 +4,7 @@ This module handles loading YAML theme files and discovering
 available themes in the themes directory.
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import Optional
@@ -11,6 +12,8 @@ from typing import Optional
 import yaml
 
 from holiday_card.core.models import Color, OccasionType, Theme
+
+logger = logging.getLogger(__name__)
 
 
 class ThemeNotFoundError(Exception):
@@ -80,8 +83,8 @@ def discover_themes(themes_dir: Optional[Path] = None) -> list[dict[str, str]]:
                         "occasion": theme_data.get("occasion", "generic"),
                         "description": theme_data.get("description", ""),
                     })
-        except Exception:
-            # Skip invalid theme files
+        except (yaml.YAMLError, KeyError, TypeError, OSError) as e:
+            logger.warning(f"Skipping invalid theme file {theme_file}: {e}")
             continue
 
     return themes
@@ -114,7 +117,8 @@ def load_theme(theme_id: str, themes_dir: Optional[Path] = None) -> Theme:
                 for theme_data in theme_list:
                     if theme_data.get("id") == theme_id:
                         return _parse_theme(theme_data)
-        except Exception:
+        except (yaml.YAMLError, OSError) as e:
+            logger.debug(f"Skipping {theme_file} during search: {e}")
             continue
 
     raise ThemeNotFoundError(f"Theme not found: {theme_id}")

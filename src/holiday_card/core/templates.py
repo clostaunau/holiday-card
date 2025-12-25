@@ -4,19 +4,29 @@ This module handles loading YAML template files and discovering
 available templates in the templates directory.
 """
 
+import logging
+import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import yaml
 
+logger = logging.getLogger(__name__)
+
 from holiday_card.core.models import (
+    Circle,
     Color,
+    DecorativeElement,
     FoldType,
+    Line,
     OccasionType,
     Panel,
     PanelPosition,
+    Rectangle,
+    Star,
     Template,
     TextElement,
+    Triangle,
 )
 
 
@@ -39,8 +49,6 @@ def get_templates_dir() -> Path:
         Path to templates directory.
     """
     # Check environment variable first
-    import os
-
     env_path = os.environ.get("HOLIDAY_CARD_TEMPLATES")
     if env_path:
         return Path(env_path)
@@ -91,8 +99,8 @@ def discover_templates(templates_dir: Optional[Path] = None) -> list[dict[str, s
                             "description": data.get("description", ""),
                             "path": str(template_file),
                         })
-                except Exception:
-                    # Skip invalid templates
+                except (yaml.YAMLError, KeyError, TypeError, OSError) as e:
+                    logger.warning(f"Skipping invalid template {template_file}: {e}")
                     continue
 
     return templates
@@ -126,7 +134,8 @@ def load_template(template_id: str, templates_dir: Optional[Path] = None) -> Tem
                         if data.get("id") == template_id:
                             template_path = yaml_file
                             break
-                except Exception:
+                except (yaml.YAMLError, OSError) as e:
+                    logger.debug(f"Skipping {yaml_file} during search: {e}")
                     continue
         if template_path:
             break
@@ -161,13 +170,13 @@ def load_template_from_file(path: Path) -> Template:
     try:
         with open(path) as f:
             data = yaml.safe_load(f)
-    except Exception as e:
-        raise TemplateLoadError(f"Failed to read template file: {e}")
+    except (yaml.YAMLError, OSError) as e:
+        raise TemplateLoadError(f"Failed to read template file {path}: {e}")
 
     try:
         return _parse_template(data)
-    except Exception as e:
-        raise TemplateLoadError(f"Failed to parse template: {e}")
+    except (KeyError, ValueError, TypeError) as e:
+        raise TemplateLoadError(f"Failed to parse template {path}: {e}")
 
 
 def _parse_template(data: dict) -> Template:
@@ -279,7 +288,9 @@ def _parse_text_element(data: dict) -> TextElement:
     )
 
 
-def _parse_shape_element(data: dict):
+def _parse_shape_element(
+    data: dict,
+) -> Optional[Union[Rectangle, Circle, Triangle, Star, Line, DecorativeElement]]:
     """Parse shape element data into appropriate Shape object.
 
     Uses Pydantic's discriminated union based on 'type' field.
@@ -288,17 +299,9 @@ def _parse_shape_element(data: dict):
         data: Raw shape element data from YAML.
 
     Returns:
-        Parsed shape object (Rectangle, Circle, Triangle, Star, Line, or DecorativeElement).
+        Parsed shape object (Rectangle, Circle, Triangle, Star, Line, or DecorativeElement),
+        or None if the shape type is unknown or parsing fails.
     """
-    from holiday_card.core.models import (
-        Rectangle,
-        Circle,
-        Triangle,
-        Star,
-        Line,
-        DecorativeElement,
-    )
-
     shape_type = data.get("type")
     if not shape_type:
         return None
@@ -381,7 +384,6 @@ def _parse_shape_element(data: dict):
             )
         else:
             return None
-    except (KeyError, ValueError) as e:
-        # Skip invalid shape definitions
-        print(f"Warning: Could not parse shape element: {e}")
+    except (KeyError, ValueError, TypeError) as e:
+        logger.warning(f"Could not parse shape element: {e}")
         return None

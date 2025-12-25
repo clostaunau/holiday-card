@@ -4,6 +4,7 @@ This module provides loading and management of pre-built decorative elements
 (Christmas trees, ornaments, gift boxes, etc.) composed of basic shapes.
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import Optional
@@ -11,6 +12,8 @@ from typing import Optional
 import yaml
 
 from holiday_card.core.models import Circle, DecorativeElement, Line, Rectangle, Star, Triangle
+
+logger = logging.getLogger(__name__)
 
 
 class DecorativeElementDefinition:
@@ -89,8 +92,8 @@ class DecorativeElementLibrary:
             try:
                 definition = self._load_definition(yaml_file)
                 self.definitions[definition.name] = definition
-            except Exception as e:
-                print(f"Warning: Failed to load {yaml_file}: {e}")
+            except (yaml.YAMLError, KeyError, TypeError, OSError) as e:
+                logger.warning(f"Failed to load decorative element {yaml_file}: {e}")
 
     def _load_definition(self, yaml_path: Path) -> DecorativeElementDefinition:
         """Load a decorative element definition from YAML file.

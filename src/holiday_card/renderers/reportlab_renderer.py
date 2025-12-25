@@ -177,7 +177,7 @@ class ReportLabRenderer(BaseRenderer):
         abs_y = inches_to_points(panel.y + text.y)
 
         # Get font name
-        font_name = self._get_font_name(text.font_family, text.font_style.value if hasattr(text, 'font_style') else "normal")
+        font_name = self._get_font_name(text.font_family, text.font_style.value)
 
         # Fit text using overflow strategy
         if text.width:
