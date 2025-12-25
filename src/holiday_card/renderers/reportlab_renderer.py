@@ -14,6 +14,7 @@ from reportlab.pdfgen import canvas
 from PIL import Image
 
 from holiday_card.core.models import (
+    AdjustmentResult,
     Border,
     BorderStyle,
     Card,
@@ -21,8 +22,15 @@ from holiday_card.core.models import (
     Colors,
     FoldType,
     ImageElement,
+    OverflowStrategy,
     Panel,
     TextElement,
+)
+from holiday_card.core.text_utils import (
+    calculate_line_height,
+    measure_text,
+    shrink_to_fit,
+    wrap_text,
 )
 from holiday_card.renderers.base import BaseRenderer
 from holiday_card.utils.measurements import (
@@ -131,9 +139,20 @@ class ReportLabRenderer(BaseRenderer):
         abs_x = inches_to_points(panel.x + text.x)
         abs_y = inches_to_points(panel.y + text.y)
 
-        # Set font
+        # Get font name
         font_name = self._get_font_name(text.font_family, text.font_style.value if hasattr(text, 'font_style') else "normal")
-        self._canvas.setFont(font_name, text.font_size)
+
+        # Fit text using overflow strategy
+        if text.width:
+            final_font_size, lines, adjustment_result = self._fit_text_element(text, panel)
+            text.set_adjustment_result(adjustment_result)
+        else:
+            # No width constraint - use original text as-is
+            final_font_size = text.font_size
+            lines = [text.content]
+
+        # Set font with potentially adjusted size
+        self._canvas.setFont(font_name, final_font_size)
 
         # Set color
         if text.color:
@@ -141,19 +160,21 @@ class ReportLabRenderer(BaseRenderer):
         else:
             self._canvas.setFillColorRGB(0, 0, 0)  # Default to black
 
-        # Get content, potentially truncated for overflow
-        content = text.content
-        if text.width:
-            content = self._handle_text_overflow(content, font_name, text.font_size, inches_to_points(text.width))
-
-        # Handle text alignment
+        # Render lines
         alignment = text.alignment.value if hasattr(text, 'alignment') else "left"
-        if alignment == "center":
-            self._canvas.drawCentredString(abs_x, abs_y, content)
-        elif alignment == "right":
-            self._canvas.drawRightString(abs_x, abs_y, content)
-        else:
-            self._canvas.drawString(abs_x, abs_y, content)
+        line_height = calculate_line_height(final_font_size)
+
+        for i, line in enumerate(lines):
+            # Calculate y position for this line (move down for each line)
+            line_y = abs_y - (i * line_height)
+
+            # Handle text alignment
+            if alignment == "center":
+                self._canvas.drawCentredString(abs_x, line_y, line)
+            elif alignment == "right":
+                self._canvas.drawRightString(abs_x, line_y, line)
+            else:
+                self._canvas.drawString(abs_x, line_y, line)
 
     def render_image(self, image: ImageElement, panel: Panel) -> None:
         """Render an image element within a panel.
@@ -324,6 +345,231 @@ class ReportLabRenderer(BaseRenderer):
             truncated = truncated[:-1]
 
         return truncated.rstrip() + ellipsis
+
+
+    def _select_auto_strategy(self, text: TextElement) -> OverflowStrategy:
+        """Select overflow strategy automatically based on text characteristics.
+
+        Args:
+            text: Text element to analyze.
+
+        Returns:
+            Selected OverflowStrategy (SHRINK or WRAP).
+        """
+        text_length = len(text.content)
+        has_height = text.width is not None
+
+        # Short text (< 30 chars) - shrink preserves impact
+        if text_length < 30:
+            return OverflowStrategy.SHRINK
+
+        # Long text with width constraint - wrap for readability
+        if text_length >= 30 and has_height:
+            return OverflowStrategy.WRAP
+
+        # Long text without height - shrink to single line
+        return OverflowStrategy.SHRINK
+
+    def _apply_shrink_strategy(self, text: TextElement, panel: Panel) -> tuple[int, str]:
+        """Apply shrink strategy to fit text within width.
+
+        Args:
+            text: Text element to fit.
+            panel: Parent panel.
+
+        Returns:
+            Tuple of (final_font_size, content).
+        """
+        if self._canvas is None or text.width is None:
+            return (text.font_size, text.content)
+
+        font_name = self._get_font_name(text.font_family, text.font_style.value)
+        max_width_pts = inches_to_points(text.width)
+
+        # Shrink font to fit
+        final_size = shrink_to_fit(
+            self._canvas,
+            text.content,
+            font_name,
+            text.font_size,
+            max_width_pts,
+            text.min_font_size,
+        )
+
+        # If shrunk to minimum and still doesn't fit, truncate
+        if final_size == text.min_font_size:
+            metrics = measure_text(
+                self._canvas,
+                text.content,
+                font_name,
+                final_size,
+                max_width_pts,
+            )
+            if not metrics.fits_within_bounds:
+                # Fall back to truncation
+                content = self._handle_text_overflow(
+                    text.content,
+                    font_name,
+                    final_size,
+                    max_width_pts,
+                )
+                return (final_size, content)
+
+        return (final_size, text.content)
+
+    def _apply_wrap_strategy(self, text: TextElement, panel: Panel) -> tuple[int, list[str]]:
+        """Apply wrap strategy to fit text within width and height.
+
+        Args:
+            text: Text element to fit.
+            panel: Parent panel.
+
+        Returns:
+            Tuple of (final_font_size, list_of_lines).
+        """
+        if self._canvas is None or text.width is None:
+            return (text.font_size, [text.content])
+
+        font_name = self._get_font_name(text.font_family, text.font_style.value)
+        max_width_pts = inches_to_points(text.width)
+        font_size = text.font_size
+
+        # Try wrapping at current font size
+        lines = wrap_text(
+            self._canvas,
+            text.content,
+            font_name,
+            font_size,
+            max_width_pts,
+            text.max_lines,
+        )
+
+        # Check if wrapped text fits within height (if specified)
+        if text.width and hasattr(panel, 'height'):
+            max_height_pts = inches_to_points(panel.height) if panel.height else None
+            if max_height_pts:
+                metrics = measure_text(
+                    self._canvas,
+                    text.content,
+                    font_name,
+                    font_size,
+                    max_width_pts,
+                    max_height_pts,
+                    lines,
+                )
+
+                # If doesn't fit vertically, reduce font size and re-wrap
+                if not metrics.fits_within_bounds and font_size > text.min_font_size:
+                    # Binary search for font size that fits with wrapping
+                    low = text.min_font_size
+                    high = font_size
+                    best_size = text.min_font_size
+                    best_lines = lines
+
+                    while low <= high:
+                        mid = (low + high) // 2
+                        test_lines = wrap_text(
+                            self._canvas,
+                            text.content,
+                            font_name,
+                            mid,
+                            max_width_pts,
+                            text.max_lines,
+                        )
+                        test_metrics = measure_text(
+                            self._canvas,
+                            text.content,
+                            font_name,
+                            mid,
+                            max_width_pts,
+                            max_height_pts,
+                            test_lines,
+                        )
+
+                        if test_metrics.fits_within_bounds:
+                            best_size = mid
+                            best_lines = test_lines
+                            low = mid + 1
+                        else:
+                            high = mid - 1
+
+                    return (best_size, best_lines)
+
+        return (font_size, lines)
+
+    def _apply_truncate_strategy(self, text: TextElement, panel: Panel) -> tuple[int, str]:
+        """Apply truncate strategy (existing behavior).
+
+        Args:
+            text: Text element to fit.
+            panel: Parent panel.
+
+        Returns:
+            Tuple of (original_font_size, truncated_content).
+        """
+        if self._canvas is None or text.width is None:
+            return (text.font_size, text.content)
+
+        font_name = self._get_font_name(text.font_family, text.font_style.value)
+        max_width_pts = inches_to_points(text.width)
+
+        content = self._handle_text_overflow(
+            text.content,
+            font_name,
+            text.font_size,
+            max_width_pts,
+        )
+
+        return (text.font_size, content)
+
+    def _fit_text_element(self, text: TextElement, panel: Panel) -> tuple[int, list[str], AdjustmentResult]:
+        """Fit text element using configured overflow strategy.
+
+        Args:
+            text: Text element to fit.
+            panel: Parent panel.
+
+        Returns:
+            Tuple of (font_size, lines, adjustment_result).
+        """
+        # Select strategy
+        strategy = text.overflow_strategy
+        if strategy == OverflowStrategy.AUTO:
+            strategy = self._select_auto_strategy(text)
+
+        original_font_size = text.font_size
+
+        # Apply strategy
+        if strategy == OverflowStrategy.SHRINK:
+            final_size, content = self._apply_shrink_strategy(text, panel)
+            lines = [content]
+            truncated = content != text.content and content.endswith("...")
+        elif strategy == OverflowStrategy.WRAP:
+            final_size, lines = self._apply_wrap_strategy(text, panel)
+            truncated = False
+        elif strategy == OverflowStrategy.TRUNCATE:
+            final_size, content = self._apply_truncate_strategy(text, panel)
+            lines = [content]
+            truncated = content != text.content
+        else:
+            # Fallback
+            final_size = text.font_size
+            lines = [text.content]
+            truncated = False
+
+        # Create adjustment result
+        was_adjusted = (final_size != original_font_size) or truncated or (len(lines) > 1)
+        result = AdjustmentResult(
+            was_adjusted=was_adjusted,
+            strategy_applied=strategy,
+            original_font_size=original_font_size,
+            final_font_size=final_size,
+            lines_used=len(lines),
+            content_truncated=truncated,
+        )
+
+        return (final_size, lines, result)
+
 
     def _render_border(self, x: float, y: float, width: float, height: float, border: Border) -> None:
         """Render a border around a region.

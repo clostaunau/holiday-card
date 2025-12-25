@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from holiday_card.core.models import (
+    AdjustmentResult,
     Border,
     BorderStyle,
     Card,
@@ -13,6 +14,7 @@ from holiday_card.core.models import (
     FontStyle,
     ImageElement,
     OccasionType,
+    OverflowStrategy,
     Panel,
     PanelPosition,
     Template,
@@ -94,6 +96,45 @@ class TestEnums:
         assert BorderStyle.SOLID.value == "solid"
         assert BorderStyle.DASHED.value == "dashed"
 
+    def test_overflow_strategy_enum_values(self):
+        """Test OverflowStrategy enum values."""
+        assert OverflowStrategy.AUTO.value == "auto"
+        assert OverflowStrategy.SHRINK.value == "shrink"
+        assert OverflowStrategy.WRAP.value == "wrap"
+        assert OverflowStrategy.TRUNCATE.value == "truncate"
+
+
+class TestAdjustmentResult:
+    """Tests for AdjustmentResult model."""
+
+    def test_adjustment_result_creation(self):
+        """Test creating an AdjustmentResult."""
+        result = AdjustmentResult(
+            was_adjusted=True,
+            strategy_applied=OverflowStrategy.SHRINK,
+            original_font_size=36,
+            final_font_size=24,
+            lines_used=1,
+            content_truncated=False,
+        )
+        assert result.was_adjusted is True
+        assert result.strategy_applied == OverflowStrategy.SHRINK
+        assert result.original_font_size == 36
+        assert result.final_font_size == 24
+        assert result.lines_used == 1
+        assert result.content_truncated is False
+
+    def test_adjustment_result_default_truncated(self):
+        """Test that content_truncated defaults to False."""
+        result = AdjustmentResult(
+            was_adjusted=False,
+            strategy_applied=OverflowStrategy.AUTO,
+            original_font_size=12,
+            final_font_size=12,
+            lines_used=1,
+        )
+        assert result.content_truncated is False
+
 
 class TestTextElement:
     """Tests for TextElement model."""
@@ -121,6 +162,54 @@ class TestTextElement:
         )
         assert text.font_style == FontStyle.BOLD
         assert text.alignment == TextAlignment.CENTER
+
+    def test_text_element_overflow_strategy_default(self):
+        """Test that overflow_strategy defaults to AUTO."""
+        text = TextElement(content="Test", x=0.0, y=0.0)
+        assert text.overflow_strategy == OverflowStrategy.AUTO
+
+    def test_text_element_overflow_strategy_validation(self):
+        """Test that overflow_strategy validates correctly."""
+        text = TextElement(
+            content="Test",
+            x=0.0,
+            y=0.0,
+            overflow_strategy=OverflowStrategy.SHRINK,
+        )
+        assert text.overflow_strategy == OverflowStrategy.SHRINK
+
+    def test_text_element_min_font_size_default(self):
+        """Test that min_font_size defaults to 8."""
+        text = TextElement(content="Test", x=0.0, y=0.0)
+        assert text.min_font_size == 8
+
+    def test_text_element_max_lines_default(self):
+        """Test that max_lines defaults to None."""
+        text = TextElement(content="Test", x=0.0, y=0.0)
+        assert text.max_lines is None
+
+    def test_text_element_adjustment_tracking(self):
+        """Test get/set adjustment result methods."""
+        text = TextElement(content="Test", x=0.0, y=0.0)
+
+        # Initially None
+        assert text.get_adjustment_result() is None
+
+        # Set adjustment result
+        result = AdjustmentResult(
+            was_adjusted=True,
+            strategy_applied=OverflowStrategy.SHRINK,
+            original_font_size=24,
+            final_font_size=18,
+            lines_used=1,
+        )
+        text.set_adjustment_result(result)
+
+        # Retrieve result
+        retrieved = text.get_adjustment_result()
+        assert retrieved is not None
+        assert retrieved.was_adjusted is True
+        assert retrieved.final_font_size == 18
 
 
 class TestPanel:

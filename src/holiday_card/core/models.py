@@ -2,7 +2,7 @@
 
 This module contains all Pydantic models representing the domain entities:
 - Color: RGB color value object
-- Enums: FoldType, OccasionType, PanelPosition
+- Enums: FoldType, OccasionType, PanelPosition, OverflowStrategy
 - TextElement: Text with positioning and styling
 - Panel: Card section with content
 - Template: Pre-designed card layout
@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, field_validator
 
 
 class Color(BaseModel):
@@ -128,6 +128,21 @@ class BorderStyle(str, Enum):
     DECORATIVE = "decorative"
 
 
+class OverflowStrategy(str, Enum):
+    """Strategy for handling text that exceeds designated boundaries.
+
+    - AUTO: Automatically select best strategy based on text characteristics
+    - SHRINK: Reduce font size until text fits (minimum 8pt)
+    - WRAP: Break text into multiple lines
+    - TRUNCATE: Cut off text with ellipsis (existing behavior)
+    """
+
+    AUTO = "auto"
+    SHRINK = "shrink"
+    WRAP = "wrap"
+    TRUNCATE = "truncate"
+
+
 class Border(BaseModel):
     """Border styling for panels and elements.
 
@@ -138,6 +153,36 @@ class Border(BaseModel):
     width: float = Field(default=1.0, ge=0.0, le=10.0, description="Border width in points")
     color: Color = Field(default_factory=lambda: Color(r=0.0, g=0.0, b=0.0), description="Border color")
     corner_radius: float = Field(default=0.0, ge=0.0, description="Corner radius in points")
+
+
+class AdjustmentResult(BaseModel):
+    """Result of text overflow adjustment.
+
+    Used for debugging, logging, and future preview warnings.
+    """
+
+    was_adjusted: bool = Field(
+        description="Whether any adjustment was applied"
+    )
+    strategy_applied: OverflowStrategy = Field(
+        description="Strategy that was used"
+    )
+    original_font_size: int = Field(
+        ge=6, le=144,
+        description="Original font size in points"
+    )
+    final_font_size: int = Field(
+        ge=6, le=144,
+        description="Final font size after adjustment"
+    )
+    lines_used: int = Field(
+        ge=1,
+        description="Number of lines in final rendering"
+    )
+    content_truncated: bool = Field(
+        default=False,
+        description="Whether content was truncated"
+    )
 
 
 class ImageElement(BaseModel):
@@ -174,6 +219,37 @@ class TextElement(BaseModel):
     color: Optional[Color] = Field(default=None, description="Text color (uses theme if None)")
     alignment: TextAlignment = Field(default=TextAlignment.LEFT, description="Text alignment")
     rotation: float = Field(default=0.0, description="Rotation in degrees")
+
+    # Overflow prevention fields
+    overflow_strategy: OverflowStrategy = Field(
+        default=OverflowStrategy.AUTO,
+        description="Strategy for handling text overflow"
+    )
+    max_lines: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Maximum lines when using WRAP strategy (None = unlimited)"
+    )
+    min_font_size: int = Field(
+        default=8,
+        ge=6,
+        le=72,
+        description="Minimum font size for SHRINK strategy (points)"
+    )
+
+    # Private field for adjustment tracking (not serialized to YAML)
+    _adjustment_applied: Optional[AdjustmentResult] = PrivateAttr(default=None)
+
+    def get_adjustment_result(self) -> Optional[AdjustmentResult]:
+        """Get the overflow adjustment that was applied during rendering.
+
+        Returns None if not yet rendered or no adjustment needed.
+        """
+        return self._adjustment_applied
+
+    def set_adjustment_result(self, result: AdjustmentResult) -> None:
+        """Internal use: Record adjustment result during rendering."""
+        self._adjustment_applied = result
 
 
 class Panel(BaseModel):
