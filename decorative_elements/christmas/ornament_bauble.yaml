@@ -1,0 +1,46 @@
+name: ornament_bauble
+description: "Round Christmas ornament with highlight and hanger"
+default_width: 0.8
+default_height: 1.0
+
+color_roles:
+  bauble: "#B85C50"        # Burgundy
+  highlight: "#FFFFFF"      # White
+  hanger: "#C0C0C0"        # Silver
+
+shapes:
+  # Main bauble (circle)
+  - type: circle
+    center_x: 0.4
+    center_y: 0.4
+    radius: 0.35
+    fill_color: "{bauble}"
+    z_index: 1
+
+  # Highlight (small circle)
+  - type: circle
+    center_x: 0.3
+    center_y: 0.55
+    radius: 0.12
+    fill_color: "{highlight}"
+    opacity: 0.6
+    z_index: 2
+
+  # Hanger cap (rectangle)
+  - type: rectangle
+    x: 0.3
+    y: 0.75
+    width: 0.2
+    height: 0.05
+    fill_color: "{hanger}"
+    z_index: 3
+
+  # Hanger string (line)
+  - type: line
+    start_x: 0.4
+    start_y: 0.8
+    end_x: 0.4
+    end_y: 1.0
+    stroke_color: "{hanger}"
+    stroke_width: 2
+    z_index: 3

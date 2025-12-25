@@ -34,6 +34,7 @@ from holiday_card.core.text_utils import (
 )
 from holiday_card.renderers.base import BaseRenderer
 from holiday_card.renderers.shape_renderer import ShapeRenderer
+from holiday_card.core.decorative import get_library
 from holiday_card.utils.measurements import (
     FOLD_LINE_WIDTH,
     PAGE_HEIGHT,
@@ -142,7 +143,17 @@ class ReportLabRenderer(BaseRenderer):
         # Render in sorted order
         for elem_type, elem, _ in elements:
             if elem_type == 'shape':
-                self._shape_renderer.render_shape(self._canvas, elem, panel.x, panel.y)
+                # Check if this is a decorative element
+                if hasattr(elem, 'type') and elem.type == 'decorative_element':
+                    # Expand decorative element into component shapes
+                    library = get_library()
+                    component_shapes = library.expand_element(elem)
+                    # Render each component shape
+                    for component in component_shapes:
+                        self._shape_renderer.render_shape(self._canvas, component, panel.x, panel.y)
+                else:
+                    # Regular shape
+                    self._shape_renderer.render_shape(self._canvas, elem, panel.x, panel.y)
             elif elem_type == 'image':
                 self.render_image(elem, panel)
             elif elem_type == 'text':
