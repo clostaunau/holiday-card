@@ -152,9 +152,10 @@ class CardGenerator:
             card: Card to modify.
             message: Inside message to apply.
         """
-        # Find the inside_right panel (typical location for messages)
+        # Find the inside_left panel (for book-style opening, this becomes
+        # the right page when opened, which is the natural reading position)
         for panel in card.panels:
-            if panel.position.value == "inside_right":
+            if panel.position.value == "inside_left":
                 # Look for a text element with id "message" or use the first one
                 for text in panel.text_elements:
                     if text.id == "message":
