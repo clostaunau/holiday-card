@@ -360,10 +360,10 @@ def _parse_shape_element(data: dict):
             )
         elif shape_type == "line":
             return Line(
-                x1=data["x1"],
-                y1=data["y1"],
-                x2=data["x2"],
-                y2=data["y2"],
+                start_x=data.get("start_x", data.get("x1")),
+                start_y=data.get("start_y", data.get("y1")),
+                end_x=data.get("end_x", data.get("x2")),
+                end_y=data.get("end_y", data.get("y2")),
                 stroke_color=data.get("stroke_color", "#000000"),
                 stroke_width=data.get("stroke_width", 1),
                 opacity=data.get("opacity", 1.0),
