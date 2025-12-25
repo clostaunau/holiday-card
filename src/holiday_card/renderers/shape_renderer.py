@@ -73,6 +73,14 @@ class ShapeRenderer:
         width = rect.width * self.POINTS_PER_INCH
         height = rect.height * self.POINTS_PER_INCH
 
+        # Apply opacity
+        self._apply_opacity(canvas, rect.opacity)
+
+        # Apply rotation
+        center_x = x + width / 2
+        center_y = y + height / 2
+        self._apply_rotation(canvas, rect.rotation, center_x, center_y)
+
         # Apply colors
         has_fill = rect.fill_color is not None
         has_stroke = rect.stroke_color is not None and rect.stroke_width > 0
@@ -85,6 +93,10 @@ class ShapeRenderer:
 
         # Draw rectangle
         canvas.rect(x, y, width, height, stroke=int(has_stroke), fill=int(has_fill))
+
+        # Restore rotation and opacity
+        self._restore_rotation(canvas, rect.rotation)
+        self._reset_opacity(canvas)
 
     def render_circle(
         self,
@@ -106,6 +118,12 @@ class ShapeRenderer:
         center_y = (panel_offset_y + circle.center_y) * self.POINTS_PER_INCH
         radius = circle.radius * self.POINTS_PER_INCH
 
+        # Apply opacity
+        self._apply_opacity(canvas, circle.opacity)
+
+        # Apply rotation (no visual effect for circle, but for consistency)
+        self._apply_rotation(canvas, circle.rotation, center_x, center_y)
+
         # Apply colors
         has_fill = circle.fill_color is not None
         has_stroke = circle.stroke_color is not None and circle.stroke_width > 0
@@ -118,6 +136,10 @@ class ShapeRenderer:
 
         # Draw circle
         canvas.circle(center_x, center_y, radius, stroke=int(has_stroke), fill=int(has_fill))
+
+        # Restore rotation and opacity
+        self._restore_rotation(canvas, circle.rotation)
+        self._reset_opacity(canvas)
 
     def render_triangle(
         self,
@@ -142,6 +164,16 @@ class ShapeRenderer:
         x3 = (panel_offset_x + triangle.x3) * self.POINTS_PER_INCH
         y3 = (panel_offset_y + triangle.y3) * self.POINTS_PER_INCH
 
+        # Calculate geometric center for rotation
+        center_x = (x1 + x2 + x3) / 3
+        center_y = (y1 + y2 + y3) / 3
+
+        # Apply opacity
+        self._apply_opacity(canvas, triangle.opacity)
+
+        # Apply rotation
+        self._apply_rotation(canvas, triangle.rotation, center_x, center_y)
+
         # Apply colors
         has_fill = triangle.fill_color is not None
         has_stroke = triangle.stroke_color is not None and triangle.stroke_width > 0
@@ -161,6 +193,10 @@ class ShapeRenderer:
 
         # Draw path
         canvas.drawPath(path, stroke=int(has_stroke), fill=int(has_fill))
+
+        # Restore rotation and opacity
+        self._restore_rotation(canvas, triangle.rotation)
+        self._reset_opacity(canvas)
 
     def render_star(
         self,
@@ -184,6 +220,12 @@ class ShapeRenderer:
         center_y = (panel_offset_y + star.center_y) * self.POINTS_PER_INCH
         outer_radius = star.outer_radius * self.POINTS_PER_INCH
         inner_radius = star.inner_radius * self.POINTS_PER_INCH
+
+        # Apply opacity
+        self._apply_opacity(canvas, star.opacity)
+
+        # Apply rotation
+        self._apply_rotation(canvas, star.rotation, center_x, center_y)
 
         # Calculate star points
         points = self._calculate_star_points(
@@ -210,6 +252,10 @@ class ShapeRenderer:
         # Draw path
         canvas.drawPath(path, stroke=int(has_stroke), fill=int(has_fill))
 
+        # Restore rotation and opacity
+        self._restore_rotation(canvas, star.rotation)
+        self._reset_opacity(canvas)
+
     def render_line(
         self,
         canvas: Canvas,
@@ -231,6 +277,16 @@ class ShapeRenderer:
         end_x = (panel_offset_x + line.end_x) * self.POINTS_PER_INCH
         end_y = (panel_offset_y + line.end_y) * self.POINTS_PER_INCH
 
+        # Calculate midpoint for rotation
+        mid_x = (start_x + end_x) / 2
+        mid_y = (start_y + end_y) / 2
+
+        # Apply opacity
+        self._apply_opacity(canvas, line.opacity)
+
+        # Apply rotation
+        self._apply_rotation(canvas, line.rotation, mid_x, mid_y)
+
         # Apply stroke (lines don't have fill)
         stroke_color = line.stroke_color or "#000000"  # Default to black
         canvas.setStrokeColor(self._hex_to_color(stroke_color))
@@ -238,6 +294,10 @@ class ShapeRenderer:
 
         # Draw line
         canvas.line(start_x, start_y, end_x, end_y)
+
+        # Restore rotation and opacity
+        self._restore_rotation(canvas, line.rotation)
+        self._reset_opacity(canvas)
 
     def _hex_to_color(self, hex_string: str) -> HexColor:
         """Convert hex color string to ReportLab Color.
@@ -292,6 +352,58 @@ class ShapeRenderer:
             points.append((x, y))
 
         return points
+
+
+    def _apply_opacity(self, canvas: Canvas, opacity: float) -> None:
+        """Apply opacity to fill and stroke.
+
+        Args:
+            canvas: ReportLab canvas
+            opacity: Opacity value 0.0-1.0
+        """
+        if opacity < 1.0:
+            canvas.setFillAlpha(opacity)
+            canvas.setStrokeAlpha(opacity)
+
+    def _reset_opacity(self, canvas: Canvas) -> None:
+        """Reset opacity to fully opaque.
+
+        Args:
+            canvas: ReportLab canvas
+        """
+        canvas.setFillAlpha(1.0)
+        canvas.setStrokeAlpha(1.0)
+
+    def _apply_rotation(
+        self,
+        canvas: Canvas,
+        rotation: float,
+        center_x: float,
+        center_y: float
+    ) -> None:
+        """Apply rotation around center point.
+
+        Args:
+            canvas: ReportLab canvas
+            rotation: Rotation in degrees
+            center_x: Rotation center X in points
+            center_y: Rotation center Y in points
+        """
+        if rotation != 0.0:
+            canvas.saveState()
+            canvas.translate(center_x, center_y)
+            canvas.rotate(rotation)
+            canvas.translate(-center_x, -center_y)
+
+    def _restore_rotation(self, canvas: Canvas, rotation: float) -> None:
+        """Restore canvas state after rotation.
+
+        Args:
+            canvas: ReportLab canvas
+            rotation: Rotation value to check if restore needed
+        """
+        if rotation != 0.0:
+            canvas.restoreState()
 
     def _inches_to_points(self, inches: float) -> float:
         """Convert inches to PDF points.
