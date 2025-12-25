@@ -6,11 +6,12 @@ description: "Modern geometric Christmas card with overlapping triangles and ele
 default_theme_id: christmas-earth-tones
 
 panels:
-  # Front panel - Main geometric tree design
-  - position: front
-    x: 0.0
-    y: 5.5
-    width: 8.5
+  # Front panel - Main geometric tree design (bottom right for half_fold)
+  - id: front
+    position: front
+    x: 4.25
+    y: 0
+    width: 4.25
     height: 5.5
     background_color:
       r: 0.98
@@ -20,232 +21,238 @@ panels:
     shape_elements:
       # Background decorative circles (subtle)
       - type: circle
-        center_x: 1.0
-        center_y: 1.0
-        radius: 0.4
+        center_x: 0.5
+        center_y: 0.8
+        radius: 0.3
         fill_color: "#A8B5A0"
         opacity: 0.15
         z_index: 1
 
       - type: circle
-        center_x: 7.5
-        center_y: 4.5
-        radius: 0.3
+        center_x: 3.8
+        center_y: 4.8
+        radius: 0.25
         fill_color: "#B85C50"
         opacity: 0.12
         z_index: 1
 
-      # Main geometric Christmas tree
-      - type: decorative_element
-        name: geometric_tree
-        x: 2.75
-        y: 1.0
-        scale: 1.0
-        z_index: 5
-        color_palette:
-          tree_primary: "#A8B5A0"    # Sage green
-          tree_accent: "#B85C50"     # Burgundy
-          ornament: "#D4AF37"        # Gold
-          star: "#FFD700"            # Bright gold
-
-      # Gift boxes at base
-      - type: decorative_element
-        name: gift_box
-        x: 1.5
-        y: 0.5
-        scale: 0.35
-        rotation: 10
-        z_index: 6
-        color_palette:
-          box: "#B85C50"
-          ribbon: "#D4AF37"
-          bow: "#FFD700"
-
-      - type: decorative_element
-        name: gift_box
-        x: 6.2
-        y: 0.6
-        scale: 0.3
-        rotation: 355
-        z_index: 6
-        color_palette:
-          box: "#A8B5A0"
-          ribbon: "#B85C50"
-          bow: "#D4AF37"
-
       # Small decorative stars in corners
       - type: star
-        center_x: 0.6
-        center_y: 5.0
-        outer_radius: 0.15
-        inner_radius: 0.08
+        center_x: 0.4
+        center_y: 4.8
+        outer_radius: 0.12
+        inner_radius: 0.06
         points: 5
         fill_color: "#D4AF37"
         opacity: 0.6
         z_index: 2
 
       - type: star
-        center_x: 7.9
-        center_y: 0.6
-        outer_radius: 0.12
-        inner_radius: 0.06
+        center_x: 3.9
+        center_y: 0.5
+        outer_radius: 0.1
+        inner_radius: 0.05
         points: 5
         fill_color: "#D4AF37"
         opacity: 0.5
         z_index: 2
 
+      # Geometric tree - built from basic shapes
+      # Bottom triangle (largest, sage green)
+      - type: triangle
+        x1: 2.125
+        y1: 4.2
+        x2: 0.6
+        y2: 1.8
+        x3: 3.65
+        y3: 1.8
+        fill_color: "#A8B5A0"
+        opacity: 0.9
+        z_index: 3
+
+      # Middle triangle (burgundy)
+      - type: triangle
+        x1: 2.125
+        y1: 4.6
+        x2: 1.0
+        y2: 2.6
+        x3: 3.25
+        y3: 2.6
+        fill_color: "#B85C50"
+        opacity: 0.85
+        z_index: 4
+
+      # Top triangle (teal accent)
+      - type: triangle
+        x1: 2.125
+        y1: 4.9
+        x2: 1.4
+        y2: 3.4
+        x3: 2.85
+        y3: 3.4
+        fill_color: "#76A5A0"
+        opacity: 0.8
+        z_index: 5
+
+      # Star on top
+      - type: star
+        center_x: 2.125
+        center_y: 4.95
+        outer_radius: 0.2
+        inner_radius: 0.1
+        points: 5
+        fill_color: "#FFD700"
+        opacity: 1.0
+        z_index: 10
+
+      # Ornaments
+      - type: circle
+        center_x: 1.5
+        center_y: 2.3
+        radius: 0.12
+        fill_color: "#D4AF37"
+        opacity: 0.9
+        z_index: 6
+
+      - type: circle
+        center_x: 2.7
+        center_y: 2.5
+        radius: 0.1
+        fill_color: "#B85C50"
+        opacity: 0.9
+        z_index: 6
+
+      - type: circle
+        center_x: 2.0
+        center_y: 3.2
+        radius: 0.1
+        fill_color: "#76A5A0"
+        opacity: 0.9
+        z_index: 6
+
+      # Tree trunk
+      - type: rectangle
+        x: 1.925
+        y: 1.4
+        width: 0.4
+        height: 0.5
+        fill_color: "#8B4513"
+        z_index: 2
+
+      # Gift box
+      - type: rectangle
+        x: 1.0
+        y: 1.0
+        width: 0.5
+        height: 0.4
+        fill_color: "#B85C50"
+        z_index: 6
+
+      - type: rectangle
+        x: 1.2
+        y: 1.0
+        width: 0.1
+        height: 0.4
+        fill_color: "#D4AF37"
+        z_index: 7
+
     text_elements:
       # Main greeting
-      - content: "Season's Greetings"
-        x: 4.25
-        y: 0.4
-        font_size: 28
+      - id: greeting
+        content: "Merry Christmas!"
+        x: 2.125
+        y: 0.6
+        width: 3.75
+        font_size: 24
         font_style: bold
         alignment: center
+        overflow_strategy: shrink
+        min_font_size: 14
         color:
           r: 0.18
           g: 0.33
-          b: 0.22  # Dark green (#2E5339)
+          b: 0.22
         z_index: 100
 
-  # Inside left - Personal message
-  - position: inside_left
+  # Inside left - blank for half_fold
+  - id: inside_left
+    position: inside_left
     x: 0.0
-    y: 0.0
+    y: 5.5
     width: 4.25
     height: 5.5
+    background_color:
+      r: 0.98
+      g: 0.98
+      b: 0.95
+
+  # Inside right - Personal message (top right for half_fold)
+  - id: inside_right
+    position: inside_right
+    x: 4.25
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.98
+      g: 0.98
+      b: 0.95
 
     shape_elements:
-      # Decorative corner elements
+      # Decorative corner stars
       - type: star
-        center_x: 0.5
+        center_x: 0.4
         center_y: 5.0
-        outer_radius: 0.18
-        inner_radius: 0.09
+        outer_radius: 0.12
+        inner_radius: 0.06
         points: 5
         fill_color: "#D4AF37"
         opacity: 0.4
         z_index: 1
 
       - type: star
-        center_x: 3.75
+        center_x: 3.85
         center_y: 0.5
-        outer_radius: 0.15
-        inner_radius: 0.08
+        outer_radius: 0.1
+        inner_radius: 0.05
         points: 5
         fill_color: "#A8B5A0"
         opacity: 0.4
         z_index: 1
 
-      # Small decorative tree
-      - type: decorative_element
-        name: geometric_tree
-        x: 1.5
-        y: 0.8
-        scale: 0.25
-        z_index: 2
-        color_palette:
-          tree_primary: "#A8B5A0"
-          tree_accent: "#B85C50"
-          ornament: "#D4AF37"
-          star: "#FFD700"
-
-    text_elements:
-      - content: "Wishing you joy, peace, and happiness this holiday season and throughout the new year!"
-        x: 2.125
-        y: 3.0
-        width: 3.5
-        font_size: 14
-        alignment: center
-        overflow_strategy: wrap
-        max_lines: 5
-        z_index: 100
-
-  # Inside right - Signature area
-  - position: inside_right
-    x: 4.25
-    y: 0.0
-    width: 4.25
-    height: 5.5
-
-    shape_elements:
-      # Decorative elements
+      # Small decorative circles
       - type: circle
-        center_x: 0.5
-        center_y: 4.5
-        radius: 0.25
+        center_x: 3.7
+        center_y: 4.8
+        radius: 0.15
         fill_color: "#B85C50"
         opacity: 0.2
         z_index: 1
 
-      - type: circle
-        center_x: 3.75
-        center_y: 1.0
-        radius: 0.3
-        fill_color: "#A8B5A0"
-        opacity: 0.2
-        z_index: 1
-
-      # Small ornament
-      - type: decorative_element
-        name: ornament_bauble
-        x: 1.6
-        y: 3.5
-        scale: 0.4
-        z_index: 2
-        color_palette:
-          bauble: "#B85C50"
-          highlight: "#FFFFFF"
-          hanger: "#C0C0C0"
-
     text_elements:
-      - content: "From our family to yours,"
-        x: 2.125
-        y: 2.5
-        font_size: 14
-        alignment: center
-        font_style: italic
-        z_index: 100
-
-      - content: "With love and warmth"
-        x: 2.125
-        y: 2.0
+      - id: message
+        content: "Wishing you joy and happiness this holiday season!"
+        x: 0.5
+        y: 4.0
+        width: 3.25
         font_size: 12
-        alignment: center
+        alignment: left
+        overflow_strategy: wrap
+        max_lines: 10
+        color:
+          r: 0.2
+          g: 0.2
+          b: 0.2
         z_index: 100
 
-  # Back panel - Simple and elegant
-  - position: back
+  # Back panel - Simple (bottom left for half_fold)
+  - id: back
+    position: back
     x: 0.0
     y: 0.0
-    width: 8.5
+    width: 4.25
     height: 5.5
     background_color:
-      r: 0.66
-      g: 0.71
-      b: 0.63  # Sage green (#A8B5A0)
-
-    shape_elements:
-      # Simple decorative star pattern
-      - type: star
-        center_x: 4.25
-        center_y: 2.75
-        outer_radius: 0.3
-        inner_radius: 0.15
-        points: 5
-        fill_color: "#FFD700"
-        opacity: 0.3
-        z_index: 1
-
-    text_elements:
-      - content: "Happy Holidays"
-        x: 4.25
-        y: 2.75
-        font_size: 16
-        font_style: bold
-        alignment: center
-        color:
-          r: 0.98
-          g: 0.98
-          b: 0.95  # Cream
-        z_index: 100
+      r: 0.98
+      g: 0.98
+      b: 0.95

@@ -210,6 +210,13 @@ def _parse_panel(data: dict) -> Panel:
         text = _parse_text_element(text_data)
         text_elements.append(text)
 
+    # Parse shape elements using Pydantic's discriminated union
+    shape_elements = []
+    for shape_data in data.get("shape_elements", []):
+        shape = _parse_shape_element(shape_data)
+        if shape:
+            shape_elements.append(shape)
+
     background_color = None
     if "background_color" in data:
         bg = data["background_color"]
@@ -226,6 +233,7 @@ def _parse_panel(data: dict) -> Panel:
         background_color=background_color,
         background_image=data.get("background_image"),
         text_elements=text_elements,
+        shape_elements=shape_elements,
     )
 
 
@@ -269,3 +277,111 @@ def _parse_text_element(data: dict) -> TextElement:
         min_font_size=data.get("min_font_size", 8),
         max_lines=data.get("max_lines"),
     )
+
+
+def _parse_shape_element(data: dict):
+    """Parse shape element data into appropriate Shape object.
+
+    Uses Pydantic's discriminated union based on 'type' field.
+
+    Args:
+        data: Raw shape element data from YAML.
+
+    Returns:
+        Parsed shape object (Rectangle, Circle, Triangle, Star, Line, or DecorativeElement).
+    """
+    from holiday_card.core.models import (
+        Rectangle,
+        Circle,
+        Triangle,
+        Star,
+        Line,
+        DecorativeElement,
+    )
+
+    shape_type = data.get("type")
+    if not shape_type:
+        return None
+
+    try:
+        if shape_type == "rectangle":
+            return Rectangle(
+                x=data["x"],
+                y=data["y"],
+                width=data["width"],
+                height=data["height"],
+                fill_color=data.get("fill_color"),
+                stroke_color=data.get("stroke_color"),
+                stroke_width=data.get("stroke_width", 0),
+                opacity=data.get("opacity", 1.0),
+                rotation=data.get("rotation", 0),
+                z_index=data.get("z_index", 0),
+            )
+        elif shape_type == "circle":
+            return Circle(
+                center_x=data["center_x"],
+                center_y=data["center_y"],
+                radius=data["radius"],
+                fill_color=data.get("fill_color"),
+                stroke_color=data.get("stroke_color"),
+                stroke_width=data.get("stroke_width", 0),
+                opacity=data.get("opacity", 1.0),
+                rotation=data.get("rotation", 0),
+                z_index=data.get("z_index", 0),
+            )
+        elif shape_type == "triangle":
+            return Triangle(
+                x1=data["x1"],
+                y1=data["y1"],
+                x2=data["x2"],
+                y2=data["y2"],
+                x3=data["x3"],
+                y3=data["y3"],
+                fill_color=data.get("fill_color"),
+                stroke_color=data.get("stroke_color"),
+                stroke_width=data.get("stroke_width", 0),
+                opacity=data.get("opacity", 1.0),
+                rotation=data.get("rotation", 0),
+                z_index=data.get("z_index", 0),
+            )
+        elif shape_type == "star":
+            return Star(
+                center_x=data["center_x"],
+                center_y=data["center_y"],
+                outer_radius=data["outer_radius"],
+                inner_radius=data["inner_radius"],
+                points=data.get("points", 5),
+                fill_color=data.get("fill_color"),
+                stroke_color=data.get("stroke_color"),
+                stroke_width=data.get("stroke_width", 0),
+                opacity=data.get("opacity", 1.0),
+                rotation=data.get("rotation", 0),
+                z_index=data.get("z_index", 0),
+            )
+        elif shape_type == "line":
+            return Line(
+                x1=data["x1"],
+                y1=data["y1"],
+                x2=data["x2"],
+                y2=data["y2"],
+                stroke_color=data.get("stroke_color", "#000000"),
+                stroke_width=data.get("stroke_width", 1),
+                opacity=data.get("opacity", 1.0),
+                z_index=data.get("z_index", 0),
+            )
+        elif shape_type == "decorative_element":
+            return DecorativeElement(
+                name=data["name"],
+                x=data["x"],
+                y=data["y"],
+                scale=data.get("scale", 1.0),
+                rotation=data.get("rotation", 0),
+                z_index=data.get("z_index", 0),
+                color_palette=data.get("color_palette", {}),
+            )
+        else:
+            return None
+    except (KeyError, ValueError) as e:
+        # Skip invalid shape definitions
+        print(f"Warning: Could not parse shape element: {e}")
+        return None
