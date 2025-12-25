@@ -174,25 +174,27 @@ panels:
           b: 0.22
         z_index: 100
 
-  # Inside left - blank for half_fold
+  # Inside left - blank for half_fold (rotated 180 for correct orientation when folded)
   - id: inside_left
     position: inside_left
     x: 0.0
     y: 5.5
     width: 4.25
     height: 5.5
+    rotation: 180
     background_color:
       r: 0.98
       g: 0.98
       b: 0.95
 
-  # Inside right - Personal message (top right for half_fold)
+  # Inside right - Personal message (top right for half_fold, rotated 180 for correct orientation when folded)
   - id: inside_right
     position: inside_right
     x: 4.25
     y: 5.5
     width: 4.25
     height: 5.5
+    rotation: 180
     background_color:
       r: 0.98
       g: 0.98

@@ -291,25 +291,27 @@ panels:
           b: 0.25
         z_index: 100
 
-  # Inside left - blank
+  # Inside left - blank (rotated 180 for correct orientation when folded)
   - id: inside_left
     position: inside_left
     x: 0.0
     y: 5.5
     width: 4.25
     height: 5.5
+    rotation: 180
     background_color:
       r: 0.98
       g: 0.97
       b: 0.94
 
-  # Inside right - Message area
+  # Inside right - Message area (rotated 180 for correct orientation when folded)
   - id: inside_right
     position: inside_right
     x: 4.25
     y: 5.5
     width: 4.25
     height: 5.5
+    rotation: 180
     background_color:
       r: 0.98
       g: 0.97
