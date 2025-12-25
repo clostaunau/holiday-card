@@ -1,0 +1,49 @@
+# Generic Color Themes
+# Versatile color schemes suitable for any occasion
+
+themes:
+  - id: "generic-neutral"
+    name: "Classic Neutral"
+    occasion: "generic"
+    description: "Timeless neutral tones for any occasion"
+    primary:
+      r: 0.4
+      g: 0.45
+      b: 0.5
+    secondary:
+      r: 0.6
+      g: 0.55
+      b: 0.5
+    background:
+      r: 0.98
+      g: 0.97
+      b: 0.95
+    text:
+      r: 0.2
+      g: 0.2
+      b: 0.2
+
+  - id: "generic-celebration"
+    name: "Celebration"
+    occasion: "generic"
+    description: "Festive colors suitable for any celebration"
+    primary:
+      r: 0.85
+      g: 0.5
+      b: 0.2
+    secondary:
+      r: 0.3
+      g: 0.5
+      b: 0.7
+    background:
+      r: 1.0
+      g: 0.99
+      b: 0.97
+    text:
+      r: 0.2
+      g: 0.2
+      b: 0.25
+    accent:
+      r: 0.95
+      g: 0.75
+      b: 0.3

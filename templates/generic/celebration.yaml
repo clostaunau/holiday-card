@@ -1,0 +1,83 @@
+# Generic Celebration Card Template
+# A versatile half-fold card for any occasion
+
+id: "generic-celebration"
+name: "Celebration"
+occasion: "generic"
+fold_type: "half_fold"
+default_theme_id: "generic-celebration"
+description: "Versatile celebration card suitable for any occasion"
+
+panels:
+  # Front panel (bottom right when unfolded)
+  - id: "front"
+    position: "front"
+    x: 4.25
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.85
+      g: 0.5
+      b: 0.2
+    text_elements:
+      - id: "greeting"
+        content: "Congratulations!"
+        x: 2.125
+        y: 2.75
+        font_family: "Helvetica"
+        font_size: 30
+        font_style: "bold"
+        alignment: "center"
+        color:
+          r: 1.0
+          g: 1.0
+          b: 1.0
+
+  # Back panel (bottom left when unfolded)
+  - id: "back"
+    position: "back"
+    x: 0
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 1.0
+      b: 1.0
+
+  # Inside left panel
+  - id: "inside_left"
+    position: "inside_left"
+    x: 0
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 0.99
+      b: 0.97
+
+  # Inside right panel
+  - id: "inside_right"
+    position: "inside_right"
+    x: 4.25
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 0.99
+      b: 0.97
+    text_elements:
+      - id: "message"
+        content: "Wishing you all the best on this special occasion!"
+        x: 0.5
+        y: 3.0
+        width: 3.25
+        font_family: "Helvetica"
+        font_size: 14
+        color:
+          r: 0.3
+          g: 0.25
+          b: 0.2

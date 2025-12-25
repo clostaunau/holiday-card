@@ -1,0 +1,37 @@
+# Holiday Card Creator - Python Dependencies
+# Graphics and Image Processing Libraries
+
+# Core image manipulation
+Pillow>=10.0.0
+
+# PDF generation and manipulation
+reportlab>=4.0.0
+PyPDF2>=3.0.0
+
+# SVG support
+svglib>=1.5.0
+cairosvg>=2.7.1
+
+# Additional graphics utilities
+matplotlib>=3.8.0
+qrcode[pil]>=7.4.0
+
+# Web preview (optional)
+flask>=3.0.0
+flask-cors>=4.0.0
+jinja2>=3.1.0
+
+# Image format support
+pillow-heif>=0.14.0
+
+# Color utilities
+colorama>=0.4.6
+
+# Development tools (optional - also installed via setup.sh)
+# Uncomment if you want these in requirements.txt
+# black>=23.0.0
+# isort>=5.12.0
+# ruff>=0.1.0
+# pytest>=7.4.0
+# pytest-cov>=4.1.0
+# mypy>=1.7.0

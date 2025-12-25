@@ -1,0 +1,74 @@
+# Christmas Color Themes
+# A collection of festive color schemes for Christmas cards
+
+themes:
+  - id: "christmas-red-green"
+    name: "Classic Red & Green"
+    occasion: "christmas"
+    description: "Traditional Christmas colors with deep red and forest green"
+    primary:
+      r: 0.8
+      g: 0.1
+      b: 0.1
+    secondary:
+      r: 0.2
+      g: 0.5
+      b: 0.2
+    background:
+      r: 1.0
+      g: 1.0
+      b: 1.0
+    text:
+      r: 0.2
+      g: 0.2
+      b: 0.2
+
+  - id: "christmas-gold"
+    name: "Elegant Gold"
+    occasion: "christmas"
+    description: "Sophisticated gold and burgundy theme"
+    primary:
+      r: 1.0
+      g: 0.84
+      b: 0.0
+    secondary:
+      r: 0.5
+      g: 0.1
+      b: 0.15
+    background:
+      r: 0.98
+      g: 0.98
+      b: 0.96
+    text:
+      r: 0.2
+      g: 0.15
+      b: 0.1
+    accent:
+      r: 0.9
+      g: 0.75
+      b: 0.5
+
+  - id: "christmas-winter-blue"
+    name: "Winter Blue"
+    occasion: "christmas"
+    description: "Cool winter tones with icy blue and silver"
+    primary:
+      r: 0.2
+      g: 0.4
+      b: 0.7
+    secondary:
+      r: 0.75
+      g: 0.75
+      b: 0.8
+    background:
+      r: 0.95
+      g: 0.97
+      b: 1.0
+    text:
+      r: 0.15
+      g: 0.2
+      b: 0.3
+    accent:
+      r: 0.4
+      g: 0.6
+      b: 0.9

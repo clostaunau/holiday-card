@@ -1,0 +1,255 @@
+"""Template loading and discovery for holiday cards.
+
+This module handles loading YAML template files and discovering
+available templates in the templates directory.
+"""
+
+from pathlib import Path
+from typing import Optional
+
+import yaml
+
+from holiday_card.core.models import (
+    Color,
+    FoldType,
+    OccasionType,
+    Panel,
+    PanelPosition,
+    Template,
+    TextElement,
+)
+
+
+class TemplateNotFoundError(Exception):
+    """Raised when a template cannot be found."""
+
+    pass
+
+
+class TemplateLoadError(Exception):
+    """Raised when a template fails to load."""
+
+    pass
+
+
+def get_templates_dir() -> Path:
+    """Get the path to the templates directory.
+
+    Returns:
+        Path to templates directory.
+    """
+    # Check environment variable first
+    import os
+
+    env_path = os.environ.get("HOLIDAY_CARD_TEMPLATES")
+    if env_path:
+        return Path(env_path)
+
+    # Default to templates/ in project root
+    # Walk up from this file to find project root
+    current = Path(__file__).parent
+    while current != current.parent:
+        templates_path = current / "templates"
+        if templates_path.exists():
+            return templates_path
+        current = current.parent
+
+    # Fallback to relative path from cwd
+    return Path("templates")
+
+
+def discover_templates(templates_dir: Optional[Path] = None) -> list[dict[str, str]]:
+    """Discover all available templates.
+
+    Args:
+        templates_dir: Path to templates directory. Uses default if None.
+
+    Returns:
+        List of template info dicts with 'id', 'name', 'occasion', 'path'.
+    """
+    if templates_dir is None:
+        templates_dir = get_templates_dir()
+
+    if not templates_dir.exists():
+        return []
+
+    templates = []
+
+    # Scan for YAML files in occasion subdirectories
+    for occasion_dir in templates_dir.iterdir():
+        if occasion_dir.is_dir():
+            occasion = occasion_dir.name
+            for template_file in occasion_dir.glob("*.yaml"):
+                try:
+                    with open(template_file) as f:
+                        data = yaml.safe_load(f)
+                        templates.append({
+                            "id": data.get("id", template_file.stem),
+                            "name": data.get("name", template_file.stem),
+                            "occasion": occasion,
+                            "fold_type": data.get("fold_type", "half_fold"),
+                            "description": data.get("description", ""),
+                            "path": str(template_file),
+                        })
+                except Exception:
+                    # Skip invalid templates
+                    continue
+
+    return templates
+
+
+def load_template(template_id: str, templates_dir: Optional[Path] = None) -> Template:
+    """Load a template by ID.
+
+    Args:
+        template_id: Template identifier (e.g., 'christmas-classic').
+        templates_dir: Path to templates directory. Uses default if None.
+
+    Returns:
+        Loaded Template object.
+
+    Raises:
+        TemplateNotFoundError: If template not found.
+        TemplateLoadError: If template fails to load.
+    """
+    if templates_dir is None:
+        templates_dir = get_templates_dir()
+
+    # Search for template file
+    template_path = None
+    for occasion_dir in templates_dir.iterdir():
+        if occasion_dir.is_dir():
+            for yaml_file in occasion_dir.glob("*.yaml"):
+                try:
+                    with open(yaml_file) as f:
+                        data = yaml.safe_load(f)
+                        if data.get("id") == template_id:
+                            template_path = yaml_file
+                            break
+                except Exception:
+                    continue
+        if template_path:
+            break
+
+    # Also check by filename
+    if not template_path:
+        for occasion_dir in templates_dir.iterdir():
+            if occasion_dir.is_dir():
+                possible_path = occasion_dir / f"{template_id}.yaml"
+                if possible_path.exists():
+                    template_path = possible_path
+                    break
+
+    if not template_path:
+        raise TemplateNotFoundError(f"Template not found: {template_id}")
+
+    return load_template_from_file(template_path)
+
+
+def load_template_from_file(path: Path) -> Template:
+    """Load a template from a YAML file.
+
+    Args:
+        path: Path to template YAML file.
+
+    Returns:
+        Loaded Template object.
+
+    Raises:
+        TemplateLoadError: If template fails to load.
+    """
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f)
+    except Exception as e:
+        raise TemplateLoadError(f"Failed to read template file: {e}")
+
+    try:
+        return _parse_template(data)
+    except Exception as e:
+        raise TemplateLoadError(f"Failed to parse template: {e}")
+
+
+def _parse_template(data: dict) -> Template:
+    """Parse template data into a Template object.
+
+    Args:
+        data: Raw template data from YAML.
+
+    Returns:
+        Parsed Template object.
+    """
+    panels = []
+    for panel_data in data.get("panels", []):
+        panel = _parse_panel(panel_data)
+        panels.append(panel)
+
+    return Template(
+        id=data["id"],
+        name=data["name"],
+        occasion=OccasionType(data["occasion"]),
+        fold_type=FoldType(data["fold_type"]),
+        default_theme_id=data.get("default_theme_id"),
+        panels=panels,
+        description=data.get("description"),
+        preview_image=data.get("preview_image"),
+    )
+
+
+def _parse_panel(data: dict) -> Panel:
+    """Parse panel data into a Panel object.
+
+    Args:
+        data: Raw panel data from YAML.
+
+    Returns:
+        Parsed Panel object.
+    """
+    text_elements = []
+    for text_data in data.get("text_elements", []):
+        text = _parse_text_element(text_data)
+        text_elements.append(text)
+
+    background_color = None
+    if "background_color" in data:
+        bg = data["background_color"]
+        background_color = Color(r=bg["r"], g=bg["g"], b=bg["b"])
+
+    return Panel(
+        id=data.get("id", ""),
+        position=PanelPosition(data["position"]),
+        x=data["x"],
+        y=data["y"],
+        width=data["width"],
+        height=data["height"],
+        rotation=data.get("rotation", 0.0),
+        background_color=background_color,
+        background_image=data.get("background_image"),
+        text_elements=text_elements,
+    )
+
+
+def _parse_text_element(data: dict) -> TextElement:
+    """Parse text element data into a TextElement object.
+
+    Args:
+        data: Raw text element data from YAML.
+
+    Returns:
+        Parsed TextElement object.
+    """
+    color = None
+    if "color" in data:
+        c = data["color"]
+        color = Color(r=c["r"], g=c["g"], b=c["b"])
+
+    return TextElement(
+        id=data.get("id", ""),
+        content=data.get("content", data.get("default_content", "")),
+        x=data["x"],
+        y=data["y"],
+        width=data.get("width"),
+        font_family=data.get("font_family", "Helvetica"),
+        font_size=data.get("font_size", 12),
+        color=color,
+    )

@@ -1,0 +1,42 @@
+// tests/unit/[module-name].test.js
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { [ClassOrFunction] } from '@/[path]'
+
+describe('[ClassOrFunction]', () => {
+  let [instance]
+
+  beforeEach(() => {
+    // Setup before each test
+    [instance] = new [ClassOrFunction]()
+  })
+
+  afterEach(() => {
+    // Cleanup after each test
+  })
+
+  describe('[methodName]', () => {
+    it('should [expected behavior] when [condition]', () => {
+      // Arrange
+      const [input] = { /* test data */ }
+
+      // Act
+      const result = [instance].[methodName]([input])
+
+      // Assert
+      expect(result).toEqual(/* expected output */)
+    })
+
+    it('should throw [ErrorType] when [invalid condition]', () => {
+      // Arrange
+      const [invalidInput] = { /* invalid data */ }
+
+      // Act & Assert
+      expect(() => [instance].[methodName]([invalidInput]))
+        .toThrow([ErrorType])
+    })
+
+    it('should [edge case behavior]', () => {
+      // Test edge cases
+    })
+  })
+})
