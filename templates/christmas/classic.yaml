@@ -25,8 +25,12 @@ panels:
         content: "Merry Christmas!"
         x: 2.125  # Center of panel
         y: 2.75   # Middle of panel
+        width: 3.75  # Leave 0.25" margin on each side
         font_family: "Helvetica"
         font_size: 36
+        alignment: "center"
+        overflow_strategy: "shrink"
+        min_font_size: 12
         color:
           r: 1.0
           g: 1.0
@@ -75,6 +79,8 @@ panels:
         width: 3.25
         font_family: "Helvetica"
         font_size: 14
+        overflow_strategy: "wrap"
+        max_lines: 6
         color:
           r: 0.2
           g: 0.2

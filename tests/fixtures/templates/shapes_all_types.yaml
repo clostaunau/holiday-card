@@ -1,0 +1,132 @@
+id: shapes-all-types-test
+name: "All Shape Types Test"
+occasion: generic
+fold_type: half_fold
+description: "Test template demonstrating all 5 basic shape types"
+
+panels:
+  - position: front
+    x: 0.0
+    y: 5.5
+    width: 8.5
+    height: 5.5
+    background_color:
+      r: 0.98
+      g: 0.98
+      b: 0.95
+
+    shape_elements:
+      # Rectangle - sage green with dark outline
+      - type: rectangle
+        x: 0.5
+        y: 4.0
+        width: 1.5
+        height: 1.0
+        fill_color: "#A8B5A0"
+        stroke_color: "#2E5339"
+        stroke_width: 2
+        z_index: 1
+
+      # Circle - burgundy filled
+      - type: circle
+        center_x: 3.0
+        center_y: 4.5
+        radius: 0.6
+        fill_color: "#B85C50"
+        z_index: 1
+
+      # Triangle - gold filled
+      - type: triangle
+        x1: 4.5
+        y1: 3.8
+        x2: 5.5
+        y2: 3.8
+        x3: 5.0
+        y3: 5.0
+        fill_color: "#D4AF37"
+        z_index: 1
+
+      # Star - bright gold with outline
+      - type: star
+        center_x: 7.0
+        center_y: 4.5
+        outer_radius: 0.5
+        inner_radius: 0.25
+        points: 5
+        fill_color: "#FFD700"
+        stroke_color: "#DAA520"
+        stroke_width: 1
+        z_index: 1
+
+      # Line - dark teal
+      - type: line
+        start_x: 0.5
+        start_y: 3.0
+        end_x: 8.0
+        end_y: 3.0
+        stroke_color: "#008080"
+        stroke_width: 3
+        z_index: 1
+
+    text_elements:
+      # Labels for each shape
+      - content: "Rectangle"
+        x: 1.25
+        y: 3.5
+        font_size: 10
+        alignment: center
+        z_index: 100
+
+      - content: "Circle"
+        x: 3.0
+        y: 3.5
+        font_size: 10
+        alignment: center
+        z_index: 100
+
+      - content: "Triangle"
+        x: 5.0
+        y: 3.3
+        font_size: 10
+        alignment: center
+        z_index: 100
+
+      - content: "Star"
+        x: 7.0
+        y: 3.5
+        font_size: 10
+        alignment: center
+        z_index: 100
+
+      - content: "Line (above)"
+        x: 4.25
+        y: 2.5
+        font_size: 10
+        alignment: center
+        z_index: 100
+
+      # Title
+      - content: "Shape Types Test Card"
+        x: 4.25
+        y: 1.0
+        font_size: 18
+        font_style: bold
+        alignment: center
+        z_index: 100
+
+  - position: back
+    x: 0.0
+    y: 0.0
+    width: 8.5
+    height: 5.5
+    background_color:
+      r: 0.95
+      g: 0.95
+      b: 0.95
+
+    text_elements:
+      - content: "Test Card - Back Panel"
+        x: 4.25
+        y: 2.75
+        font_size: 14
+        alignment: center

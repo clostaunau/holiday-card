@@ -25,10 +25,13 @@ panels:
         content: "Season's Greetings"
         x: 2.125  # Center of panel
         y: 2.75   # Middle of panel
+        width: 3.75  # Leave 0.25" margin on each side
         font_family: "Helvetica"
         font_size: 28
         font_style: "bold"
         alignment: "center"
+        overflow_strategy: "shrink"
+        min_font_size: 10
         color:
           r: 1.0
           g: 0.84
@@ -75,10 +78,12 @@ panels:
       - id: "message"
         content: "Wishing you peace and joy this holiday season"
         x: 0.5
-        y: 3.0
+        y: 4.0
         width: 3.25
         font_family: "Helvetica"
-        font_size: 14
+        font_size: 12
+        overflow_strategy: "wrap"
+        max_lines: 10
         color:
           r: 0.2
           g: 0.2

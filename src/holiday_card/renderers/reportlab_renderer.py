@@ -33,6 +33,7 @@ from holiday_card.core.text_utils import (
     wrap_text,
 )
 from holiday_card.renderers.base import BaseRenderer
+from holiday_card.renderers.shape_renderer import ShapeRenderer
 from holiday_card.utils.measurements import (
     FOLD_LINE_WIDTH,
     PAGE_HEIGHT,
@@ -52,6 +53,7 @@ class ReportLabRenderer(BaseRenderer):
     def __init__(self) -> None:
         """Initialize the renderer."""
         super().__init__()
+        self._shape_renderer = ShapeRenderer()
         self._canvas: Optional[canvas.Canvas] = None
         self._output_path: Optional[Path] = None
 
@@ -115,6 +117,10 @@ class ReportLabRenderer(BaseRenderer):
             self._render_border(x, y, width, height, panel.border)
 
         # Render image elements
+        # Render shape elements
+        for shape in panel.shape_elements:
+            self._shape_renderer.render_shape(self._canvas, shape, panel.x, panel.y)
+
         for image in panel.image_elements:
             self.render_image(image, panel)
 
