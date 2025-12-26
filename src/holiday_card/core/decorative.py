@@ -7,11 +7,10 @@ This module provides loading and management of pre-built decorative elements
 import logging
 import os
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
-from holiday_card.core.models import Circle, DecorativeElement, Line, Rectangle, Star, Triangle
+from holiday_card.core.models import DecorativeElement
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +56,7 @@ class DecorativeElementLibrary:
     methods to instantiate them with custom positioning, scaling, and colors.
     """
 
-    def __init__(self, library_path: Optional[Path] = None):
+    def __init__(self, library_path: Path | None = None):
         """Initialize the decorative element library.
 
         Args:
@@ -69,7 +68,7 @@ class DecorativeElementLibrary:
             # First try relative to package (src/holiday_card)
             package_dir = Path(__file__).parent.parent.parent
             library_path = package_dir / "decorative_elements"
-            
+
             # If not found, try project root
             if not library_path.exists():
                 project_root = package_dir.parent
@@ -104,7 +103,7 @@ class DecorativeElementLibrary:
         Returns:
             DecorativeElementDefinition instance
         """
-        with open(yaml_path, 'r') as f:
+        with open(yaml_path) as f:
             data = yaml.safe_load(f)
 
         return DecorativeElementDefinition(
@@ -139,7 +138,7 @@ class DecorativeElementLibrary:
     def resolve_colors(
         self,
         definition: DecorativeElementDefinition,
-        color_palette: Optional[dict[str, str]] = None
+        color_palette: dict[str, str] | None = None
     ) -> list:
         """Resolve color palette placeholders in shapes.
 
@@ -271,6 +270,7 @@ class DecorativeElementLibrary:
 
         # Convert to shape model instances
         from pydantic import TypeAdapter
+
         from holiday_card.core.models import Shape
 
         shapes = []
@@ -284,7 +284,7 @@ class DecorativeElementLibrary:
 
 
 # Global library instance
-_library: Optional[DecorativeElementLibrary] = None
+_library: DecorativeElementLibrary | None = None
 
 
 def get_library() -> DecorativeElementLibrary:

@@ -5,10 +5,8 @@ All commands support both human-readable and JSON output formats.
 """
 
 import json
-import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -19,7 +17,6 @@ from holiday_card.core.templates import (
     TemplateLoadError,
     TemplateNotFoundError,
     discover_templates,
-    get_templates_dir,
     load_template_from_file,
 )
 from holiday_card.core.themes import discover_themes
@@ -62,10 +59,10 @@ def main(
 
 @app.command()
 def templates(
-    occasion: Optional[str] = typer.Option(
+    occasion: str | None = typer.Option(
         None, "--occasion", "-o", help="Filter by occasion type"
     ),
-    fold_type: Optional[str] = typer.Option(
+    fold_type: str | None = typer.Option(
         None, "--fold-type", "-f", help="Filter by fold type"
     ),
     format: str = typer.Option(
@@ -121,7 +118,7 @@ def templates(
 
 @app.command(name="themes")
 def list_themes(
-    occasion: Optional[str] = typer.Option(
+    occasion: str | None = typer.Option(
         None, "--occasion", "-o", help="Filter by occasion type"
     ),
     format: str = typer.Option(
@@ -173,22 +170,22 @@ def list_themes(
 @app.command()
 def create(
     template: str = typer.Argument(..., help="Template name or path"),
-    message: Optional[str] = typer.Option(
+    message: str | None = typer.Option(
         None, "--message", "-m", help="Greeting message text"
     ),
-    output: Optional[Path] = typer.Option(
+    output: Path | None = typer.Option(
         None, "--output", "-o", help="Output PDF file path"
     ),
-    name: Optional[str] = typer.Option(
+    name: str | None = typer.Option(
         None, "--name", "-n", help="Card name for identification"
     ),
-    fold_type: Optional[str] = typer.Option(
+    fold_type: str | None = typer.Option(
         None, "--fold-type", "-f", help="Override fold type: half_fold, quarter_fold, tri_fold"
     ),
-    image: Optional[list[Path]] = typer.Option(
+    image: list[Path] | None = typer.Option(
         None, "--image", "-i", help="Add image to card (can be repeated)"
     ),
-    theme: Optional[str] = typer.Option(
+    theme: str | None = typer.Option(
         None, "--theme", "-t", help="Color theme to apply (e.g., christmas-red-green)"
     ),
 ) -> None:
@@ -279,7 +276,7 @@ def create(
         typer.secho(f"Card created: {pdf_path}", fg=typer.colors.GREEN)
         typer.echo(f"  Template: {template}")
         typer.echo(f"  Fold: {card.fold_type.value}")
-        typer.echo(f"  Size: 8.5\" x 11\"")
+        typer.echo("  Size: 8.5\" x 11\"")
         if message:
             msg_preview = message[:50] + "..." if len(message) > 50 else message
             typer.echo(f"  Message: {msg_preview}")
@@ -312,10 +309,10 @@ def create(
 @app.command()
 def preview(
     template: str = typer.Argument(..., help="Template name or path"),
-    message: Optional[str] = typer.Option(
+    message: str | None = typer.Option(
         None, "--message", "-m", help="Greeting message text"
     ),
-    output: Optional[Path] = typer.Option(
+    output: Path | None = typer.Option(
         None, "--output", "-o", help="Output image file path"
     ),
     dpi: int = typer.Option(
@@ -405,7 +402,7 @@ def init(
     fold_type: str = typer.Option(
         "half_fold", "--fold-type", "-f", help="Fold type: half_fold, quarter_fold, tri_fold"
     ),
-    output_dir: Optional[Path] = typer.Option(
+    output_dir: Path | None = typer.Option(
         None, "--output", help="Output directory for template file"
     ),
 ) -> None:
@@ -501,7 +498,7 @@ def init(
         yaml.dump(template_data, f, default_flow_style=False, sort_keys=False)
 
     typer.secho(f"Template created: {template_path}", fg=typer.colors.GREEN)
-    typer.echo(f"\nEdit the file to customize your template, then use:")
+    typer.echo("\nEdit the file to customize your template, then use:")
     typer.echo(f"  holiday-card create {name} -m \"Your message\"")
 
 
@@ -519,7 +516,7 @@ def validate(
 
         holiday-card validate ./my-template.yaml
     """
-    from holiday_card.core.templates import load_template, load_template_from_file
+    from holiday_card.core.templates import load_template
 
     try:
         template_path = Path(template)

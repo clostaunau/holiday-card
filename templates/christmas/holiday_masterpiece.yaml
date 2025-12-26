@@ -1,0 +1,427 @@
+# T101: Holiday Masterpiece Template - Combined Features Example
+# Demonstrates all vector graphics features together: SVG paths, gradients, patterns, and clipping
+
+id: christmas-holiday-masterpiece
+name: "Holiday Masterpiece"
+occasion: christmas
+fold_type: half_fold
+description: "Showcase card combining SVG paths, gradients, patterns, and photo clipping"
+default_theme_id: christmas-winter-blue
+
+panels:
+  # Front panel - The ultimate showcase
+  - id: front
+    position: front
+    x: 4.25
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 1.0
+      b: 1.0
+
+    shape_elements:
+      # Sky with linear gradient
+      - type: rectangle
+        x: 0.0
+        y: 3.0
+        width: 4.25
+        height: 2.5
+        fill:
+          type: linear_gradient
+          angle: 90
+          stops:
+            - position: 0.0
+              color: "#B8D4E8"  # Light blue
+            - position: 0.5
+              color: "#6B9AC4"  # Sky blue
+            - position: 1.0
+              color: "#2C5F8D"  # Deep blue
+        z_index: 1
+
+      # Snowy ground with subtle gradient
+      - type: rectangle
+        x: 0.0
+        y: 0.5
+        width: 4.25
+        height: 2.5
+        fill:
+          type: linear_gradient
+          angle: 90
+          stops:
+            - position: 0.0
+              color: "#E8F4F8"
+            - position: 1.0
+              color: "#FFFFFF"
+        z_index: 2
+
+      # Striped gift wrap pattern background accent
+      - type: rectangle
+        x: 0.2
+        y: 0.8
+        width: 1.2
+        height: 1.5
+        fill:
+          type: pattern
+          pattern_type: stripes
+          spacing: 0.15
+          angle: 45
+          colors:
+            - "#DC143C"
+            - "#FFFFFF"
+        rotation: 15
+        z_index: 3
+
+      # Polka dot gift box
+      - type: rectangle
+        x: 2.8
+        y: 1.0
+        width: 1.0
+        height: 1.2
+        fill:
+          type: pattern
+          pattern_type: dots
+          spacing: 0.2
+          colors:
+            - "#FFD700"
+        z_index: 3
+
+      # Ribbon on polka dot box
+      - type: rectangle
+        x: 3.15
+        y: 1.0
+        width: 0.3
+        height: 1.2
+        fill_color: "#DC143C"
+        z_index: 4
+
+      # SVG holly leaves (multiple positions)
+      - type: svg_path
+        path_data: "M 50 10 C 55 15, 60 15, 65 10 C 70 15, 70 20, 68 25 C 72 28, 75 28, 78 25 C 80 32, 78 38, 72 40 C 75 45, 75 50, 70 55 C 72 60, 70 65, 65 68 C 68 72, 68 77, 65 82 C 58 80, 54 78, 50 80 C 46 78, 42 80, 35 82 C 32 77, 32 72, 35 68 C 30 65, 28 60, 30 55 C 25 50, 25 45, 28 40 C 22 38, 20 32, 22 25 C 25 28, 28 28, 32 25 C 30 20, 30 15, 35 10 C 40 15, 45 15, 50 10 Z"
+        fill_color: "#2D5016"
+        stroke_color: "#1A3009"
+        stroke_width: 0.5
+        scale: 0.012
+        x: 0.5
+        y: 2.3
+        z_index: 5
+
+      - type: svg_path
+        path_data: "M 50 10 C 55 15, 60 15, 65 10 C 70 15, 70 20, 68 25 C 72 28, 75 28, 78 25 C 80 32, 78 38, 72 40 C 75 45, 75 50, 70 55 C 72 60, 70 65, 65 68 C 68 72, 68 77, 65 82 C 58 80, 54 78, 50 80 C 46 78, 42 80, 35 82 C 32 77, 32 72, 35 68 C 30 65, 28 60, 30 55 C 25 50, 25 45, 28 40 C 22 38, 20 32, 22 25 C 25 28, 28 28, 32 25 C 30 20, 30 15, 35 10 C 40 15, 45 15, 50 10 Z"
+        fill_color: "#2D5016"
+        stroke_color: "#1A3009"
+        stroke_width: 0.5
+        scale: 0.012
+        x: 3.7
+        y: 2.5
+        rotation: 90
+        z_index: 5
+
+      # Metallic ornament with radial gradient
+      - type: circle
+        center_x: 2.125
+        center_y: 4.2
+        radius: 0.5
+        fill:
+          type: radial_gradient
+          center_x: 2.125
+          center_y: 4.2
+          radius: 0.5
+          stops:
+            - position: 0.0
+              color: "#FFD700"
+            - position: 0.6
+              color: "#DAA520"
+            - position: 1.0
+              color: "#8B6914"
+        stroke_color: "#654321"
+        stroke_width: 1.5
+        z_index: 6
+
+      # Ornament string
+      - type: line
+        start_x: 2.125
+        start_y: 5.5
+        end_x: 2.125
+        end_y: 4.7
+        stroke_color: "#C0C0C0"
+        stroke_width: 1
+        z_index: 5
+
+      # Holly berries
+      - type: circle
+        center_x: 0.6
+        center_y: 2.4
+        radius: 0.08
+        fill_color: "#DC143C"
+        z_index: 6
+
+      - type: circle
+        center_x: 3.8
+        center_y: 2.6
+        radius: 0.08
+        fill_color: "#DC143C"
+        z_index: 6
+
+      # Snowflakes
+      - type: star
+        center_x: 1.0
+        center_y: 5.0
+        outer_radius: 0.08
+        inner_radius: 0.04
+        points: 6
+        fill_color: "#FFFFFF"
+        opacity: 0.9
+        z_index: 10
+
+      - type: star
+        center_x: 3.2
+        center_y: 4.5
+        outer_radius: 0.06
+        inner_radius: 0.03
+        points: 6
+        fill_color: "#FFFFFF"
+        opacity: 0.85
+        z_index: 10
+
+    # Circular clipped photo
+    image_elements:
+      - source_path: "sample_photo.jpg"
+        x: 1.475
+        y: 1.0
+        width: 1.3
+        height: 1.3
+        clip_mask:
+          type: circle
+          center_x: 2.125
+          center_y: 1.65
+          radius: 0.6
+        z_index: 4
+
+    text_elements:
+      - id: greeting
+        content: "Season's Greetings"
+        x: 2.125
+        y: 0.3
+        width: 3.75
+        font_size: 22
+        font_style: bold
+        alignment: center
+        overflow_strategy: shrink
+        min_font_size: 14
+        color:
+          r: 0.17
+          g: 0.37
+          b: 0.55
+        z_index: 100
+
+  # Inside left - Pattern showcase
+  - id: inside_left
+    position: inside_left
+    x: 0.0
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180
+    background_color:
+      r: 1.0
+      g: 1.0
+      b: 1.0
+
+    shape_elements:
+      # Checkerboard border
+      - type: rectangle
+        x: 0.0
+        y: 0.0
+        width: 0.4
+        height: 5.5
+        fill:
+          type: pattern
+          pattern_type: checkerboard
+          spacing: 0.2
+          colors:
+            - "#DC143C"
+            - "#FFFFFF"
+        z_index: 1
+
+      - type: rectangle
+        x: 3.85
+        y: 0.0
+        width: 0.4
+        height: 5.5
+        fill:
+          type: pattern
+          pattern_type: checkerboard
+          spacing: 0.2
+          colors:
+            - "#228B22"
+            - "#FFFFFF"
+        z_index: 1
+
+      # Gradient banner
+      - type: rectangle
+        x: 0.75
+        y: 0.75
+        width: 2.75
+        height: 0.8
+        fill:
+          type: linear_gradient
+          angle: 0
+          stops:
+            - position: 0.0
+              color: "#DC143C"
+            - position: 0.5
+              color: "#FFD700"
+            - position: 1.0
+              color: "#228B22"
+        z_index: 2
+
+    text_elements:
+      - content: "A Joyful Season!"
+        x: 2.125
+        y: 1.15
+        width: 2.5
+        font_size: 16
+        font_style: bold
+        alignment: center
+        color:
+          r: 1.0
+          g: 1.0
+          b: 1.0
+        z_index: 100
+
+      - id: message
+        content: "May this holiday season bring you warmth, happiness, and cherished moments with loved ones."
+        x: 0.75
+        y: 3.5
+        width: 2.75
+        font_size: 11
+        alignment: left
+        overflow_strategy: wrap
+        max_lines: 10
+        color:
+          r: 0.2
+          g: 0.2
+          b: 0.2
+        z_index: 100
+
+  # Inside right - Star-clipped photo with gradients
+  - id: inside_right
+    position: inside_right
+    x: 4.25
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180
+    background_color:
+      r: 1.0
+      g: 1.0
+      b: 1.0
+
+    shape_elements:
+      # Gradient background
+      - type: rectangle
+        x: 0.0
+        y: 0.0
+        width: 4.25
+        height: 5.5
+        fill:
+          type: linear_gradient
+          angle: 135
+          stops:
+            - position: 0.0
+              color: "#FFE4E1"  # Misty rose
+            - position: 1.0
+              color: "#E6F3FF"  # Light blue
+        z_index: 1
+
+      # Star border for photo
+      - type: star
+        center_x: 2.125
+        center_y: 3.0
+        outer_radius: 1.3
+        inner_radius: 0.6
+        points: 5
+        stroke_color: "#DAA520"
+        stroke_width: 6
+        fill_color: "#FFFFFF"
+        opacity: 0.0
+        z_index: 5
+
+      # Decorative holly leaves
+      - type: svg_path
+        path_data: "M 50 10 C 55 15, 60 15, 65 10 C 70 15, 70 20, 68 25 C 72 28, 75 28, 78 25 C 80 32, 78 38, 72 40 C 75 45, 75 50, 70 55 C 72 60, 70 65, 65 68 C 68 72, 68 77, 65 82 C 58 80, 54 78, 50 80 C 46 78, 42 80, 35 82 C 32 77, 32 72, 35 68 C 30 65, 28 60, 30 55 C 25 50, 25 45, 28 40 C 22 38, 20 32, 22 25 C 25 28, 28 28, 32 25 C 30 20, 30 15, 35 10 C 40 15, 45 15, 50 10 Z"
+        fill_color: "#2D5016"
+        stroke_color: "#1A3009"
+        stroke_width: 0.5
+        scale: 0.008
+        x: 0.5
+        y: 0.8
+        z_index: 6
+
+      - type: svg_path
+        path_data: "M 50 10 C 55 15, 60 15, 65 10 C 70 15, 70 20, 68 25 C 72 28, 75 28, 78 25 C 80 32, 78 38, 72 40 C 75 45, 75 50, 70 55 C 72 60, 70 65, 65 68 C 68 72, 68 77, 65 82 C 58 80, 54 78, 50 80 C 46 78, 42 80, 35 82 C 32 77, 32 72, 35 68 C 30 65, 28 60, 30 55 C 25 50, 25 45, 28 40 C 22 38, 20 32, 22 25 C 25 28, 28 28, 32 25 C 30 20, 30 15, 35 10 C 40 15, 45 15, 50 10 Z"
+        fill_color: "#2D5016"
+        stroke_color: "#1A3009"
+        stroke_width: 0.5
+        scale: 0.008
+        x: 3.7
+        y: 0.8
+        rotation: 45
+        z_index: 6
+
+    image_elements:
+      - source_path: "sample_photo.jpg"
+        x: 0.825
+        y: 1.7
+        width: 2.6
+        height: 2.6
+        clip_mask:
+          type: star
+          center_x: 2.125
+          center_y: 3.0
+          outer_radius: 1.2
+          inner_radius: 0.55
+          points: 5
+        z_index: 4
+
+    text_elements:
+      - content: "Memories to Treasure"
+        x: 2.125
+        y: 5.0
+        width: 3.5
+        font_size: 13
+        font_style: bold
+        alignment: center
+        color:
+          r: 0.18
+          g: 0.31
+          b: 0.09
+        z_index: 100
+
+  # Back panel - Simple pattern
+  - id: back
+    position: back
+    x: 0.0
+    y: 0.0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 1.0
+      b: 1.0
+
+    shape_elements:
+      - type: rectangle
+        x: 0.0
+        y: 0.0
+        width: 4.25
+        height: 5.5
+        fill:
+          type: pattern
+          pattern_type: dots
+          spacing: 0.5
+          colors:
+            - "#B8D4E8"  # Light blue dots
+        z_index: 1

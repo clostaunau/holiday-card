@@ -3,6 +3,8 @@
 Auto-generated from all feature plans. Last updated: 2025-12-25
 
 ## Active Technologies
+- Python 3.11+ + ReportLab 4.0+ (PDF generation with path/gradient support), Pillow 10.0+ (image processing for masks), Pydantic 2.0+ (model validation) (004-vector-graphics-enhancement)
+- Filesystem - YAML templates with new element types, SVG path data as strings (004-vector-graphics-enhancement)
 
 - Python 3.11+ + ReportLab 4.0+, Pillow 10.0+, Typer 0.9+, PyYAML 6.0+, Pydantic 2.0+ (001-holiday-card-generator, 003-vector-graphics-and-decorative-elements)
 
@@ -97,6 +99,7 @@ Python 3.11+: Follow standard conventions
 - Measurements in inches (converted to points at render time)
 
 ## Recent Changes
+- 004-vector-graphics-enhancement: Added Python 3.11+ + ReportLab 4.0+ (PDF generation with path/gradient support), Pillow 10.0+ (image processing for masks), Pydantic 2.0+ (model validation)
 
 - 001-holiday-card-generator: Added Python 3.11+ + ReportLab 4.0+, Pillow 10.0+, Typer 0.9+, PyYAML 6.0+, Pydantic 2.0+
 - 003-vector-graphics-and-decorative-elements: Added vector graphics support with 5 shape types (Rectangle, Circle, Triangle, Star, Line), z-index layering, opacity/rotation/stroke styling, and decorative element library with 10 pre-built compositions

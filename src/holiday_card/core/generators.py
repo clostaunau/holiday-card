@@ -8,15 +8,12 @@ from datetime import datetime
 
 __all__ = ["CardGenerator"]
 from pathlib import Path
-from typing import Optional
 
 from holiday_card.core.models import (
     Card,
-    Color,
     FoldType,
     ImageElement,
     Panel,
-    Template,
     TextElement,
     Theme,
 )
@@ -33,7 +30,7 @@ class CardGenerator:
     applying customizations, and rendering the final PDF.
     """
 
-    def __init__(self, templates_dir: Optional[Path] = None) -> None:
+    def __init__(self, templates_dir: Path | None = None) -> None:
         """Initialize the card generator.
 
         Args:
@@ -45,13 +42,13 @@ class CardGenerator:
     def create_card(
         self,
         template_id: str,
-        message: Optional[str] = None,
-        output_path: Optional[Path] = None,
-        theme_id: Optional[str] = None,
-        fold_type: Optional[FoldType] = None,
-        images: Optional[list[ImageElement]] = None,
-        front_message: Optional[str] = None,
-        inside_message: Optional[str] = None,
+        message: str | None = None,
+        output_path: Path | None = None,
+        theme_id: str | None = None,
+        fold_type: FoldType | None = None,
+        images: list[ImageElement] | None = None,
+        front_message: str | None = None,
+        inside_message: str | None = None,
     ) -> Card:
         """Create a card from a template.
 
@@ -255,12 +252,12 @@ class CardGenerator:
         self,
         template_id: str,
         output_path: Path,
-        message: Optional[str] = None,
-        fold_type: Optional[FoldType] = None,
-        images: Optional[list[ImageElement]] = None,
-        theme_id: Optional[str] = None,
-        front_message: Optional[str] = None,
-        inside_message: Optional[str] = None,
+        message: str | None = None,
+        fold_type: FoldType | None = None,
+        images: list[ImageElement] | None = None,
+        theme_id: str | None = None,
+        front_message: str | None = None,
+        inside_message: str | None = None,
     ) -> tuple[Card, Path]:
         """Create a card and generate the PDF in one step.
 

@@ -7,7 +7,6 @@ available templates in the templates directory.
 import logging
 import os
 from pathlib import Path
-from typing import Optional, Union
 
 import yaml
 
@@ -66,7 +65,7 @@ def get_templates_dir() -> Path:
     return Path("templates")
 
 
-def discover_templates(templates_dir: Optional[Path] = None) -> list[dict[str, str]]:
+def discover_templates(templates_dir: Path | None = None) -> list[dict[str, str]]:
     """Discover all available templates.
 
     Args:
@@ -106,7 +105,7 @@ def discover_templates(templates_dir: Optional[Path] = None) -> list[dict[str, s
     return templates
 
 
-def load_template(template_id: str, templates_dir: Optional[Path] = None) -> Template:
+def load_template(template_id: str, templates_dir: Path | None = None) -> Template:
     """Load a template by ID.
 
     Args:
@@ -290,7 +289,7 @@ def _parse_text_element(data: dict) -> TextElement:
 
 def _parse_shape_element(
     data: dict,
-) -> Optional[Union[Rectangle, Circle, Triangle, Star, Line, DecorativeElement]]:
+) -> Rectangle | Circle | Triangle | Star | Line | DecorativeElement | None:
     """Parse shape element data into appropriate Shape object.
 
     Uses Pydantic's discriminated union based on 'type' field.

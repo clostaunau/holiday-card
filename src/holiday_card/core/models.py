@@ -29,6 +29,7 @@ __all__ = [
     "BorderStyle",
     "OverflowStrategy",
     "ShapeType",
+    "PatternType",
     # Content elements
     "ImageElement",
     "TextElement",
@@ -39,8 +40,23 @@ __all__ = [
     "Triangle",
     "Star",
     "Line",
+    "SVGPath",
     "DecorativeElement",
     "Shape",
+    # Fill styles
+    "ColorStop",
+    "SolidFill",
+    "LinearGradientFill",
+    "RadialGradientFill",
+    "PatternFill",
+    "FillStyle",
+    # Clip masks
+    "CircleClipMask",
+    "RectangleClipMask",
+    "EllipseClipMask",
+    "StarClipMask",
+    "SVGPathClipMask",
+    "ClipMask",
     # Card structure
     "Panel",
     "Template",
@@ -49,7 +65,7 @@ __all__ = [
 ]
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Literal, Optional, Union
+from typing import Annotated, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
@@ -191,7 +207,23 @@ class ShapeType(str, Enum):
     TRIANGLE = "triangle"
     STAR = "star"
     LINE = "line"
+    SVG_PATH = "svg_path"  # T001: Add SVG_PATH enum value
     DECORATIVE_ELEMENT = "decorative_element"
+
+
+class PatternType(str, Enum):
+    """Pattern fill types for repeating patterns.
+
+    - STRIPES: Parallel lines with configurable width and angle
+    - DOTS: Polka dots with configurable spacing and size
+    - GRID: Perpendicular lines forming a grid
+    - CHECKERBOARD: Alternating squares
+    """
+
+    STRIPES = "stripes"
+    DOTS = "dots"
+    GRID = "grid"
+    CHECKERBOARD = "checkerboard"
 
 
 class Border(BaseModel):
@@ -236,6 +268,212 @@ class AdjustmentResult(BaseModel):
     )
 
 
+# Fill Style Models (Phase 2: Foundational)
+
+class ColorStop(BaseModel):
+    """A color stop within a gradient.
+
+    Defines a color at a specific position along the gradient.
+    """
+
+    position: float = Field(ge=0.0, le=1.0, description="Position along gradient (0.0=start, 1.0=end)")
+    color: str = Field(description="Color as hex string (#RRGGBB)")
+
+    @field_validator("color")
+    @classmethod
+    def validate_hex_color(cls, v: str) -> str:
+        """Validate hex color format."""
+        if not v.startswith("#"):
+            v = f"#{v}"
+        if len(v) != 7:
+            raise ValueError(f"Hex color must be 7 characters (#RRGGBB), got: {v}")
+        try:
+            int(v[1:], 16)  # Validate hex digits
+        except ValueError:
+            raise ValueError(f"Invalid hex color: {v}")
+        return v
+
+
+class SolidFill(BaseModel):
+    """Solid color fill."""
+
+    type: Literal["solid"] = "solid"
+    color: str = Field(description="Fill color as hex string (#RRGGBB)")
+
+    @field_validator("color")
+    @classmethod
+    def validate_hex_color(cls, v: str) -> str:
+        """Validate hex color format."""
+        if not v.startswith("#"):
+            v = f"#{v}"
+        if len(v) != 7:
+            raise ValueError(f"Hex color must be 7 characters (#RRGGBB), got: {v}")
+        try:
+            int(v[1:], 16)
+        except ValueError:
+            raise ValueError(f"Invalid hex color: {v}")
+        return v
+
+
+class LinearGradientFill(BaseModel):
+    """Linear gradient fill with color stops.
+
+    Gradient transitions smoothly between color stops along a line
+    defined by the angle parameter.
+    """
+
+    type: Literal["linear_gradient"] = "linear_gradient"
+    angle: float = Field(default=0.0, ge=0.0, lt=360.0, description="Gradient angle in degrees (0=horizontal right)")
+    stops: list[ColorStop] = Field(min_length=2, max_length=20, description="Color stops (minimum 2)")
+
+    @field_validator("stops")
+    @classmethod
+    def validate_stops_ascending(cls, v: list[ColorStop]) -> list[ColorStop]:
+        """Ensure color stops are in ascending position order."""
+        positions = [stop.position for stop in v]
+        if positions != sorted(positions):
+            raise ValueError("Color stops must be in ascending position order")
+        return v
+
+
+class RadialGradientFill(BaseModel):
+    """Radial gradient fill with color stops.
+
+    Gradient radiates from a center point outward through the color stops.
+    """
+
+    type: Literal["radial_gradient"] = "radial_gradient"
+    center_x: float = Field(default=0.5, ge=0.0, le=1.0, description="Center X position (0.0-1.0 relative to shape)")
+    center_y: float = Field(default=0.5, ge=0.0, le=1.0, description="Center Y position (0.0-1.0 relative to shape)")
+    radius: float = Field(default=0.5, gt=0.0, le=1.0, description="Gradient radius (relative to shape size)")
+    stops: list[ColorStop] = Field(min_length=2, max_length=20, description="Color stops (minimum 2)")
+
+    @field_validator("stops")
+    @classmethod
+    def validate_stops_ascending(cls, v: list[ColorStop]) -> list[ColorStop]:
+        """Ensure color stops are in ascending position order."""
+        positions = [stop.position for stop in v]
+        if positions != sorted(positions):
+            raise ValueError("Color stops must be in ascending position order")
+        return v
+
+
+class PatternFill(BaseModel):
+    """Repeating pattern fill.
+
+    Creates decorative repeating patterns like stripes, dots, grid, or checkerboard.
+    """
+
+    type: Literal["pattern"] = "pattern"
+    pattern_type: PatternType = Field(description="Pattern type (stripes, dots, grid, checkerboard)")
+    colors: list[str] = Field(min_length=1, max_length=4, description="Pattern colors as hex strings")
+    spacing: float = Field(default=0.25, gt=0.0, le=2.0, description="Pattern spacing in inches")
+    scale: float = Field(default=1.0, gt=0.0, le=5.0, description="Pattern scale multiplier")
+    rotation: float = Field(default=0.0, ge=0.0, lt=360.0, description="Pattern rotation in degrees")
+
+    @field_validator("colors")
+    @classmethod
+    def validate_hex_colors(cls, v: list[str]) -> list[str]:
+        """Validate all colors are valid hex strings."""
+        validated = []
+        for color in v:
+            if not color.startswith("#"):
+                color = f"#{color}"
+            if len(color) != 7:
+                raise ValueError(f"Hex color must be 7 characters (#RRGGBB), got: {color}")
+            try:
+                int(color[1:], 16)
+            except ValueError:
+                raise ValueError(f"Invalid hex color: {color}")
+            validated.append(color)
+        return validated
+
+
+# Discriminated union for fill styles
+FillStyle = Annotated[
+    SolidFill | LinearGradientFill | RadialGradientFill | PatternFill,
+    Field(discriminator='type')
+]
+
+
+# Clip Mask Models (Phase 2: Foundational)
+
+class CircleClipMask(BaseModel):
+    """Circular clipping mask for images."""
+
+    type: Literal["circle"] = "circle"
+    center_x: float = Field(ge=0.0, description="Center X position in inches (relative to image)")
+    center_y: float = Field(ge=0.0, description="Center Y position in inches (relative to image)")
+    radius: float = Field(gt=0.0, description="Circle radius in inches")
+
+
+class RectangleClipMask(BaseModel):
+    """Rectangular clipping mask for images."""
+
+    type: Literal["rectangle"] = "rectangle"
+    x: float = Field(ge=0.0, description="X position in inches (relative to image)")
+    y: float = Field(ge=0.0, description="Y position in inches (relative to image)")
+    width: float = Field(gt=0.0, description="Width in inches")
+    height: float = Field(gt=0.0, description="Height in inches")
+
+
+class EllipseClipMask(BaseModel):
+    """Elliptical clipping mask for images."""
+
+    type: Literal["ellipse"] = "ellipse"
+    center_x: float = Field(ge=0.0, description="Center X position in inches (relative to image)")
+    center_y: float = Field(ge=0.0, description="Center Y position in inches (relative to image)")
+    radius_x: float = Field(gt=0.0, description="Horizontal radius in inches")
+    radius_y: float = Field(gt=0.0, description="Vertical radius in inches")
+
+
+class StarClipMask(BaseModel):
+    """Star-shaped clipping mask for images."""
+
+    type: Literal["star"] = "star"
+    center_x: float = Field(ge=0.0, description="Center X position in inches (relative to image)")
+    center_y: float = Field(ge=0.0, description="Center Y position in inches (relative to image)")
+    outer_radius: float = Field(gt=0.0, description="Outer point radius in inches")
+    inner_radius: float = Field(gt=0.0, description="Inner point radius in inches")
+    points: int = Field(default=5, ge=3, le=20, description="Number of star points")
+
+    @field_validator("inner_radius")
+    @classmethod
+    def validate_inner_smaller_than_outer(cls, v: float, info) -> float:
+        """Ensure inner radius is smaller than outer radius."""
+        if "outer_radius" in info.data and v >= info.data["outer_radius"]:
+            raise ValueError(f"inner_radius ({v}) must be less than outer_radius ({info.data['outer_radius']})")
+        return v
+
+
+class SVGPathClipMask(BaseModel):
+    """SVG path clipping mask for images.
+
+    Uses SVG path data to define custom clipping shapes.
+    Path must be closed (end with Z command).
+    """
+
+    type: Literal["svg_path"] = "svg_path"
+    path_data: str = Field(min_length=1, description="SVG path data string (must be closed path)")
+    scale: float = Field(default=1.0, gt=0.0, le=10.0, description="Path scale multiplier")
+
+    @field_validator("path_data")
+    @classmethod
+    def validate_closed_path(cls, v: str) -> str:
+        """Ensure path is closed (ends with Z or z)."""
+        v = v.strip()
+        if not (v.endswith('Z') or v.endswith('z')):
+            raise ValueError("SVG path for clipping mask must be closed (end with Z or z)")
+        return v
+
+
+# Discriminated union for clip masks
+ClipMask = Annotated[
+    CircleClipMask | RectangleClipMask | EllipseClipMask | StarClipMask | SVGPathClipMask,
+    Field(discriminator='type')
+]
+
+
 class ImageElement(BaseModel):
     """Image content with positioning and scaling.
 
@@ -246,12 +484,13 @@ class ImageElement(BaseModel):
     source_path: str = Field(description="Path to source image file")
     x: float = Field(ge=0.0, description="X position in inches from panel left")
     y: float = Field(ge=0.0, description="Y position in inches from panel bottom")
-    width: Optional[float] = Field(default=None, ge=0.0, description="Image width in inches")
-    height: Optional[float] = Field(default=None, ge=0.0, description="Image height in inches")
+    width: float | None = Field(default=None, ge=0.0, description="Image width in inches")
+    height: float | None = Field(default=None, ge=0.0, description="Image height in inches")
     preserve_aspect: bool = Field(default=True, description="Maintain aspect ratio when scaling")
     rotation: float = Field(default=0.0, description="Rotation in degrees")
     opacity: float = Field(default=1.0, ge=0.0, le=1.0, description="Image opacity (0-1)")
     z_index: int = Field(default=100, description="Rendering layer (higher = on top)")
+    clip_mask: ClipMask | None = Field(default=None, description="Optional clipping mask")  # T018
 
 
 class TextElement(BaseModel):
@@ -264,11 +503,11 @@ class TextElement(BaseModel):
     content: str = Field(min_length=1, max_length=1000, description="Text content")
     x: float = Field(ge=0.0, description="X position in inches from panel left")
     y: float = Field(ge=0.0, description="Y position in inches from panel bottom")
-    width: Optional[float] = Field(default=None, ge=0.0, description="Max width for text wrapping")
+    width: float | None = Field(default=None, ge=0.0, description="Max width for text wrapping")
     font_family: str = Field(default="Helvetica", description="Font family name")
     font_size: int = Field(default=12, ge=6, le=144, description="Font size in points")
     font_style: FontStyle = Field(default=FontStyle.NORMAL, description="Font style")
-    color: Optional[Color] = Field(default=None, description="Text color (uses theme if None)")
+    color: Color | None = Field(default=None, description="Text color (uses theme if None)")
     alignment: TextAlignment = Field(default=TextAlignment.LEFT, description="Text alignment")
     rotation: float = Field(default=0.0, description="Rotation in degrees")
     z_index: int = Field(default=100, description="Rendering layer (higher = on top)")
@@ -278,7 +517,7 @@ class TextElement(BaseModel):
         default=OverflowStrategy.AUTO,
         description="Strategy for handling text overflow"
     )
-    max_lines: Optional[int] = Field(
+    max_lines: int | None = Field(
         default=None,
         ge=1,
         description="Maximum lines when using WRAP strategy (None = unlimited)"
@@ -291,9 +530,9 @@ class TextElement(BaseModel):
     )
 
     # Private field for adjustment tracking (not serialized to YAML)
-    _adjustment_applied: Optional[AdjustmentResult] = PrivateAttr(default=None)
+    _adjustment_applied: AdjustmentResult | None = PrivateAttr(default=None)
 
-    def get_adjustment_result(self) -> Optional[AdjustmentResult]:
+    def get_adjustment_result(self) -> AdjustmentResult | None:
         """Get the overflow adjustment that was applied during rendering.
 
         Returns None if not yet rendered or no adjustment needed.
@@ -317,15 +556,16 @@ class BaseShape(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()), description="Unique shape identifier")
     type: ShapeType = Field(description="Shape type discriminator")
     z_index: int = Field(default=0, description="Rendering layer (higher = on top)")
-    fill_color: Optional[str] = Field(default=None, description="Fill color as hex string (#RRGGBB)")
-    stroke_color: Optional[str] = Field(default=None, description="Stroke color as hex string (#RRGGBB)")
+    fill_color: str | None = Field(default=None, description="Fill color as hex string (#RRGGBB) - legacy support")
+    stroke_color: str | None = Field(default=None, description="Stroke color as hex string (#RRGGBB)")
     stroke_width: float = Field(default=0.0, ge=0.0, description="Stroke width in points")
     opacity: float = Field(default=1.0, ge=0.0, le=1.0, description="Opacity 0.0-1.0")
     rotation: float = Field(default=0.0, ge=0.0, lt=360.0, description="Rotation in degrees")
+    fill: FillStyle | None = Field(default=None, description="Fill style (solid, gradient, or pattern)")  # T017
 
     @field_validator("fill_color", "stroke_color")
     @classmethod
-    def validate_hex_color(cls, v: Optional[str]) -> Optional[str]:
+    def validate_hex_color(cls, v: str | None) -> str | None:
         """Validate hex color format."""
         if v is None:
             return v
@@ -400,6 +640,31 @@ class Line(BaseShape):
     end_y: float = Field(ge=0.0, description="End Y position in inches")
 
 
+class SVGPath(BaseShape):
+    """SVG path shape for complex vector graphics.
+
+    Supports SVG path data containing move, line, curve, arc, and close commands.
+    Path data uses inches for coordinates.
+    """
+
+    type: Literal[ShapeType.SVG_PATH] = ShapeType.SVG_PATH
+    path_data: str = Field(min_length=1, description="SVG path data string (M, L, C, Q, A, Z commands)")
+    scale: float = Field(default=1.0, gt=0.0, le=10.0, description="Path scale multiplier")
+
+    @field_validator("path_data")
+    @classmethod
+    def validate_path_syntax(cls, v: str) -> str:
+        """Basic validation of SVG path syntax."""
+        v = v.strip()
+        if not v:
+            raise ValueError("SVG path data cannot be empty")
+        # Check for at least one valid SVG command
+        valid_commands = set('MmLlHhVvCcSsQqTtAaZz')
+        if not any(c in valid_commands for c in v):
+            raise ValueError("SVG path must contain at least one valid command (M, L, C, Q, A, Z)")
+        return v
+
+
 class DecorativeElement(BaseModel):
     """Reusable composition of shapes forming a design unit.
 
@@ -414,13 +679,13 @@ class DecorativeElement(BaseModel):
     y: float = Field(ge=0.0, description="Anchor Y position in inches")
     scale: float = Field(default=1.0, gt=0.0, description="Proportional scale multiplier")
     rotation: float = Field(default=0.0, ge=0.0, lt=360.0, description="Rotation in degrees")
-    color_palette: Optional[dict[str, str]] = Field(default=None, description="Color role overrides")
+    color_palette: dict[str, str] | None = Field(default=None, description="Color role overrides")
     z_index: int = Field(default=0, description="Rendering layer (higher = on top)")
 
 
 # Discriminated union for all shape types
 Shape = Annotated[
-    Union[Rectangle, Circle, Triangle, Star, Line, DecorativeElement],
+    Rectangle | Circle | Triangle | Star | Line | SVGPath | DecorativeElement,
     Field(discriminator='type')
 ]
 
@@ -439,9 +704,9 @@ class Panel(BaseModel):
     width: float = Field(gt=0.0, description="Panel width in inches")
     height: float = Field(gt=0.0, description="Panel height in inches")
     rotation: float = Field(default=0.0, description="Rotation in degrees (for quarter-fold)")
-    background_color: Optional[Color] = Field(default=None, description="Panel background color")
-    background_image: Optional[str] = Field(default=None, description="Path to background image")
-    border: Optional[Border] = Field(default=None, description="Panel border styling")
+    background_color: Color | None = Field(default=None, description="Panel background color")
+    background_image: str | None = Field(default=None, description="Path to background image")
+    border: Border | None = Field(default=None, description="Panel border styling")
     text_elements: list[TextElement] = Field(default_factory=list, description="Text on panel")
     image_elements: list[ImageElement] = Field(default_factory=list, description="Images on panel")
     shape_elements: list[Shape] = Field(default_factory=list, description="Vector shapes and decorative elements")
@@ -457,10 +722,10 @@ class Template(BaseModel):
     name: str = Field(min_length=1, max_length=50, description="Display name")
     occasion: OccasionType = Field(description="Occasion type")
     fold_type: FoldType = Field(description="Default fold type")
-    default_theme_id: Optional[str] = Field(default=None, description="Default theme ID")
+    default_theme_id: str | None = Field(default=None, description="Default theme ID")
     panels: list[Panel] = Field(description="Panel configurations")
-    description: Optional[str] = Field(default=None, description="Template description")
-    preview_image: Optional[str] = Field(default=None, description="Path to preview image")
+    description: str | None = Field(default=None, description="Template description")
+    preview_image: str | None = Field(default=None, description="Path to preview image")
 
     @field_validator("panels")
     @classmethod
@@ -485,8 +750,8 @@ class Theme(BaseModel):
     secondary: Color = Field(description="Secondary accent color")
     background: Color = Field(default_factory=lambda: Color(r=1.0, g=1.0, b=1.0), description="Background color")
     text: Color = Field(default_factory=lambda: Color(r=0.0, g=0.0, b=0.0), description="Text color")
-    accent: Optional[Color] = Field(default=None, description="Optional tertiary accent")
-    description: Optional[str] = Field(default=None, description="Theme description")
+    accent: Color | None = Field(default=None, description="Optional tertiary accent")
+    description: str | None = Field(default=None, description="Theme description")
 
 
 class Card(BaseModel):
@@ -500,9 +765,9 @@ class Card(BaseModel):
     name: str = Field(min_length=1, max_length=100, description="User-friendly card name")
     template_id: str = Field(description="Reference to base template")
     fold_type: FoldType = Field(description="Card fold type")
-    theme_id: Optional[str] = Field(default=None, description="Override theme")
+    theme_id: str | None = Field(default=None, description="Override theme")
     panels: list[Panel] = Field(description="Panel configurations")
-    output_path: Optional[Path] = Field(default=None, description="Target PDF file path")
+    output_path: Path | None = Field(default=None, description="Target PDF file path")
     created_at: datetime = Field(default_factory=datetime.now, description="Creation timestamp")
     updated_at: datetime = Field(default_factory=datetime.now, description="Last modification")
 

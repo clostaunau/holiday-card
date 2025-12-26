@@ -4,7 +4,6 @@ This module provides functions for measuring text dimensions and applying
 overflow adjustment strategies (shrink, wrap, truncate).
 """
 
-from typing import Optional
 
 from pydantic import BaseModel, Field
 from reportlab.pdfgen import canvas
@@ -53,8 +52,8 @@ def measure_text(
     font_name: str,
     font_size: int,
     max_width: float,
-    max_height: Optional[float] = None,
-    lines: Optional[list[str]] = None,
+    max_height: float | None = None,
+    lines: list[str] | None = None,
 ) -> TextMetrics:
     """Measure text dimensions using ReportLab's stringWidth.
 
@@ -144,7 +143,7 @@ def wrap_text(
     font_name: str,
     font_size: int,
     max_width: float,
-    max_lines: Optional[int] = None,
+    max_lines: int | None = None,
 ) -> list[str]:
     """Wrap text at word boundaries to fit within width.
 

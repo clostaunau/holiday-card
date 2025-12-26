@@ -1,0 +1,178 @@
+# T096: Holly Wreath Template - SVG Paths Example
+# Demonstrates SVG path usage for complex decorative shapes
+
+id: christmas-holly-wreath
+name: "Holly Wreath"
+occasion: christmas
+fold_type: half_fold
+description: "Traditional Christmas card with holly leaves using SVG paths"
+default_theme_id: christmas-red-green
+
+panels:
+  # Front panel - Holly wreath design
+  - id: front
+    position: front
+    x: 4.25
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.98
+      g: 0.95
+      b: 0.93  # Cream background
+
+    shape_elements:
+      # Wreath circle guide (background)
+      - type: circle
+        center_x: 2.125
+        center_y: 3.0
+        radius: 1.5
+        fill_color: "#F5F5DC"
+        opacity: 0.3
+        z_index: 1
+
+      # Holly leaf - top
+      - type: svg_path
+        path_data: "M 50 10 C 55 15, 60 15, 65 10 C 70 15, 70 20, 68 25 C 72 28, 75 28, 78 25 C 80 32, 78 38, 72 40 C 75 45, 75 50, 70 55 C 72 60, 70 65, 65 68 C 68 72, 68 77, 65 82 C 58 80, 54 78, 50 80 C 46 78, 42 80, 35 82 C 32 77, 32 72, 35 68 C 30 65, 28 60, 30 55 C 25 50, 25 45, 28 40 C 22 38, 20 32, 22 25 C 25 28, 28 28, 32 25 C 30 20, 30 15, 35 10 C 40 15, 45 15, 50 10 Z"
+        fill_color: "#2D5016"
+        stroke_color: "#1A3009"
+        stroke_width: 0.5
+        scale: 0.018
+        x: 2.125
+        y: 4.6
+        z_index: 3
+
+      # Holly leaf - right
+      - type: svg_path
+        path_data: "M 50 10 C 55 15, 60 15, 65 10 C 70 15, 70 20, 68 25 C 72 28, 75 28, 78 25 C 80 32, 78 38, 72 40 C 75 45, 75 50, 70 55 C 72 60, 70 65, 65 68 C 68 72, 68 77, 65 82 C 58 80, 54 78, 50 80 C 46 78, 42 80, 35 82 C 32 77, 32 72, 35 68 C 30 65, 28 60, 30 55 C 25 50, 25 45, 28 40 C 22 38, 20 32, 22 25 C 25 28, 28 28, 32 25 C 30 20, 30 15, 35 10 C 40 15, 45 15, 50 10 Z"
+        fill_color: "#2D5016"
+        stroke_color: "#1A3009"
+        stroke_width: 0.5
+        scale: 0.018
+        x: 3.5
+        y: 3.0
+        rotation: 90
+        z_index: 3
+
+      # Holly leaf - bottom
+      - type: svg_path
+        path_data: "M 50 10 C 55 15, 60 15, 65 10 C 70 15, 70 20, 68 25 C 72 28, 75 28, 78 25 C 80 32, 78 38, 72 40 C 75 45, 75 50, 70 55 C 72 60, 70 65, 65 68 C 68 72, 68 77, 65 82 C 58 80, 54 78, 50 80 C 46 78, 42 80, 35 82 C 32 77, 32 72, 35 68 C 30 65, 28 60, 30 55 C 25 50, 25 45, 28 40 C 22 38, 20 32, 22 25 C 25 28, 28 28, 32 25 C 30 20, 30 15, 35 10 C 40 15, 45 15, 50 10 Z"
+        fill_color: "#2D5016"
+        stroke_color: "#1A3009"
+        stroke_width: 0.5
+        scale: 0.018
+        x: 2.125
+        y: 1.4
+        rotation: 180
+        z_index: 3
+
+      # Holly leaf - left
+      - type: svg_path
+        path_data: "M 50 10 C 55 15, 60 15, 65 10 C 70 15, 70 20, 68 25 C 72 28, 75 28, 78 25 C 80 32, 78 38, 72 40 C 75 45, 75 50, 70 55 C 72 60, 70 65, 65 68 C 68 72, 68 77, 65 82 C 58 80, 54 78, 50 80 C 46 78, 42 80, 35 82 C 32 77, 32 72, 35 68 C 30 65, 28 60, 30 55 C 25 50, 25 45, 28 40 C 22 38, 20 32, 22 25 C 25 28, 28 28, 32 25 C 30 20, 30 15, 35 10 C 40 15, 45 15, 50 10 Z"
+        fill_color: "#2D5016"
+        stroke_color: "#1A3009"
+        stroke_width: 0.5
+        scale: 0.018
+        x: 0.75
+        y: 3.0
+        rotation: 270
+        z_index: 3
+
+      # Holly berries - cluster 1
+      - type: circle
+        center_x: 2.125
+        center_y: 3.0
+        radius: 0.12
+        fill_color: "#DC143C"
+        stroke_color: "#8B0000"
+        stroke_width: 0.5
+        z_index: 4
+
+      - type: circle
+        center_x: 2.0
+        center_y: 2.8
+        radius: 0.1
+        fill_color: "#DC143C"
+        stroke_color: "#8B0000"
+        stroke_width: 0.5
+        z_index: 4
+
+      - type: circle
+        center_x: 2.25
+        center_y: 2.85
+        radius: 0.1
+        fill_color: "#DC143C"
+        stroke_color: "#8B0000"
+        stroke_width: 0.5
+        z_index: 4
+
+    text_elements:
+      - id: greeting
+        content: "Season's Greetings"
+        x: 2.125
+        y: 0.5
+        width: 3.5
+        font_size: 26
+        font_style: bold
+        alignment: center
+        overflow_strategy: shrink
+        min_font_size: 14
+        color:
+          r: 0.18
+          g: 0.31
+          b: 0.09
+        z_index: 100
+
+  # Inside left
+  - id: inside_left
+    position: inside_left
+    x: 0.0
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180
+    background_color:
+      r: 0.98
+      g: 0.95
+      b: 0.93
+
+    text_elements:
+      - id: message
+        content: "Wishing you peace and joy this holiday season!"
+        x: 0.5
+        y: 4.0
+        width: 3.25
+        font_size: 12
+        alignment: left
+        overflow_strategy: wrap
+        max_lines: 10
+        color:
+          r: 0.2
+          g: 0.2
+          b: 0.2
+        z_index: 100
+
+  # Inside right
+  - id: inside_right
+    position: inside_right
+    x: 4.25
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180
+    background_color:
+      r: 0.98
+      g: 0.95
+      b: 0.93
+
+  # Back panel
+  - id: back
+    position: back
+    x: 0.0
+    y: 0.0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.98
+      g: 0.95
+      b: 0.93

@@ -5,7 +5,6 @@ and other user inputs to ensure data integrity before processing.
 """
 
 from pathlib import Path
-from typing import Optional
 
 from holiday_card.utils.measurements import (
     MIN_DPI,
@@ -213,7 +212,7 @@ def validate_image_format(path: Path) -> str:
     return ext
 
 
-def validate_dpi(dpi: int, warn_only: bool = True) -> Optional[str]:
+def validate_dpi(dpi: int, warn_only: bool = True) -> str | None:
     """Validate image DPI for print quality.
 
     Args:

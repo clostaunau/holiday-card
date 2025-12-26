@@ -1,6 +1,5 @@
 """Unit tests for measurement utilities."""
 
-import pytest
 
 from holiday_card.utils.measurements import (
     FOLD_LINE_WIDTH,

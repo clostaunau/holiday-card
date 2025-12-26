@@ -5,14 +5,12 @@ control over measurements for print-accurate output.
 """
 
 from pathlib import Path
-from typing import Optional
-
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.units import inch
-from reportlab.pdfgen import canvas
 
 from PIL import Image
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
+from holiday_card.core.decorative import get_library
 from holiday_card.core.models import (
     AdjustmentResult,
     Border,
@@ -20,7 +18,6 @@ from holiday_card.core.models import (
     Card,
     Color,
     Colors,
-    FoldType,
     ImageElement,
     OverflowStrategy,
     Panel,
@@ -33,13 +30,12 @@ from holiday_card.core.text_utils import (
     wrap_text,
 )
 from holiday_card.renderers.base import BaseRenderer
+from holiday_card.renderers.clipping_renderer import ClippingRenderer  # T072
 from holiday_card.renderers.shape_renderer import ShapeRenderer
-from holiday_card.core.decorative import get_library
 from holiday_card.utils.measurements import (
     FOLD_LINE_WIDTH,
     PAGE_HEIGHT,
     PAGE_WIDTH,
-    POINTS_PER_INCH,
     inches_to_points,
 )
 
@@ -55,8 +51,9 @@ class ReportLabRenderer(BaseRenderer):
         """Initialize the renderer."""
         super().__init__()
         self._shape_renderer = ShapeRenderer()
-        self._canvas: Optional[canvas.Canvas] = None
-        self._output_path: Optional[Path] = None
+        self._clipping_renderer = ClippingRenderer()  # T072
+        self._canvas: canvas.Canvas | None = None
+        self._output_path: Path | None = None
 
     def setup_canvas(self, width: float, height: float) -> None:
         """Initialize the PDF canvas.
@@ -119,27 +116,27 @@ class ReportLabRenderer(BaseRenderer):
 
         # Collect all elements with z_index for sorted rendering
         elements = []
-        
+
         # Add shapes (default z_index = 0)
         for shape in panel.shape_elements:
             z = getattr(shape, 'z_index', 0)
             elements.append(('shape', shape, z))
-        
+
         # Add images (default z_index = 100)
         for image in panel.image_elements:
             z = getattr(image, 'z_index', 100)
             elements.append(('image', image, z))
-        
+
         # Add text (default z_index = 100)
         for text in panel.text_elements:
             z = getattr(text, 'z_index', 100)
             elements.append(('text', text, z))
-        
+
         # Sort by z_index (lowest first = bottom layer), then by definition order
         elements_with_order = [(elem_type, elem, z, idx) for idx, (elem_type, elem, z) in enumerate(elements)]
         elements_with_order.sort(key=lambda e: (e[2], e[3]))  # z_index, then original index
         elements = [(e[0], e[1], e[2]) for e in elements_with_order]  # Remove order index
-        
+
         # Render in sorted order
         for elem_type, elem, _ in elements:
             if elem_type == 'shape':
@@ -216,6 +213,8 @@ class ReportLabRenderer(BaseRenderer):
     def render_image(self, image: ImageElement, panel: Panel) -> None:
         """Render an image element within a panel.
 
+        Supports optional clipping masks for circular, star, SVG path, and other shapes.
+
         Args:
             image: Image element to render.
             panel: Parent panel for coordinate reference.
@@ -267,16 +266,43 @@ class ReportLabRenderer(BaseRenderer):
             width_pts = inches_to_points(final_width)
             height_pts = inches_to_points(final_height)
 
-            # Draw the image
-            self._canvas.drawImage(
-                image.source_path,
-                abs_x,
-                abs_y,
-                width=width_pts,
-                height=height_pts,
-                preserveAspectRatio=image.preserve_aspect,
-                mask="auto",  # Handle transparency
-            )
+            # T072-T073: Apply clipping mask if present
+            if image.clip_mask is not None:
+                # Save canvas state before clipping
+                self._canvas.saveState()
+
+                # Apply the clipping mask
+                self._clipping_renderer.apply_clip_mask(
+                    self._canvas,
+                    image.clip_mask,
+                    abs_x,
+                    abs_y
+                )
+
+                # Draw the image within the clipping path
+                self._canvas.drawImage(
+                    image.source_path,
+                    abs_x,
+                    abs_y,
+                    width=width_pts,
+                    height=height_pts,
+                    preserveAspectRatio=image.preserve_aspect,
+                    mask="auto",  # Handle transparency
+                )
+
+                # Restore canvas state after clipping
+                self._canvas.restoreState()
+            else:
+                # Draw the image without clipping
+                self._canvas.drawImage(
+                    image.source_path,
+                    abs_x,
+                    abs_y,
+                    width=width_pts,
+                    height=height_pts,
+                    preserveAspectRatio=image.preserve_aspect,
+                    mask="auto",  # Handle transparency
+                )
 
             pil_image.close()
 
@@ -772,12 +798,24 @@ class ReportLabRenderer(BaseRenderer):
         # Draw fold lines
         self.draw_fold_lines(card.fold_type.value)
 
+    def render(self, card: Card, output_path: Path) -> None:
+        """Convenience method to render a card to PDF in one call.
+
+        Args:
+            card: Card to render.
+            output_path: Output PDF file path.
+        """
+        self.create_canvas(output_path)
+        self.setup_canvas(PAGE_WIDTH, PAGE_HEIGHT)
+        self.render_card(card)
+        self.save(output_path)
+
 
 def create_half_fold_panels(
     greeting: str = "Happy Holidays!",
     message: str = "",
-    front_color: Optional[Color] = None,
-    text_color: Optional[Color] = None,
+    front_color: Color | None = None,
+    text_color: Color | None = None,
 ) -> list[Panel]:
     """Create panels for a half-fold card layout.
 

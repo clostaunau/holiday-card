@@ -5,7 +5,6 @@ card designs to raster images for visual preview before printing.
 """
 
 from pathlib import Path
-from typing import Optional
 
 from PIL import Image, ImageDraw
 
@@ -14,12 +13,10 @@ from holiday_card.core.models import (
     Color,
     FoldType,
     Panel,
-    TextElement,
 )
 from holiday_card.utils.measurements import (
     PAGE_HEIGHT,
     PAGE_WIDTH,
-    SAFE_MARGIN,
 )
 
 
@@ -37,8 +34,8 @@ class PreviewRenderer:
             dpi: Resolution for preview image (dots per inch).
         """
         self.dpi = dpi
-        self._image: Optional[Image.Image] = None
-        self._draw: Optional[ImageDraw.ImageDraw] = None
+        self._image: Image.Image | None = None
+        self._draw: ImageDraw.ImageDraw | None = None
 
     @property
     def width_px(self) -> int:
@@ -58,7 +55,7 @@ class PreviewRenderer:
         self,
         card: Card,
         show_guides: bool = True,
-        output_path: Optional[Path] = None,
+        output_path: Path | None = None,
         format: str = "png",
     ) -> Image.Image:
         """Create a preview image of the card.

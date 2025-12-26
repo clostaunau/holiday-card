@@ -10,10 +10,8 @@ from holiday_card.utils.validators import (
     validate_color_rgb,
     validate_dimensions,
     validate_dpi,
-    validate_file_path,
     validate_font_size,
     validate_image_format,
-    validate_output_path,
     validate_position,
     validate_template_name,
 )

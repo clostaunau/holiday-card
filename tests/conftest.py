@@ -1,7 +1,7 @@
 """Shared pytest fixtures for holiday card tests."""
 
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 
 import pytest
 

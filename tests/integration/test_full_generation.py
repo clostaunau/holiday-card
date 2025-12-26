@@ -1,7 +1,7 @@
 """Integration tests for full card generation workflow."""
 
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
 import pytest
 

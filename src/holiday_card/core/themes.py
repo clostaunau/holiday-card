@@ -7,7 +7,6 @@ available themes in the themes directory.
 import logging
 import os
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
@@ -52,7 +51,7 @@ def get_themes_dir() -> Path:
     return Path("themes")
 
 
-def discover_themes(themes_dir: Optional[Path] = None) -> list[dict[str, str]]:
+def discover_themes(themes_dir: Path | None = None) -> list[dict[str, str]]:
     """Discover all available themes.
 
     Args:
@@ -90,7 +89,7 @@ def discover_themes(themes_dir: Optional[Path] = None) -> list[dict[str, str]]:
     return themes
 
 
-def load_theme(theme_id: str, themes_dir: Optional[Path] = None) -> Theme:
+def load_theme(theme_id: str, themes_dir: Path | None = None) -> Theme:
     """Load a theme by ID.
 
     Args:

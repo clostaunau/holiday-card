@@ -5,14 +5,12 @@ from pydantic import ValidationError
 
 from holiday_card.core.models import (
     AdjustmentResult,
-    Border,
     BorderStyle,
     Card,
     Color,
     Colors,
     FoldType,
     FontStyle,
-    ImageElement,
     OccasionType,
     OverflowStrategy,
     Panel,

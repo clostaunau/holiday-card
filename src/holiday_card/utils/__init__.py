@@ -1,8 +1,8 @@
 """Utility modules for holiday card generation."""
 
 from holiday_card.utils.measurements import (
-    FOLD_LINE_WIDTH,
     CUT_LINE_WIDTH,
+    FOLD_LINE_WIDTH,
     MIN_DPI,
     PAGE_HEIGHT,
     PAGE_WIDTH,

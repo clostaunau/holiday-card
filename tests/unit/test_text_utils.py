@@ -1,14 +1,13 @@
 """Unit tests for text_utils module (overflow prevention)."""
 
-import pytest
-from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
 from holiday_card.core.text_utils import (
     TextMetrics,
+    calculate_line_height,
     measure_text,
     shrink_to_fit,
-    calculate_line_height,
     wrap_text,
 )
 
