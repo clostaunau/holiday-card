@@ -188,6 +188,9 @@ def create(
     theme: str | None = typer.Option(
         None, "--theme", "-t", help="Color theme to apply (e.g., christmas-red-green)"
     ),
+    inside_message: str | None = typer.Option(
+        None, "--inside-message", help="Message for the inside panel"
+    ),
 ) -> None:
     """Create a new card from a template.
 
@@ -270,6 +273,7 @@ def create(
             fold_type=fold_type_enum,
             images=image_elements if image_elements else None,
             theme_id=theme,
+            inside_message=inside_message,
         )
 
         # Success output

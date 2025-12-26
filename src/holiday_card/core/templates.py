@@ -15,14 +15,21 @@ logger = logging.getLogger(__name__)
 from holiday_card.core.models import (
     Circle,
     Color,
+    ColorStop,
     DecorativeElement,
     FoldType,
     Line,
+    LinearGradientFill,
     OccasionType,
     Panel,
     PanelPosition,
+    PatternFill,
+    PatternType,
+    RadialGradientFill,
     Rectangle,
+    SolidFill,
     Star,
+    SVGPath,
     Template,
     TextElement,
     Triangle,
@@ -287,9 +294,71 @@ def _parse_text_element(data: dict) -> TextElement:
     )
 
 
+def _parse_fill_style(
+    data: dict | None,
+) -> SolidFill | LinearGradientFill | RadialGradientFill | PatternFill | None:
+    """Parse fill style data into appropriate fill object.
+
+    Args:
+        data: Raw fill data from YAML with 'type' discriminator.
+
+    Returns:
+        Parsed fill object (SolidFill, LinearGradientFill,
+        RadialGradientFill, or PatternFill), or None if invalid.
+    """
+    if not data:
+        return None
+
+    fill_type = data.get("type")
+    if not fill_type:
+        return None
+
+    try:
+        if fill_type == "solid":
+            return SolidFill(color=data["color"])
+
+        elif fill_type == "linear_gradient":
+            stops = [
+                ColorStop(position=s["position"], color=s["color"])
+                for s in data["stops"]
+            ]
+            return LinearGradientFill(
+                angle=data.get("angle", 0.0),
+                stops=stops
+            )
+
+        elif fill_type == "radial_gradient":
+            stops = [
+                ColorStop(position=s["position"], color=s["color"])
+                for s in data["stops"]
+            ]
+            return RadialGradientFill(
+                center_x=data.get("center_x", 0.5),
+                center_y=data.get("center_y", 0.5),
+                radius=data.get("radius", 0.5),
+                stops=stops
+            )
+
+        elif fill_type == "pattern":
+            return PatternFill(
+                pattern_type=PatternType(data["pattern_type"]),
+                colors=data["colors"],
+                spacing=data.get("spacing", 0.25),
+                scale=data.get("scale", 1.0),
+                rotation=data.get("rotation", data.get("angle", 0.0))  # Support both
+            )
+        else:
+            logger.warning(f"Unknown fill type: {fill_type}")
+            return None
+
+    except (KeyError, ValueError, TypeError) as e:
+        logger.warning(f"Could not parse fill style: {e}")
+        return None
+
+
 def _parse_shape_element(
     data: dict,
-) -> Rectangle | Circle | Triangle | Star | Line | DecorativeElement | None:
+) -> Rectangle | Circle | Triangle | Star | Line | SVGPath | DecorativeElement | None:
     """Parse shape element data into appropriate Shape object.
 
     Uses Pydantic's discriminated union based on 'type' field.
@@ -305,6 +374,9 @@ def _parse_shape_element(
     if not shape_type:
         return None
 
+    # Parse fill style if present
+    fill_obj = _parse_fill_style(data.get("fill"))
+
     try:
         if shape_type == "rectangle":
             return Rectangle(
@@ -313,6 +385,7 @@ def _parse_shape_element(
                 width=data["width"],
                 height=data["height"],
                 fill_color=data.get("fill_color"),
+                fill=fill_obj,
                 stroke_color=data.get("stroke_color"),
                 stroke_width=data.get("stroke_width", 0),
                 opacity=data.get("opacity", 1.0),
@@ -325,6 +398,7 @@ def _parse_shape_element(
                 center_y=data["center_y"],
                 radius=data["radius"],
                 fill_color=data.get("fill_color"),
+                fill=fill_obj,
                 stroke_color=data.get("stroke_color"),
                 stroke_width=data.get("stroke_width", 0),
                 opacity=data.get("opacity", 1.0),
@@ -340,6 +414,7 @@ def _parse_shape_element(
                 x3=data["x3"],
                 y3=data["y3"],
                 fill_color=data.get("fill_color"),
+                fill=fill_obj,
                 stroke_color=data.get("stroke_color"),
                 stroke_width=data.get("stroke_width", 0),
                 opacity=data.get("opacity", 1.0),
@@ -354,6 +429,19 @@ def _parse_shape_element(
                 inner_radius=data["inner_radius"],
                 points=data.get("points", 5),
                 fill_color=data.get("fill_color"),
+                fill=fill_obj,
+                stroke_color=data.get("stroke_color"),
+                stroke_width=data.get("stroke_width", 0),
+                opacity=data.get("opacity", 1.0),
+                rotation=data.get("rotation", 0),
+                z_index=data.get("z_index", 0),
+            )
+        elif shape_type == "svg_path":
+            return SVGPath(
+                path_data=data["path_data"],
+                scale=data.get("scale", 1.0),
+                fill_color=data.get("fill_color"),
+                fill=fill_obj,
                 stroke_color=data.get("stroke_color"),
                 stroke_width=data.get("stroke_width", 0),
                 opacity=data.get("opacity", 1.0),

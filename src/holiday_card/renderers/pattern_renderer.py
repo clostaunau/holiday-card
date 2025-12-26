@@ -226,6 +226,12 @@ class PatternRenderer:
             # Save canvas state for transformations
             canvas.saveState()
 
+            # CRITICAL: Create clipping path to constrain pattern to shape bounds
+            # Without this, pattern tiles extend beyond the specified area
+            path = canvas.beginPath()
+            path.rect(x, y, width, height)
+            canvas.clipPath(path, stroke=0, fill=0)
+
             # Apply rotation if specified
             if pattern.rotation != 0:
                 # Rotate around the center of the fill area
@@ -240,11 +246,12 @@ class PatternRenderer:
             num_tiles_x = math.ceil(width / tile_size) + 1
             num_tiles_y = math.ceil(height / tile_size) + 1
 
+            # Move to starting position before tiling
+            canvas.translate(x, y)
+
             # Draw the tiled pattern
             for i in range(num_tiles_x):
                 for j in range(num_tiles_y):
-                    tile_x = x + i * tile_size
-                    tile_y = y + j * tile_size
                     canvas.doForm(form_name)
                     canvas.translate(0, tile_size)
                 canvas.translate(tile_size, -num_tiles_y * tile_size)
