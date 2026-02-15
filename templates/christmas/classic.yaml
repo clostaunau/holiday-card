@@ -1,0 +1,87 @@
+# Classic Christmas Card Template
+# A traditional half-fold card with festive red and green colors
+
+id: "christmas-classic"
+name: "Classic Christmas"
+occasion: "christmas"
+fold_type: "half_fold"
+default_theme_id: "christmas-red-green"
+description: "Traditional Christmas card with classic holiday colors"
+
+panels:
+  # Front panel (bottom right when unfolded)
+  - id: "front"
+    position: "front"
+    x: 4.25  # Right half of page
+    y: 0     # Bottom half
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.8
+      g: 0.1
+      b: 0.1
+    text_elements:
+      - id: "greeting"
+        content: "Merry Christmas!"
+        x: 2.125  # Center of panel
+        y: 2.75   # Middle of panel
+        width: 3.75  # Leave 0.25" margin on each side
+        font_family: "Helvetica"
+        font_size: 36
+        alignment: "center"
+        overflow_strategy: "shrink"
+        min_font_size: 12
+        color:
+          r: 1.0
+          g: 1.0
+          b: 1.0
+
+  # Back panel (bottom left when unfolded)
+  - id: "back"
+    position: "back"
+    x: 0
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 1.0
+      b: 1.0
+
+  # Inside left panel (top left when unfolded)
+  - id: "inside_left"
+    position: "inside_left"
+    x: 0
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 1.0
+      b: 1.0
+
+  # Inside right panel (top right when unfolded)
+  - id: "inside_right"
+    position: "inside_right"
+    x: 4.25
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 1.0
+      b: 1.0
+    text_elements:
+      - id: "message"
+        content: "Wishing you joy and happiness this holiday season!"
+        x: 0.5
+        y: 3.0
+        width: 3.25
+        font_family: "Helvetica"
+        font_size: 14
+        overflow_strategy: "wrap"
+        max_lines: 6
+        color:
+          r: 0.2
+          g: 0.2
+          b: 0.2

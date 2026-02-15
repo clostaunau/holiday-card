@@ -1,0 +1,49 @@
+# Hanukkah Color Themes
+# Traditional and modern color schemes for Hanukkah cards
+
+themes:
+  - id: "hanukkah-blue-white"
+    name: "Traditional Blue & White"
+    occasion: "hanukkah"
+    description: "Classic Hanukkah colors inspired by the Israeli flag"
+    primary:
+      r: 0.0
+      g: 0.3
+      b: 0.6
+    secondary:
+      r: 1.0
+      g: 1.0
+      b: 1.0
+    background:
+      r: 0.98
+      g: 0.98
+      b: 1.0
+    text:
+      r: 0.1
+      g: 0.15
+      b: 0.3
+
+  - id: "hanukkah-silver"
+    name: "Silver & Blue"
+    occasion: "hanukkah"
+    description: "Elegant silver accents with deep blue"
+    primary:
+      r: 0.75
+      g: 0.75
+      b: 0.8
+    secondary:
+      r: 0.15
+      g: 0.25
+      b: 0.5
+    background:
+      r: 1.0
+      g: 1.0
+      b: 1.0
+    text:
+      r: 0.2
+      g: 0.2
+      b: 0.3
+    accent:
+      r: 0.85
+      g: 0.85
+      b: 0.9

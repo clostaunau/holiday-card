@@ -1,0 +1,109 @@
+package com.example.app.controller;
+
+import com.example.app.dto.[ENTITY_NAME]DTO;
+import com.example.app.dto.Create[ENTITY_NAME]Request;
+import com.example.app.dto.Update[ENTITY_NAME]Request;
+import com.example.app.service.[ENTITY_NAME]Service;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+
+import java.net.URI;
+
+/**
+ * REST controller for [ENTITY_NAME] resources.
+ * Provides CRUD operations and follows REST conventions.
+ */
+@RestController
+@RequestMapping("/api/v1/[entity-name-plural]")
+@RequiredArgsConstructor
+public class [ENTITY_NAME]Controller {
+
+    private final [ENTITY_NAME]Service [entityName]Service;
+
+    /**
+     * Get all [entity-name-plural] with pagination and sorting.
+     *
+     * @param page Page number (default: 0)
+     * @param size Page size (default: 20)
+     * @param sortBy Sort field (default: id)
+     * @return Page of [ENTITY_NAME]DTO
+     */
+    @GetMapping
+    public ResponseEntity<Page<[ENTITY_NAME]DTO>> getAll(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "id") String sortBy) {
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by(sortBy));
+        Page<[ENTITY_NAME]DTO> result = [entityName]Service.findAll(pageable);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Get [entity-name] by ID.
+     *
+     * @param id [ENTITY_NAME] ID
+     * @return [ENTITY_NAME]DTO if found, 404 otherwise
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<[ENTITY_NAME]DTO> getById(@PathVariable Long id) {
+        return [entityName]Service.findById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Create new [entity-name].
+     *
+     * @param request Create request with [entity-name] data
+     * @return Created [ENTITY_NAME]DTO with 201 status and Location header
+     */
+    @PostMapping
+    public ResponseEntity<[ENTITY_NAME]DTO> create(@Valid @RequestBody Create[ENTITY_NAME]Request request) {
+        [ENTITY_NAME]DTO created = [entityName]Service.create(request);
+
+        URI location = ServletUriComponentsBuilder
+                .fromCurrentRequest()
+                .path("/{id}")
+                .buildAndExpand(created.getId())
+                .toUri();
+
+        return ResponseEntity.created(location).body(created);
+    }
+
+    /**
+     * Update existing [entity-name].
+     *
+     * @param id [ENTITY_NAME] ID
+     * @param request Update request with new data
+     * @return Updated [ENTITY_NAME]DTO if found, 404 otherwise
+     */
+    @PutMapping("/{id}")
+    public ResponseEntity<[ENTITY_NAME]DTO> update(
+            @PathVariable Long id,
+            @Valid @RequestBody Update[ENTITY_NAME]Request request) {
+
+        return [entityName]Service.update(id, request)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Delete [entity-name].
+     *
+     * @param id [ENTITY_NAME] ID
+     * @return 204 No Content on success
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        [entityName]Service.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+}

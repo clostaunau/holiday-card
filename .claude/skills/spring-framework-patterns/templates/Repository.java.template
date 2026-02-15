@@ -1,0 +1,62 @@
+package com.example.app.repository;
+
+import com.example.app.entity.[ENTITY_NAME];
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * Repository interface for [ENTITY_NAME] entity.
+ * Extends JpaRepository for CRUD operations and JpaSpecificationExecutor for dynamic queries.
+ */
+@Repository
+public interface [ENTITY_NAME]Repository extends JpaRepository<[ENTITY_NAME], Long>,
+                                                 JpaSpecificationExecutor<[ENTITY_NAME]> {
+
+    /**
+     * Find [entity-name] by [field].
+     * Spring Data generates implementation based on method name.
+     *
+     * @param [field] [Field] value
+     * @return Optional of [ENTITY_NAME]
+     */
+    Optional<[ENTITY_NAME]> findBy[FIELD](String [field]);
+
+    /**
+     * Check if [entity-name] exists by [field].
+     *
+     * @param [field] [Field] value
+     * @return true if exists, false otherwise
+     */
+    boolean existsBy[FIELD](String [field]);
+
+    /**
+     * Find all active [entity-name-plural].
+     *
+     * @return List of active [entity-name-plural]
+     */
+    List<[ENTITY_NAME]> findByActiveTrue();
+
+    /**
+     * Custom JPQL query example.
+     *
+     * @param param Query parameter
+     * @return List of [ENTITY_NAME]
+     */
+    @Query("SELECT e FROM [ENTITY_NAME] e WHERE e.[field] = :param")
+    List<[ENTITY_NAME]> findByCustomQuery(@Param("param") String param);
+
+    /**
+     * Native SQL query example.
+     *
+     * @param param Query parameter
+     * @return List of [ENTITY_NAME]
+     */
+    @Query(value = "SELECT * FROM [table_name] WHERE [field] = :param", nativeQuery = true)
+    List<[ENTITY_NAME]> findByNativeQuery(@Param("param") String param);
+}

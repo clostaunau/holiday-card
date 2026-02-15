@@ -1,0 +1,114 @@
+name: snowflake
+description: "Geometric snowflake with six points"
+default_width: 1.0
+default_height: 1.0
+
+color_roles:
+  snowflake: "#E0F7FA"     # Light cyan
+
+shapes:
+  # Center circle
+  - type: circle
+    center_x: 0.5
+    center_y: 0.5
+    radius: 0.08
+    fill_color: "{snowflake}"
+    z_index: 2
+
+  # Six radial lines (spokes)
+  - type: line
+    start_x: 0.5
+    start_y: 0.5
+    end_x: 0.5
+    end_y: 0.9
+    stroke_color: "{snowflake}"
+    stroke_width: 2
+    z_index: 1
+
+  - type: line
+    start_x: 0.5
+    start_y: 0.5
+    end_x: 0.85
+    end_y: 0.75
+    stroke_color: "{snowflake}"
+    stroke_width: 2
+    z_index: 1
+
+  - type: line
+    start_x: 0.5
+    start_y: 0.5
+    end_x: 0.85
+    end_y: 0.25
+    stroke_color: "{snowflake}"
+    stroke_width: 2
+    z_index: 1
+
+  - type: line
+    start_x: 0.5
+    start_y: 0.5
+    end_x: 0.5
+    end_y: 0.1
+    stroke_color: "{snowflake}"
+    stroke_width: 2
+    z_index: 1
+
+  - type: line
+    start_x: 0.5
+    start_y: 0.5
+    end_x: 0.15
+    end_y: 0.25
+    stroke_color: "{snowflake}"
+    stroke_width: 2
+    z_index: 1
+
+  - type: line
+    start_x: 0.5
+    start_y: 0.5
+    end_x: 0.15
+    end_y: 0.75
+    stroke_color: "{snowflake}"
+    stroke_width: 2
+    z_index: 1
+
+  # Small decorative circles at spoke ends
+  - type: circle
+    center_x: 0.5
+    center_y: 0.9
+    radius: 0.05
+    fill_color: "{snowflake}"
+    z_index: 2
+
+  - type: circle
+    center_x: 0.85
+    center_y: 0.75
+    radius: 0.05
+    fill_color: "{snowflake}"
+    z_index: 2
+
+  - type: circle
+    center_x: 0.85
+    center_y: 0.25
+    radius: 0.05
+    fill_color: "{snowflake}"
+    z_index: 2
+
+  - type: circle
+    center_x: 0.5
+    center_y: 0.1
+    radius: 0.05
+    fill_color: "{snowflake}"
+    z_index: 2
+
+  - type: circle
+    center_x: 0.15
+    center_y: 0.25
+    radius: 0.05
+    fill_color: "{snowflake}"
+    z_index: 2
+
+  - type: circle
+    center_x: 0.15
+    center_y: 0.75
+    radius: 0.05
+    fill_color: "{snowflake}"
+    z_index: 2

@@ -1,0 +1,337 @@
+# Example pytest.ini configuration file
+# Copy this to your project root as pytest.ini
+
+[pytest]
+# Test discovery patterns
+python_files = test_*.py *_test.py
+python_classes = Test*
+python_functions = test_*
+
+# Default command line options
+addopts =
+    # Verbose output
+    -v
+    # Strict mode for markers
+    --strict-markers
+    # Short traceback format
+    --tb=short
+    # Show local variables in tracebacks
+    -l
+    # Coverage options
+    --cov=myapp
+    --cov-report=term-missing
+    --cov-report=html
+    --cov-fail-under=80
+    # Show slowest tests
+    --durations=10
+    # Warnings
+    -W error::DeprecationWarning
+    -W error::PendingDeprecationWarning
+
+# Test paths
+testpaths = tests
+
+# Minimum Python version
+minversion = 3.8
+
+# Don't search these directories
+norecursedirs =
+    .git
+    .tox
+    dist
+    build
+    *.egg
+    __pycache__
+    .venv
+    venv
+    env
+    node_modules
+
+# Markers - define custom markers here
+markers =
+    slow: marks tests as slow (deselect with '-m "not slow"')
+    integration: marks tests as integration tests
+    unit: marks tests as unit tests
+    e2e: marks tests as end-to-end tests
+    smoke: marks tests as smoke tests (quick sanity checks)
+    wip: marks tests as work in progress
+    requires_network: marks tests that require network access
+    requires_database: marks tests that require database
+
+# Logging
+log_cli = false
+log_cli_level = INFO
+log_cli_format = %(asctime)s [%(levelname)8s] %(message)s
+log_cli_date_format = %Y-%m-%d %H:%M:%S
+
+log_file = tests.log
+log_file_level = DEBUG
+log_file_format = %(asctime)s [%(levelname)8s] %(name)s - %(message)s
+log_file_date_format = %Y-%m-%d %H:%M:%S
+
+# Timeout for tests (requires pytest-timeout)
+# timeout = 300
+
+# Console output style
+console_output_style = progress
+
+# Show extra test summary info
+# Options: f (failed), E (error), s (skipped), x (xfailed), X (xpassed), p (passed), P (passed with output)
+# addopts = -rA  # Show all
+
+# ============================================================================
+# Coverage Configuration
+# ============================================================================
+
+[coverage:run]
+# Source code to measure
+source = myapp
+
+# Parallel mode for multi-process coverage
+parallel = false
+
+# Branch coverage
+branch = true
+
+# Files to omit from coverage
+omit =
+    */tests/*
+    */test_*.py
+    */*_test.py
+    */migrations/*
+    */venv/*
+    */env/*
+    */.venv/*
+    */site-packages/*
+    */__pycache__/*
+    */conftest.py
+    */setup.py
+
+# Plugins
+plugins =
+
+[coverage:report]
+# Precision for coverage percentages
+precision = 2
+
+# Show missing lines
+show_missing = true
+
+# Skip covered files
+skip_covered = false
+
+# Skip empty files
+skip_empty = true
+
+# Fail if coverage is below this threshold
+fail_under = 80
+
+# Lines to exclude from coverage
+exclude_lines =
+    # Standard pragma
+    pragma: no cover
+
+    # Don't complain about missing debug code
+    def __repr__
+    def __str__
+
+    # Don't complain if tests don't hit defensive assertion code
+    raise AssertionError
+    raise NotImplementedError
+
+    # Don't complain if non-runnable code isn't run
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    if typing.TYPE_CHECKING:
+
+    # Don't complain about abstract methods
+    @abstractmethod
+    @abc.abstractmethod
+
+    # Don't complain about ellipsis in protocol/stub files
+    \.\.\.
+
+    # Don't complain about pass statements
+    pass
+
+# Sort coverage report
+sort = Cover
+
+[coverage:html]
+# Directory for HTML report
+directory = htmlcov
+
+[coverage:xml]
+# XML output file
+output = coverage.xml
+
+# ============================================================================
+# Tool-specific Configuration
+# ============================================================================
+
+# pytest-timeout configuration
+[tool:pytest-timeout]
+timeout = 300
+timeout_method = thread
+
+# pytest-xdist configuration (parallel execution)
+# Run with: pytest -n auto
+# Requires: pip install pytest-xdist
+
+# ============================================================================
+# Common Usage Examples
+# ============================================================================
+
+# Run all tests:
+#   pytest
+
+# Run with coverage:
+#   pytest --cov=myapp --cov-report=html
+
+# Run specific test file:
+#   pytest tests/unit/test_user.py
+
+# Run specific test function:
+#   pytest tests/unit/test_user.py::test_create_user
+
+# Run specific test class:
+#   pytest tests/unit/test_user.py::TestUserService
+
+# Run tests matching pattern:
+#   pytest -k "user and create"
+
+# Run only unit tests:
+#   pytest -m unit
+
+# Run only integration tests:
+#   pytest -m integration
+
+# Skip slow tests:
+#   pytest -m "not slow"
+
+# Run tests in parallel (requires pytest-xdist):
+#   pytest -n auto
+
+# Show local variables on failure:
+#   pytest -l
+
+# Stop after first failure:
+#   pytest -x
+
+# Stop after N failures:
+#   pytest --maxfail=3
+
+# Run last failed tests:
+#   pytest --lf
+
+# Run failed tests first, then rest:
+#   pytest --ff
+
+# Show slowest 10 tests:
+#   pytest --durations=10
+
+# Show all output (don't capture):
+#   pytest -s
+
+# Verbose output:
+#   pytest -v
+
+# Very verbose output:
+#   pytest -vv
+
+# Quiet output:
+#   pytest -q
+
+# Show pytest fixtures:
+#   pytest --fixtures
+
+# Show available markers:
+#   pytest --markers
+
+# Collect tests without running:
+#   pytest --collect-only
+
+# Dry run (show what would run):
+#   pytest --collect-only -q
+
+# Generate JUnit XML report:
+#   pytest --junitxml=report.xml
+
+# Generate HTML report (requires pytest-html):
+#   pytest --html=report.html
+
+# ============================================================================
+# Integration with CI/CD
+# ============================================================================
+
+# GitHub Actions example:
+#   pytest --cov=myapp --cov-report=xml --cov-report=term
+
+# GitLab CI example:
+#   pytest --junitxml=report.xml --cov=myapp --cov-report=xml
+
+# Jenkins example:
+#   pytest --junitxml=junit.xml --cov=myapp --cov-report=html
+
+# ============================================================================
+# Debugging Tips
+# ============================================================================
+
+# Drop into pdb on failure:
+#   pytest --pdb
+
+# Drop into pdb on first failure:
+#   pytest -x --pdb
+
+# Set breakpoint in test:
+#   import pytest; pytest.set_trace()
+#   # Or in Python 3.7+:
+#   breakpoint()
+
+# Show full traceback:
+#   pytest --tb=long
+
+# Show full diff for assertions:
+#   pytest -vv
+
+# ============================================================================
+# Performance Optimization
+# ============================================================================
+
+# Run tests in parallel:
+#   pytest -n auto
+
+# Use pytest-xdist with specific worker count:
+#   pytest -n 4
+
+# Profile test execution time:
+#   pytest --durations=0
+
+# ============================================================================
+# Common Patterns
+# ============================================================================
+
+# Run smoke tests quickly:
+#   pytest -m smoke -x
+
+# Run non-slow unit tests:
+#   pytest -m "unit and not slow"
+
+# Run integration tests with coverage:
+#   pytest -m integration --cov=myapp --cov-report=html
+
+# Run all tests except network-dependent:
+#   pytest -m "not requires_network"
+
+# Run work-in-progress tests:
+#   pytest -m wip -vv
+
+# ============================================================================
+# Notes
+# ============================================================================
+
+# 1. Adjust 'source' in [coverage:run] to match your package name
+# 2. Adjust 'fail_under' in [coverage:report] for your coverage threshold
+# 3. Add custom markers as needed for your project
+# 4. Configure logging levels based on your debugging needs
+# 5. Consider using pytest-xdist for parallel execution on large test suites

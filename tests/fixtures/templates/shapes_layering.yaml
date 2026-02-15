@@ -1,0 +1,205 @@
+id: shapes-layering-test
+name: "Shape Layering Z-Index Test"
+occasion: generic
+fold_type: half_fold
+description: "Test template demonstrating z-index layering with 15 overlapping shapes"
+
+panels:
+  - position: front
+    x: 0.0
+    y: 5.5
+    width: 8.5
+    height: 5.5
+    background_color:
+      r: 0.98
+      g: 0.98
+      b: 0.95
+
+    shape_elements:
+      # Layer 1 (z_index=1) - Large background rectangle - should be at bottom
+      - type: rectangle
+        x: 1.0
+        y: 1.0
+        width: 6.5
+        height: 4.0
+        fill_color: "#E6F3FF"
+        z_index: 1
+
+      # Layer 2 (z_index=2) - Overlapping circles with opacity
+      - type: circle
+        center_x: 2.5
+        center_y: 4.0
+        radius: 0.8
+        fill_color: "#FF6B6B"
+        opacity: 0.7
+        z_index: 2
+
+      - type: circle
+        center_x: 3.5
+        center_y: 4.0
+        radius: 0.8
+        fill_color: "#4ECDC4"
+        opacity: 0.7
+        z_index: 2
+
+      - type: circle
+        center_x: 3.0
+        center_y: 3.2
+        radius: 0.8
+        fill_color: "#FFD93D"
+        opacity: 0.7
+        z_index: 2
+
+      # Layer 3 (z_index=3) - Medium rectangles
+      - type: rectangle
+        x: 5.0
+        y: 3.5
+        width: 2.0
+        height: 1.2
+        fill_color: "#95E1D3"
+        z_index: 3
+
+      - type: rectangle
+        x: 5.5
+        y: 2.8
+        width: 1.5
+        height: 1.0
+        fill_color: "#F38181"
+        opacity: 0.8
+        z_index: 3
+
+      # Layer 4 (z_index=4) - Triangles
+      - type: triangle
+        x1: 1.5
+        y1: 2.0
+        x2: 2.5
+        y2: 2.0
+        x3: 2.0
+        y3: 3.0
+        fill_color: "#AA96DA"
+        z_index: 4
+
+      - type: triangle
+        x1: 6.0
+        y1: 1.5
+        x2: 7.0
+        y2: 1.5
+        x3: 6.5
+        y3: 2.5
+        fill_color: "#FCBAD3"
+        opacity: 0.9
+        z_index: 4
+
+      # Layer 5 (z_index=5) - Small rectangles on top
+      - type: rectangle
+        x: 2.8
+        y: 2.5
+        width: 0.8
+        height: 0.8
+        fill_color: "#A8E6CF"
+        stroke_color: "#006400"
+        stroke_width: 2
+        z_index: 5
+
+      - type: rectangle
+        x: 4.0
+        y: 2.2
+        width: 0.6
+        height: 0.6
+        fill_color: "#FFD3B6"
+        stroke_color: "#FF6600"
+        stroke_width: 2
+        z_index: 5
+
+      # Layer 6 (z_index=6) - Stars on top
+      - type: star
+        center_x: 2.0
+        center_y: 4.5
+        outer_radius: 0.4
+        inner_radius: 0.2
+        points: 5
+        fill_color: "#FFD700"
+        stroke_color: "#DAA520"
+        stroke_width: 1
+        z_index: 6
+
+      - type: star
+        center_x: 4.25
+        center_y: 4.5
+        outer_radius: 0.3
+        inner_radius: 0.15
+        points: 5
+        fill_color: "#FF1493"
+        z_index: 6
+
+      - type: star
+        center_x: 6.5
+        center_y: 4.2
+        outer_radius: 0.35
+        inner_radius: 0.18
+        points: 5
+        fill_color: "#00CED1"
+        opacity: 0.9
+        z_index: 6
+
+      # Layer 10 (z_index=10) - Top circle to verify high z-index
+      - type: circle
+        center_x: 4.25
+        center_y: 2.75
+        radius: 0.5
+        fill_color: "#FF4500"
+        stroke_color: "#8B0000"
+        stroke_width: 3
+        z_index: 10
+
+    text_elements:
+      # Title at top (z_index=100 - above all shapes)
+      - content: "Z-Index Layering Test"
+        x: 4.25
+        y: 0.5
+        font_size: 18
+        font_style: bold
+        alignment: center
+        z_index: 100
+
+      # Labels showing z-index levels (z_index=100)
+      - content: "Layer 1 (z=1): Blue background"
+        x: 0.5
+        y: 5.0
+        font_size: 8
+        z_index: 100
+
+      - content: "Layer 2 (z=2): Overlapping circles"
+        x: 0.5
+        y: 4.7
+        font_size: 8
+        z_index: 100
+
+      - content: "Layer 3-6 (z=3-6): Various shapes"
+        x: 0.5
+        y: 4.4
+        font_size: 8
+        z_index: 100
+
+      - content: "Layer 10 (z=10): Red circle on top"
+        x: 0.5
+        y: 4.1
+        font_size: 8
+        z_index: 100
+
+  - position: back
+    x: 0.0
+    y: 0.0
+    width: 8.5
+    height: 5.5
+    background_color:
+      r: 0.95
+      g: 0.95
+      b: 0.95
+
+    text_elements:
+      - content: "Layering Test - Back Panel"
+        x: 4.25
+        y: 2.75
+        font_size: 14
+        alignment: center

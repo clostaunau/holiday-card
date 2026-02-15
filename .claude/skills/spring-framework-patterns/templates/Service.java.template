@@ -1,0 +1,149 @@
+package com.example.app.service;
+
+import com.example.app.dto.[ENTITY_NAME]DTO;
+import com.example.app.dto.Create[ENTITY_NAME]Request;
+import com.example.app.dto.Update[ENTITY_NAME]Request;
+import com.example.app.entity.[ENTITY_NAME];
+import com.example.app.exception.ResourceNotFoundException;
+import com.example.app.repository.[ENTITY_NAME]Repository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Optional;
+
+/**
+ * Service layer for [ENTITY_NAME] business logic.
+ * Handles all business operations and transaction management.
+ */
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class [ENTITY_NAME]Service {
+
+    private final [ENTITY_NAME]Repository [entityName]Repository;
+
+    /**
+     * Find all [entity-name-plural] with pagination.
+     *
+     * @param pageable Pagination parameters
+     * @return Page of [ENTITY_NAME]DTO
+     */
+    @Transactional(readOnly = true)
+    public Page<[ENTITY_NAME]DTO> findAll(Pageable pageable) {
+        log.debug("Finding all [entity-name-plural] with pagination: {}", pageable);
+        return [entityName]Repository.findAll(pageable)
+                .map(this::mapToDTO);
+    }
+
+    /**
+     * Find [entity-name] by ID.
+     *
+     * @param id [ENTITY_NAME] ID
+     * @return Optional of [ENTITY_NAME]DTO
+     */
+    @Transactional(readOnly = true)
+    public Optional<[ENTITY_NAME]DTO> findById(Long id) {
+        log.debug("Finding [entity-name] by id: {}", id);
+        return [entityName]Repository.findById(id)
+                .map(this::mapToDTO);
+    }
+
+    /**
+     * Create new [entity-name].
+     *
+     * @param request Create request
+     * @return Created [ENTITY_NAME]DTO
+     */
+    @Transactional
+    public [ENTITY_NAME]DTO create(Create[ENTITY_NAME]Request request) {
+        log.info("Creating new [entity-name]: {}", request);
+
+        // Validate business rules
+        validate[ENTITY_NAME](request);
+
+        // Map to entity
+        [ENTITY_NAME] [entityName] = mapToEntity(request);
+
+        // Save
+        [ENTITY_NAME] saved = [entityName]Repository.save([entityName]);
+        log.info("[ENTITY_NAME] created with id: {}", saved.getId());
+
+        return mapToDTO(saved);
+    }
+
+    /**
+     * Update existing [entity-name].
+     *
+     * @param id [ENTITY_NAME] ID
+     * @param request Update request
+     * @return Optional of updated [ENTITY_NAME]DTO
+     */
+    @Transactional
+    public Optional<[ENTITY_NAME]DTO> update(Long id, Update[ENTITY_NAME]Request request) {
+        log.info("Updating [entity-name] with id: {}", id);
+
+        return [entityName]Repository.findById(id)
+                .map([entityName] -> {
+                    updateEntity([entityName], request);
+                    [ENTITY_NAME] updated = [entityName]Repository.save([entityName]);
+                    log.info("[ENTITY_NAME] updated: {}", id);
+                    return mapToDTO(updated);
+                });
+    }
+
+    /**
+     * Delete [entity-name].
+     *
+     * @param id [ENTITY_NAME] ID
+     * @throws ResourceNotFoundException if [entity-name] not found
+     */
+    @Transactional
+    public void delete(Long id) {
+        log.info("Deleting [entity-name] with id: {}", id);
+
+        if (![entityName]Repository.existsById(id)) {
+            throw new ResourceNotFoundException("[ENTITY_NAME]", id);
+        }
+
+        [entityName]Repository.deleteById(id);
+        log.info("[ENTITY_NAME] deleted: {}", id);
+    }
+
+    /**
+     * Validate [entity-name] business rules.
+     */
+    private void validate[ENTITY_NAME](Create[ENTITY_NAME]Request request) {
+        // Add business validation logic here
+        // Example: Check for duplicates, validate relationships, etc.
+    }
+
+    /**
+     * Map request DTO to entity.
+     */
+    private [ENTITY_NAME] mapToEntity(Create[ENTITY_NAME]Request request) {
+        [ENTITY_NAME] [entityName] = new [ENTITY_NAME]();
+        // Map fields from request to entity
+        return [entityName];
+    }
+
+    /**
+     * Update entity with request data.
+     */
+    private void updateEntity([ENTITY_NAME] [entityName], Update[ENTITY_NAME]Request request) {
+        // Update entity fields from request
+    }
+
+    /**
+     * Map entity to DTO.
+     */
+    private [ENTITY_NAME]DTO mapToDTO([ENTITY_NAME] [entityName]) {
+        [ENTITY_NAME]DTO dto = new [ENTITY_NAME]DTO();
+        dto.setId([entityName].getId());
+        // Map other fields
+        return dto;
+    }
+}

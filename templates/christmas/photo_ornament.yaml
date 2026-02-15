@@ -1,0 +1,284 @@
+# T099: Photo Ornament Template - Clipping Masks Example
+# Demonstrates image clipping with circular and star masks
+
+id: christmas-photo-ornament
+name: "Photo Ornament"
+occasion: christmas
+fold_type: half_fold
+description: "Personal photo card with circular ornament frame clipping mask"
+default_theme_id: christmas-red-green
+
+panels:
+  # Front panel - Photo as ornament design
+  - id: front
+    position: front
+    x: 4.25
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.8
+      g: 0.1
+      b: 0.1  # Traditional Christmas red
+
+    shape_elements:
+      # Ornament string
+      - type: line
+        start_x: 2.125
+        start_y: 5.5
+        end_x: 2.125
+        end_y: 4.3
+        stroke_color: "#FFD700"
+        stroke_width: 2
+        z_index: 10
+
+      # Ornament cap
+      - type: rectangle
+        x: 1.925
+        y: 4.25
+        width: 0.4
+        height: 0.2
+        fill_color: "#FFD700"
+        stroke_color: "#DAA520"
+        stroke_width: 1
+        z_index: 11
+
+      # Gold ring on cap
+      - type: circle
+        center_x: 2.125
+        center_y: 4.45
+        radius: 0.08
+        fill_color: "#C0C0C0"
+        z_index: 12
+
+      # Ornament border (outer circle)
+      - type: circle
+        center_x: 2.125
+        center_y: 2.75
+        radius: 1.6
+        stroke_color: "#FFD700"
+        stroke_width: 8
+        fill_color: "#FFFFFF"
+        opacity: 0.0
+        z_index: 5
+
+      # Decorative corners - stars
+      - type: star
+        center_x: 0.4
+        center_y: 0.4
+        outer_radius: 0.15
+        inner_radius: 0.08
+        points: 5
+        fill_color: "#FFD700"
+        opacity: 0.8
+        z_index: 3
+
+      - type: star
+        center_x: 3.85
+        center_y: 0.4
+        outer_radius: 0.15
+        inner_radius: 0.08
+        points: 5
+        fill_color: "#FFD700"
+        opacity: 0.8
+        z_index: 3
+
+    # NOTE: In actual use, replace "sample_photo.jpg" with real photo path
+    # The circular clip mask creates an ornament-shaped photo frame
+    image_elements:
+      - source_path: "sample_photo.jpg"
+        x: 0.525
+        y: 1.15
+        width: 3.2
+        height: 3.2
+        clip_mask:
+          type: circle
+          center_x: 2.125
+          center_y: 2.75
+          radius: 1.5
+        z_index: 4
+
+    text_elements:
+      - id: greeting
+        content: "Happy Holidays!"
+        x: 2.125
+        y: 0.5
+        width: 3.5
+        font_size: 24
+        font_style: bold
+        alignment: center
+        overflow_strategy: shrink
+        min_font_size: 14
+        color:
+          r: 1.0
+          g: 0.84
+          b: 0.0
+        z_index: 100
+
+  # Inside left - Photo collage with star clipping
+  - id: inside_left
+    position: inside_left
+    x: 0.0
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180
+    background_color:
+      r: 0.98
+      g: 0.98
+      b: 0.95
+
+    shape_elements:
+      # Star frame border
+      - type: star
+        center_x: 2.125
+        center_y: 2.75
+        outer_radius: 1.4
+        inner_radius: 0.65
+        points: 5
+        stroke_color: "#DAA520"
+        stroke_width: 6
+        fill_color: "#FFFFFF"
+        opacity: 0.0
+        z_index: 5
+
+    # Star-shaped photo clipping mask
+    image_elements:
+      - source_path: "sample_photo.jpg"
+        x: 0.725
+        y: 1.35
+        width: 2.8
+        height: 2.8
+        clip_mask:
+          type: star
+          center_x: 2.125
+          center_y: 2.75
+          outer_radius: 1.3
+          inner_radius: 0.6
+          points: 5
+        z_index: 4
+
+    text_elements:
+      - id: message
+        content: "Treasured moments from our family to yours"
+        x: 0.5
+        y: 4.8
+        width: 3.25
+        font_size: 11
+        alignment: center
+        overflow_strategy: wrap
+        max_lines: 3
+        color:
+          r: 0.2
+          g: 0.2
+          b: 0.2
+        z_index: 100
+
+  # Inside right - Multiple circular photo clips
+  - id: inside_right
+    position: inside_right
+    x: 4.25
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180
+    background_color:
+      r: 0.98
+      g: 0.98
+      b: 0.95
+
+    shape_elements:
+      # Small circular frames
+      - type: circle
+        center_x: 1.2
+        center_y: 4.0
+        radius: 0.65
+        stroke_color: "#B85C50"
+        stroke_width: 4
+        fill_color: "#FFFFFF"
+        opacity: 0.0
+        z_index: 5
+
+      - type: circle
+        center_x: 3.05
+        center_y: 4.0
+        radius: 0.65
+        stroke_color: "#B85C50"
+        stroke_width: 4
+        fill_color: "#FFFFFF"
+        opacity: 0.0
+        z_index: 5
+
+      - type: circle
+        center_x: 2.125
+        center_y: 2.3
+        radius: 0.65
+        stroke_color: "#B85C50"
+        stroke_width: 4
+        fill_color: "#FFFFFF"
+        opacity: 0.0
+        z_index: 5
+
+    image_elements:
+      # Three circular photo clips arranged in triangle
+      - source_path: "sample_photo.jpg"
+        x: 0.55
+        y: 3.35
+        width: 1.3
+        height: 1.3
+        clip_mask:
+          type: circle
+          center_x: 1.2
+          center_y: 4.0
+          radius: 0.6
+        z_index: 4
+
+      - source_path: "sample_photo.jpg"
+        x: 2.4
+        y: 3.35
+        width: 1.3
+        height: 1.3
+        clip_mask:
+          type: circle
+          center_x: 3.05
+          center_y: 4.0
+          radius: 0.6
+        z_index: 4
+
+      - source_path: "sample_photo.jpg"
+        x: 1.475
+        y: 1.65
+        width: 1.3
+        height: 1.3
+        clip_mask:
+          type: circle
+          center_x: 2.125
+          center_y: 2.3
+          radius: 0.6
+        z_index: 4
+
+    text_elements:
+      - content: "Our Favorite Memories"
+        x: 2.125
+        y: 0.8
+        width: 3.5
+        font_size: 14
+        font_style: bold
+        alignment: center
+        color:
+          r: 0.18
+          g: 0.33
+          b: 0.22
+        z_index: 100
+
+  # Back panel
+  - id: back
+    position: back
+    x: 0.0
+    y: 0.0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.8
+      g: 0.1
+      b: 0.1

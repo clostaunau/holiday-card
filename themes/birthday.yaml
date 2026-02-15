@@ -1,0 +1,70 @@
+# Birthday Color Themes
+# Fun and festive color schemes for birthday cards
+
+themes:
+  - id: "birthday-pastel"
+    name: "Pastel Party"
+    occasion: "birthday"
+    description: "Soft pastel colors for a gentle celebration"
+    primary:
+      r: 0.95
+      g: 0.7
+      b: 0.85
+    secondary:
+      r: 0.7
+      g: 0.85
+      b: 0.95
+    background:
+      r: 1.0
+      g: 0.98
+      b: 0.98
+    text:
+      r: 0.4
+      g: 0.35
+      b: 0.45
+
+  - id: "birthday-bright"
+    name: "Bright & Bold"
+    occasion: "birthday"
+    description: "Vibrant colors for an energetic celebration"
+    primary:
+      r: 1.0
+      g: 0.4
+      b: 0.6
+    secondary:
+      r: 0.3
+      g: 0.8
+      b: 0.9
+    background:
+      r: 1.0
+      g: 1.0
+      b: 0.95
+    text:
+      r: 0.2
+      g: 0.2
+      b: 0.25
+    accent:
+      r: 1.0
+      g: 0.8
+      b: 0.2
+
+  - id: "birthday-elegant"
+    name: "Elegant Black & Gold"
+    occasion: "birthday"
+    description: "Sophisticated theme for milestone celebrations"
+    primary:
+      r: 0.9
+      g: 0.75
+      b: 0.4
+    secondary:
+      r: 0.15
+      g: 0.15
+      b: 0.15
+    background:
+      r: 0.98
+      g: 0.98
+      b: 0.96
+    text:
+      r: 0.1
+      g: 0.1
+      b: 0.1

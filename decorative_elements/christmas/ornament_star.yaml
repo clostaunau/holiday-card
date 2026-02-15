@@ -1,0 +1,40 @@
+name: ornament_star
+description: "Star-shaped Christmas ornament"
+default_width: 0.8
+default_height: 1.0
+
+color_roles:
+  star: "#FFD700"          # Gold
+  hanger: "#C0C0C0"        # Silver
+
+shapes:
+  # Star ornament
+  - type: star
+    center_x: 0.4
+    center_y: 0.4
+    outer_radius: 0.35
+    inner_radius: 0.17
+    points: 5
+    fill_color: "{star}"
+    stroke_color: "#DAA520"
+    stroke_width: 1
+    z_index: 1
+
+  # Hanger cap
+  - type: rectangle
+    x: 0.3
+    y: 0.75
+    width: 0.2
+    height: 0.05
+    fill_color: "{hanger}"
+    z_index: 2
+
+  # Hanger string
+  - type: line
+    start_x: 0.4
+    start_y: 0.8
+    end_x: 0.4
+    end_y: 1.0
+    stroke_color: "{hanger}"
+    stroke_width: 2
+    z_index: 2

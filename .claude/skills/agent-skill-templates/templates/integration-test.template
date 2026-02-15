@@ -1,0 +1,39 @@
+// tests/integration/[module-name].integration.test.js
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { setupTestDatabase, teardownTestDatabase } from '@/tests/helpers/db'
+import request from 'supertest'
+import app from '@/app'
+
+describe('[Feature] Integration Tests', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  describe('[HTTP_METHOD] /[endpoint]', () => {
+    it('should return [status] with [expected data] when [condition]', async () => {
+      // Arrange
+      const [requestData] = {
+        // Request payload
+      }
+
+      // Act
+      const response = await request(app)
+        .[method]('/[endpoint]')
+        .send([requestData])
+
+      // Assert
+      expect(response.status).toBe([expectedStatus])
+      expect(response.body).toMatchObject({
+        // Expected response shape
+      })
+    })
+
+    it('should return [error status] when [error condition]', async () => {
+      // Test error scenarios
+    })
+  })
+})

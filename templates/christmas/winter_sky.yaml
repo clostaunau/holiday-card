@@ -1,0 +1,244 @@
+# T097: Winter Sky Template - Linear Gradients Example
+# Demonstrates linear gradient fills for atmospheric effects
+
+id: christmas-winter-sky
+name: "Winter Sky"
+occasion: christmas
+fold_type: half_fold
+description: "Serene Christmas card with gradient winter sky and snowscape"
+default_theme_id: christmas-winter-blue
+
+panels:
+  # Front panel - Winter landscape with gradient sky
+  - id: front
+    position: front
+    x: 4.25
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 1.0
+      b: 1.0
+
+    shape_elements:
+      # Sky - Linear gradient from light blue to deep twilight
+      - type: rectangle
+        x: 0.0
+        y: 2.5
+        width: 4.25
+        height: 3.0
+        fill:
+          type: linear_gradient
+          angle: 90  # Bottom to top
+          stops:
+            - position: 0.0
+              color: "#E8F4F8"  # Light blue at horizon
+            - position: 0.4
+              color: "#B8D4E8"  # Sky blue
+            - position: 0.7
+              color: "#6B9AC4"  # Deeper blue
+            - position: 1.0
+              color: "#2C5F8D"  # Twilight blue at top
+        z_index: 1
+
+      # Snowy ground - Subtle gradient for depth
+      - type: rectangle
+        x: 0.0
+        y: 0.5
+        width: 4.25
+        height: 2.0
+        fill:
+          type: linear_gradient
+          angle: 90
+          stops:
+            - position: 0.0
+              color: "#D4E5F7"  # Light snow shadow
+            - position: 0.5
+              color: "#F0F8FF"  # Bright white
+            - position: 1.0
+              color: "#E8F4F8"  # Soft blue-white
+        z_index: 2
+
+      # Distant hills - Gradient for atmospheric perspective
+      - type: triangle
+        x1: 0.0
+        y1: 2.5
+        x2: 1.5
+        y2: 3.5
+        x3: 3.0
+        y3: 2.5
+        fill:
+          type: linear_gradient
+          angle: 45
+          stops:
+            - position: 0.0
+              color: "#C8D9E8"
+            - position: 1.0
+              color: "#A4C2D8"
+        opacity: 0.7
+        z_index: 3
+
+      - type: triangle
+        x1: 2.0
+        y1: 2.5
+        x2: 3.2
+        y2: 3.8
+        x3: 4.25
+        y3: 2.5
+        fill:
+          type: linear_gradient
+          angle: 135
+          stops:
+            - position: 0.0
+              color: "#B8CEDE"
+            - position: 1.0
+              color: "#95B3C8"
+        opacity: 0.6
+        z_index: 3
+
+      # Pine trees - Simple triangles with subtle gradients
+      - type: triangle
+        x1: 0.8
+        y1: 2.5
+        x2: 0.5
+        y2: 1.2
+        x3: 1.1
+        y3: 1.2
+        fill_color: "#2D5016"
+        opacity: 0.8
+        z_index: 4
+
+      - type: triangle
+        x1: 1.8
+        y1: 2.5
+        x2: 1.4
+        y2: 0.8
+        x3: 2.2
+        y3: 0.8
+        fill_color: "#2D5016"
+        opacity: 0.85
+        z_index: 4
+
+      - type: triangle
+        x1: 3.2
+        y1: 2.5
+        x2: 2.9
+        y2: 1.5
+        x3: 3.5
+        y3: 1.5
+        fill_color: "#2D5016"
+        opacity: 0.75
+        z_index: 4
+
+      # Snowflakes - Simple stars
+      - type: star
+        center_x: 1.2
+        center_y: 4.8
+        outer_radius: 0.08
+        inner_radius: 0.04
+        points: 6
+        fill_color: "#FFFFFF"
+        opacity: 0.9
+        z_index: 10
+
+      - type: star
+        center_x: 2.5
+        center_y: 4.3
+        outer_radius: 0.06
+        inner_radius: 0.03
+        points: 6
+        fill_color: "#FFFFFF"
+        opacity: 0.85
+        z_index: 10
+
+      - type: star
+        center_x: 3.5
+        center_y: 5.0
+        outer_radius: 0.07
+        inner_radius: 0.035
+        points: 6
+        fill_color: "#FFFFFF"
+        opacity: 0.8
+        z_index: 10
+
+      - type: star
+        center_x: 0.6
+        center_y: 3.8
+        outer_radius: 0.05
+        inner_radius: 0.025
+        points: 6
+        fill_color: "#FFFFFF"
+        opacity: 0.75
+        z_index: 10
+
+    text_elements:
+      - id: greeting
+        content: "Peace on Earth"
+        x: 2.125
+        y: 0.3
+        width: 3.5
+        font_size: 24
+        font_style: bold
+        alignment: center
+        overflow_strategy: shrink
+        min_font_size: 14
+        color:
+          r: 0.17
+          g: 0.37
+          b: 0.55
+        z_index: 100
+
+  # Inside left
+  - id: inside_left
+    position: inside_left
+    x: 0.0
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180
+    background_color:
+      r: 0.98
+      g: 0.98
+      b: 1.0
+
+    text_elements:
+      - id: message
+        content: "May this season bring you tranquility and warmth."
+        x: 0.5
+        y: 4.0
+        width: 3.25
+        font_size: 12
+        alignment: left
+        overflow_strategy: wrap
+        max_lines: 10
+        color:
+          r: 0.2
+          g: 0.2
+          b: 0.3
+        z_index: 100
+
+  # Inside right
+  - id: inside_right
+    position: inside_right
+    x: 4.25
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180
+    background_color:
+      r: 0.98
+      g: 0.98
+      b: 1.0
+
+  # Back panel
+  - id: back
+    position: back
+    x: 0.0
+    y: 0.0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.98
+      g: 0.98
+      b: 1.0

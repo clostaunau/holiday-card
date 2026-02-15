@@ -1,0 +1,85 @@
+# Birthday Balloons Card Template
+# A fun half-fold card with space for a photo
+
+id: "birthday-balloons"
+name: "Birthday Balloons"
+occasion: "birthday"
+fold_type: "half_fold"
+default_theme_id: "birthday-pastel"
+description: "Fun birthday card with colorful design and image zone"
+
+panels:
+  # Front panel (bottom right when unfolded)
+  - id: "front"
+    position: "front"
+    x: 4.25  # Right half of page
+    y: 0     # Bottom half
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.95
+      g: 0.9
+      b: 0.98
+    text_elements:
+      - id: "greeting"
+        content: "Happy Birthday!"
+        x: 2.125  # Center of panel
+        y: 4.5    # Near top
+        font_family: "Helvetica"
+        font_size: 32
+        font_style: "bold"
+        alignment: "center"
+        color:
+          r: 0.6
+          g: 0.2
+          b: 0.8
+    # Image zone for user photos (positioned in lower area)
+    image_elements: []
+
+  # Back panel (bottom left when unfolded)
+  - id: "back"
+    position: "back"
+    x: 0
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 1.0
+      b: 1.0
+
+  # Inside left panel (top left when unfolded)
+  - id: "inside_left"
+    position: "inside_left"
+    x: 0
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 1.0
+      b: 1.0
+
+  # Inside right panel (top right when unfolded)
+  - id: "inside_right"
+    position: "inside_right"
+    x: 4.25
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 1.0
+      b: 1.0
+    text_elements:
+      - id: "message"
+        content: "Wishing you a wonderful day filled with joy!"
+        x: 0.5
+        y: 3.0
+        width: 3.25
+        font_family: "Helvetica"
+        font_size: 14
+        color:
+          r: 0.3
+          g: 0.3
+          b: 0.3

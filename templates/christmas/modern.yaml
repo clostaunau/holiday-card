@@ -1,0 +1,90 @@
+# Modern Christmas Card Template
+# A contemporary quarter-fold card with clean design
+
+id: "christmas-modern"
+name: "Modern Christmas"
+occasion: "christmas"
+fold_type: "quarter_fold"
+default_theme_id: "christmas-gold"
+description: "Contemporary Christmas card with elegant gold accents"
+
+panels:
+  # Front panel (bottom right quadrant when unfolded)
+  - id: "front"
+    position: "front"
+    x: 4.25  # Right half of page
+    y: 0     # Bottom half
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.1
+      g: 0.2
+      b: 0.15
+    text_elements:
+      - id: "greeting"
+        content: "Season's Greetings"
+        x: 2.125  # Center of panel
+        y: 2.75   # Middle of panel
+        width: 3.75  # Leave 0.25" margin on each side
+        font_family: "Helvetica"
+        font_size: 28
+        font_style: "bold"
+        alignment: "center"
+        overflow_strategy: "shrink"
+        min_font_size: 10
+        color:
+          r: 1.0
+          g: 0.84
+          b: 0.0
+
+  # Back panel (bottom left quadrant when unfolded) - rotated 180
+  - id: "back"
+    position: "back"
+    x: 0
+    y: 0
+    width: 4.25
+    height: 5.5
+    rotation: 180
+    background_color:
+      r: 1.0
+      g: 1.0
+      b: 1.0
+
+  # Inside left panel (top left when unfolded) - rotated 180
+  - id: "inside_left"
+    position: "inside_left"
+    x: 0
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180
+    background_color:
+      r: 0.98
+      g: 0.98
+      b: 0.96
+
+  # Inside right panel (top right when unfolded)
+  - id: "inside_right"
+    position: "inside_right"
+    x: 4.25
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.98
+      g: 0.98
+      b: 0.96
+    text_elements:
+      - id: "message"
+        content: "Wishing you peace and joy this holiday season"
+        x: 0.5
+        y: 4.0
+        width: 3.25
+        font_family: "Helvetica"
+        font_size: 12
+        overflow_strategy: "wrap"
+        max_lines: 10
+        color:
+          r: 0.2
+          g: 0.2
+          b: 0.2

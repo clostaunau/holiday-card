@@ -1,0 +1,160 @@
+id: decorative-all-test
+name: "All Decorative Elements Test"
+occasion: generic
+fold_type: half_fold
+description: "Test template showcasing all 10 decorative elements"
+
+panels:
+  - position: front
+    x: 0.0
+    y: 5.5
+    width: 8.5
+    height: 5.5
+    background_color:
+      r: 0.98
+      g: 0.98
+      b: 0.95
+
+    shape_elements:
+      # Row 1: Christmas decorative elements
+      - type: decorative_element
+        name: geometric_tree
+        x: 0.3
+        y: 2.5
+        scale: 0.5
+        z_index: 1
+
+      - type: decorative_element
+        name: traditional_tree
+        x: 2.0
+        y: 2.2
+        scale: 0.4
+        z_index: 1
+
+      - type: decorative_element
+        name: ornament_bauble
+        x: 3.5
+        y: 3.5
+        scale: 0.6
+        z_index: 1
+
+      - type: decorative_element
+        name: ornament_star
+        x: 4.5
+        y: 3.5
+        scale: 0.6
+        z_index: 1
+
+      - type: decorative_element
+        name: star_topper
+        x: 5.5
+        y: 3.8
+        scale: 0.5
+        z_index: 1
+
+      # Row 2: More Christmas and generic elements
+      - type: decorative_element
+        name: gift_box
+        x: 0.5
+        y: 1.0
+        scale: 0.5
+        z_index: 1
+
+      - type: decorative_element
+        name: wreath
+        x: 1.8
+        y: 0.8
+        scale: 0.5
+        z_index: 1
+
+      - type: decorative_element
+        name: snowflake
+        x: 3.5
+        y: 1.3
+        scale: 0.6
+        z_index: 1
+
+      # Row 3: Hanukkah elements
+      - type: decorative_element
+        name: menorah
+        x: 4.5
+        y: 0.5
+        scale: 0.5
+        z_index: 1
+
+      - type: decorative_element
+        name: dreidel
+        x: 7.2
+        y: 1.0
+        scale: 0.6
+        z_index: 1
+
+    text_elements:
+      # Title
+      - content: "Decorative Elements Library"
+        x: 4.25
+        y: 0.3
+        font_size: 16
+        font_style: bold
+        alignment: center
+        z_index: 100
+
+      # Labels
+      - content: "Christmas Trees"
+        x: 1.2
+        y: 4.8
+        font_size: 8
+        alignment: center
+        z_index: 100
+
+      - content: "Ornaments"
+        x: 4.0
+        y: 4.8
+        font_size: 8
+        alignment: center
+        z_index: 100
+
+      - content: "Star"
+        x: 5.8
+        y: 4.8
+        font_size: 8
+        alignment: center
+        z_index: 100
+
+      - content: "Gift & Wreath"
+        x: 1.2
+        y: 2.3
+        font_size: 8
+        alignment: center
+        z_index: 100
+
+      - content: "Snowflake"
+        x: 3.8
+        y: 2.3
+        font_size: 8
+        alignment: center
+        z_index: 100
+
+      - content: "Hanukkah"
+        x: 6.5
+        y: 2.3
+        font_size: 8
+        alignment: center
+        z_index: 100
+
+  - position: back
+    x: 0.0
+    y: 0.0
+    width: 8.5
+    height: 5.5
+    background_color:
+      r: 0.95
+      g: 0.95
+      b: 0.95
+
+    text_elements:
+      - content: "Decorative Elements Test - Back Panel"
+        x: 4.25
+        y: 2.75
+        font_size: 14
+        alignment: center

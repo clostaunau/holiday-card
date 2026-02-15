@@ -1,0 +1,134 @@
+{
+  // Devcontainer configuration for Holiday Card Creator
+  // This configuration provides:
+  // - Python 3.12 development environment
+  // - Graphics and PDF libraries (Pillow, reportlab, svglib, etc.)
+  // - Advanced Python tooling (uv, SpecKit, Claude CLI)
+  // - VS Code extensions for Python development and image/PDF preview
+  // - Port forwarding for potential web preview server
+  //
+  // To use: Open this repository in VS Code with Dev Containers extension
+  // or use GitHub Codespaces
+
+  "name": "Holiday Card Creator - Python Graphics Development",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  // Run setup script after container is created
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // Python language support
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter",
+        "ms-python.isort",
+        "charliermarsh.ruff",
+        "ms-python.debugpy",
+
+        // Jupyter notebook support (useful for iterative design work)
+        "ms-toolsai.jupyter",
+
+        // Image and PDF preview extensions
+        "tomoki1207.pdf",
+
+        // File format support
+        "tamasfe.even-better-toml",
+        "redhat.vscode-yaml",
+
+        // Git integration
+        "eamodio.gitlens",
+
+        // Optional but recommended
+        "github.copilot",
+
+        // Color picker for design work
+        "anseki.vscode-color",
+
+        // Markdown preview for documentation
+        "yzhang.markdown-all-in-one"
+      ],
+      "settings": {
+        // Python interpreter settings
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.linting.enabled": true,
+        "python.linting.pylintEnabled": false,
+        "python.formatting.provider": "none",
+        "python.analysis.typeCheckingMode": "basic",
+        "python.analysis.autoImportCompletions": true,
+        "python.analysis.inlayHints.functionReturnTypes": true,
+        "python.analysis.inlayHints.variableTypes": true,
+
+        // Python formatting and linting
+        "[python]": {
+          "editor.defaultFormatter": "ms-python.black-formatter",
+          "editor.formatOnSave": true,
+          "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+          }
+        },
+        "isort.args": ["--profile", "black"],
+
+        // Terminal settings
+        "terminal.integrated.defaultProfile.linux": "bash",
+
+        // File explorer cleanup
+        "files.exclude": {
+          "**/__pycache__": true,
+          "**/*.pyc": true,
+          "**/.pytest_cache": true,
+          "**/.ruff_cache": true,
+          "**/.mypy_cache": true
+        },
+
+        // Image preview settings
+        "workbench.editorAssociations": {
+          "*.png": "default",
+          "*.jpg": "default",
+          "*.jpeg": "default",
+          "*.pdf": "default"
+        },
+
+        // Editor settings for better color visibility in code
+        "editor.colorDecorators": true,
+        "editor.bracketPairColorization.enabled": true
+      }
+    }
+  },
+
+  // Port forwarding for potential web preview server
+  "forwardPorts": [8000, 8080, 5000],
+  "portsAttributes": {
+    "8000": {
+      "label": "Card Preview Server",
+      "onAutoForward": "notify"
+    },
+    "8080": {
+      "label": "HTTP Server",
+      "onAutoForward": "silent"
+    },
+    "5000": {
+      "label": "Flask Dev Server",
+      "onAutoForward": "notify"
+    }
+  },
+
+  // Development environment variables
+  "containerEnv": {
+    "PYTHONUNBUFFERED": "1",
+    "PYTHONDONTWRITEBYTECODE": "1"
+  },
+
+  "remoteUser": "vscode",
+
+  // Mount SSH keys for Git operations
+  "mounts": [
+    "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,readonly,type=bind,consistency=cached"
+  ]
+}

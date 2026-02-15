@@ -1,0 +1,63 @@
+name: gift_box
+description: "Gift box with ribbon and bow"
+default_width: 1.0
+default_height: 1.2
+
+color_roles:
+  box: "#B85C50"           # Burgundy box
+  ribbon: "#D4AF37"        # Gold ribbon
+  bow: "#FFD700"           # Bright gold bow
+
+shapes:
+  # Box body (rectangle)
+  - type: rectangle
+    x: 0.1
+    y: 0.0
+    width: 0.8
+    height: 0.7
+    fill_color: "{box}"
+    z_index: 1
+
+  # Vertical ribbon
+  - type: rectangle
+    x: 0.45
+    y: 0.0
+    width: 0.1
+    height: 0.7
+    fill_color: "{ribbon}"
+    z_index: 2
+
+  # Horizontal ribbon
+  - type: rectangle
+    x: 0.1
+    y: 0.3
+    width: 0.8
+    height: 0.1
+    fill_color: "{ribbon}"
+    z_index: 2
+
+  # Bow center (circle)
+  - type: circle
+    center_x: 0.5
+    center_y: 0.85
+    radius: 0.1
+    fill_color: "{bow}"
+    z_index: 3
+
+  # Bow left loop (circle)
+  - type: circle
+    center_x: 0.3
+    center_y: 0.95
+    radius: 0.15
+    fill_color: "{bow}"
+    opacity: 0.8
+    z_index: 3
+
+  # Bow right loop (circle)
+  - type: circle
+    center_x: 0.7
+    center_y: 0.95
+    radius: 0.15
+    fill_color: "{bow}"
+    opacity: 0.8
+    z_index: 3

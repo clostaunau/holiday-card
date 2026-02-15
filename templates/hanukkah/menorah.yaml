@@ -1,0 +1,83 @@
+# Hanukkah Menorah Card Template
+# A traditional half-fold card with blue and white colors
+
+id: "hanukkah-menorah"
+name: "Hanukkah Menorah"
+occasion: "hanukkah"
+fold_type: "half_fold"
+default_theme_id: "hanukkah-blue-white"
+description: "Traditional Hanukkah card with menorah-inspired design"
+
+panels:
+  # Front panel (bottom right when unfolded)
+  - id: "front"
+    position: "front"
+    x: 4.25
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.0
+      g: 0.3
+      b: 0.6
+    text_elements:
+      - id: "greeting"
+        content: "Happy Hanukkah!"
+        x: 2.125
+        y: 2.75
+        font_family: "Helvetica"
+        font_size: 32
+        font_style: "bold"
+        alignment: "center"
+        color:
+          r: 1.0
+          g: 1.0
+          b: 1.0
+
+  # Back panel (bottom left when unfolded)
+  - id: "back"
+    position: "back"
+    x: 0
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 1.0
+      b: 1.0
+
+  # Inside left panel
+  - id: "inside_left"
+    position: "inside_left"
+    x: 0
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.98
+      g: 0.98
+      b: 1.0
+
+  # Inside right panel
+  - id: "inside_right"
+    position: "inside_right"
+    x: 4.25
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.98
+      g: 0.98
+      b: 1.0
+    text_elements:
+      - id: "message"
+        content: "May your Festival of Lights be filled with joy!"
+        x: 0.5
+        y: 3.0
+        width: 3.25
+        font_family: "Helvetica"
+        font_size: 14
+        color:
+          r: 0.1
+          g: 0.2
+          b: 0.4
