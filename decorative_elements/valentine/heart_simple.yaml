@@ -1,0 +1,45 @@
+name: heart_simple
+description: "Simple heart shape built from two circles and a triangle"
+default_width: 2.0
+default_height: 2.0
+
+color_roles:
+  heart_fill: "#DC143C"
+  heart_outline: "#8B0000"
+
+shapes:
+  # Left circle (upper left of heart)
+  - type: circle
+    center_x: 0.5
+    center_y: 1.4
+    radius: 0.5
+    fill_color: "{heart_fill}"
+    z_index: 2
+
+  # Right circle (upper right of heart)
+  - type: circle
+    center_x: 1.5
+    center_y: 1.4
+    radius: 0.5
+    fill_color: "{heart_fill}"
+    z_index: 2
+
+  # Bottom triangle (forms the point)
+  - type: triangle
+    x1: 0.0
+    y1: 1.2
+    x2: 2.0
+    y2: 1.2
+    x3: 1.0
+    y3: 0.0
+    fill_color: "{heart_fill}"
+    z_index: 1
+
+  # Overlap rectangle to blend circles and triangle
+  - type: rectangle
+    x: 0.25
+    y: 0.9
+    width: 1.5
+    height: 0.7
+    fill_color: "{heart_fill}"
+    z_index: 3

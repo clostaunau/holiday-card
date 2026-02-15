@@ -1,0 +1,129 @@
+id: valentine-cupid
+name: "Cupid's Arrow"
+occasion: valentine
+fold_type: half_fold
+description: "Playful Valentine's card with Cupid's arrow and love birds"
+default_theme_id: valentine-blush
+
+panels:
+  - id: front
+    position: front
+    x: 4.25
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.99
+      g: 0.94
+      b: 0.94
+
+    shape_elements:
+      # Central arrow-heart composition
+      - type: decorative_element
+        name: arrow_heart
+        x: 0.625
+        y: 1.5
+        scale: 1.0
+        color_palette:
+          heart_fill: "#DC143C"
+          arrow_shaft: "#8B4513"
+          arrow_tip: "#C0C0C0"
+          arrow_feather: "#FFE4E1"
+        z_index: 5
+
+      # Love birds at bottom
+      - type: decorative_element
+        name: love_birds
+        x: 0.625
+        y: 3.5
+        scale: 0.6
+        color_palette:
+          bird_left: "#DC143C"
+          bird_right: "#B86E78"
+          heart_accent: "#FFB6C1"
+          beak: "#D4AF37"
+        z_index: 3
+
+      # Subtle background dots
+      - type: circle
+        center_x: 0.4
+        center_y: 0.5
+        radius: 0.06
+        fill_color: "#FFB6C1"
+        opacity: 0.3
+        z_index: 1
+      - type: circle
+        center_x: 3.8
+        center_y: 4.9
+        radius: 0.06
+        fill_color: "#FFB6C1"
+        opacity: 0.3
+        z_index: 1
+
+    text_elements:
+      - id: greeting
+        content: "Be My Valentine!"
+        x: 2.125
+        y: 0.5
+        width: 3.75
+        font_size: 26
+        font_style: bold
+        alignment: center
+        overflow_strategy: shrink
+        min_font_size: 14
+        color:
+          r: 0.5
+          g: 0.0
+          b: 0.13
+        z_index: 100
+
+  - id: inside_left
+    position: inside_left
+    x: 0.0
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180
+    background_color:
+      r: 0.99
+      g: 0.94
+      b: 0.94
+
+    text_elements:
+      - id: message
+        content: "Every love story is beautiful, but ours is my favorite."
+        x: 0.5
+        y: 4.0
+        width: 3.25
+        font_size: 13
+        alignment: center
+        overflow_strategy: wrap
+        max_lines: 8
+        color:
+          r: 0.35
+          g: 0.15
+          b: 0.2
+        z_index: 100
+
+  - id: inside_right
+    position: inside_right
+    x: 4.25
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180
+    background_color:
+      r: 0.99
+      g: 0.94
+      b: 0.94
+
+  - id: back
+    position: back
+    x: 0.0
+    y: 0.0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.99
+      g: 0.94
+      b: 0.94

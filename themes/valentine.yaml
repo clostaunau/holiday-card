@@ -1,0 +1,76 @@
+# Valentine's Day Color Themes
+themes:
+  - id: "valentine-classic"
+    name: "Classic Romance"
+    occasion: "valentine"
+    description: "Traditional Valentine's reds and pinks"
+    primary:
+      r: 0.86
+      g: 0.08
+      b: 0.24    # Crimson (#DC143C)
+    secondary:
+      r: 1.0
+      g: 0.71
+      b: 0.76    # Light pink (#FFB6C1)
+    background:
+      r: 1.0
+      g: 0.96
+      b: 0.97    # Lavender blush (#FFF5F6)
+    text:
+      r: 0.3
+      g: 0.1
+      b: 0.15
+    accent:
+      r: 0.78
+      g: 0.08
+      b: 0.52    # Deep pink accent
+
+  - id: "valentine-blush"
+    name: "Soft Blush"
+    occasion: "valentine"
+    description: "Gentle blush and rose gold tones"
+    primary:
+      r: 0.87
+      g: 0.56
+      b: 0.58    # Old rose (#DE8F94)
+    secondary:
+      r: 0.72
+      g: 0.43
+      b: 0.47    # Dusty rose (#B86E78)
+    background:
+      r: 0.99
+      g: 0.94
+      b: 0.94    # Misty rose
+    text:
+      r: 0.35
+      g: 0.15
+      b: 0.2
+    accent:
+      r: 0.72
+      g: 0.53
+      b: 0.04    # Rose gold
+
+  - id: "valentine-burgundy"
+    name: "Elegant Burgundy"
+    occasion: "valentine"
+    description: "Rich burgundy and gold for a sophisticated look"
+    primary:
+      r: 0.5
+      g: 0.0
+      b: 0.13    # Burgundy (#800020)
+    secondary:
+      r: 0.83
+      g: 0.69
+      b: 0.22    # Dark gold (#D4AF37)
+    background:
+      r: 1.0
+      g: 0.98
+      b: 0.96    # Warm cream
+    text:
+      r: 0.25
+      g: 0.1
+      b: 0.12
+    accent:
+      r: 0.72
+      g: 0.15
+      b: 0.33
