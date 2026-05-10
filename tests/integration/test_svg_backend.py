@@ -122,3 +122,40 @@ def test_svg_fold_line_is_dashed(tmp_path: Path) -> None:
     assert any(
         line.get("stroke-dasharray") == "3 3" for line in lines
     ), "Expected at least one dashed line (the fold guide)"
+
+
+def test_svg_rotated_panel_uses_pivot_rotate_transform(tmp_path: Path) -> None:
+    """christmas-geometric (and -modern, -artist) have a back panel rotated
+    180° around its center. The IR's ``Transform`` represents this as a
+    pivot-rotate idiom (``translate(pivot) rotate(-θ) translate(-pivot)``
+    in SVG coords). The previous SVG backend emitted a wrong transform
+    that produced "valid" SVG but with the rotated content in the wrong
+    place — this test catches that class of bug.
+
+    Pairs with ``test_png_rotated_panel_renders_at_expected_position``
+    in the PNG suite, which catches the same bug at the pixel level.
+    """
+    out = tmp_path / "rotated.svg"
+    _render_svg("christmas-geometric", out)
+    root = ET.parse(out).getroot()
+    groups = root.findall(f".//{{{_SVG_NS}}}g")
+    transforms = [g.get("transform", "") for g in groups]
+    rotated = [t for t in transforms if "rotate" in t]
+    assert rotated, (
+        "christmas-geometric should produce at least one rotated group; "
+        "the back panel of a half-fold card rotates 180°."
+    )
+    # The IR pivot-rotate idiom emits a translate, then a rotate, then an
+    # untranslate (a translate by the negated pivot). Verify the chain.
+    for t in rotated:
+        # Cheap structural check: presence of 'translate', 'rotate', 'translate'
+        # in that order means we're using pivot-rotate semantics, not just
+        # `translate(...) rotate(...)` which would put content in the wrong place.
+        first_translate = t.find("translate")
+        rotate_pos = t.find("rotate", first_translate)
+        second_translate = t.find("translate", rotate_pos)
+        assert first_translate < rotate_pos < second_translate, (
+            f"Group transform {t!r} is missing the second translate of the "
+            f"pivot-rotate idiom (translate pivot; rotate; translate -pivot). "
+            f"Without it, rotated content lands in the wrong place."
+        )

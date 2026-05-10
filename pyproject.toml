@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "holiday-card"
-version = "1.0.0"
+version = "1.1.0"
 description = "CLI application for creating printable holiday greeting cards"
 readme = "README.md"
 license = "MIT"

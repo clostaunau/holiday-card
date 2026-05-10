@@ -61,9 +61,16 @@ def apply_blur(image: Image.Image, radius: float) -> Image.Image:
 
 def apply_vignette(image: Image.Image, intensity: float) -> Image.Image:
     """Apply vignette darkening at edges."""
-    width, height = image.size
-    result = image.copy()
+    # Force RGB so per-pixel access returns a 3-tuple (Pillow's load()
+    # return type varies by mode; this normalizes the contract).
+    result = image.convert("RGB")
+    width, height = result.size
     pixels = result.load()
+    if pixels is None:
+        # Pillow returns None on certain image modes that don't support
+        # direct pixel access; convert("RGB") above guarantees this
+        # branch is unreachable, but keep the guard for safety.
+        return result
 
     cx, cy = width / 2, height / 2
     max_dist = math.sqrt(cx ** 2 + cy ** 2)
@@ -73,7 +80,7 @@ def apply_vignette(image: Image.Image, intensity: float) -> Image.Image:
             dist = math.sqrt((x_pos - cx) ** 2 + (y_pos - cy) ** 2)
             factor = 1.0 - (dist / max_dist) * intensity
             factor = max(0.0, factor)
-            r, g, b = pixels[x_pos, y_pos][:3]
+            r, g, b = pixels[x_pos, y_pos]  # type: ignore[misc]
             pixels[x_pos, y_pos] = (
                 int(r * factor),
                 int(g * factor),

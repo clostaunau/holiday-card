@@ -449,11 +449,26 @@ def _parse_shape_element(
                 z_index=data.get("z_index", 0),
             )
         elif shape_type == "line":
+            # Line templates accept either start_x/end_x or x1/x2 naming.
+            sx = data.get("start_x", data.get("x1"))
+            sy = data.get("start_y", data.get("y1"))
+            ex = data.get("end_x", data.get("x2"))
+            ey = data.get("end_y", data.get("y2"))
+            missing = [
+                name
+                for name, value in (("start_x", sx), ("start_y", sy), ("end_x", ex), ("end_y", ey))
+                if value is None
+            ]
+            if missing:
+                raise TemplateLoadError(
+                    f"Line shape is missing required coordinate(s): {', '.join(missing)}"
+                )
+            assert sx is not None and sy is not None and ex is not None and ey is not None
             return Line(
-                start_x=data.get("start_x", data.get("x1")),
-                start_y=data.get("start_y", data.get("y1")),
-                end_x=data.get("end_x", data.get("x2")),
-                end_y=data.get("end_y", data.get("y2")),
+                start_x=float(sx),
+                start_y=float(sy),
+                end_x=float(ex),
+                end_y=float(ey),
                 stroke_color=data.get("stroke_color", "#000000"),
                 stroke_width=data.get("stroke_width", 1),
                 opacity=data.get("opacity", 1.0),

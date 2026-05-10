@@ -73,7 +73,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, PrivateAttr, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, ValidationInfo, field_validator
 
 
 class Color(BaseModel):
@@ -445,7 +445,7 @@ class StarClipMask(BaseModel):
 
     @field_validator("inner_radius")
     @classmethod
-    def validate_inner_smaller_than_outer(cls, v: float, info) -> float:
+    def validate_inner_smaller_than_outer(cls, v: float, info: ValidationInfo) -> float:
         """Ensure inner radius is smaller than outer radius."""
         if "outer_radius" in info.data and v >= info.data["outer_radius"]:
             raise ValueError(f"inner_radius ({v}) must be less than outer_radius ({info.data['outer_radius']})")
@@ -674,7 +674,7 @@ class Star(BaseShape):
 
     @field_validator("inner_radius")
     @classmethod
-    def validate_inner_smaller_than_outer(cls, v: float, info) -> float:
+    def validate_inner_smaller_than_outer(cls, v: float, info: ValidationInfo) -> float:
         """Ensure inner radius is smaller than outer radius."""
         if "outer_radius" in info.data and v >= info.data["outer_radius"]:
             raise ValueError(f"inner_radius ({v}) must be less than outer_radius ({info.data['outer_radius']})")
