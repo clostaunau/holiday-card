@@ -227,5 +227,40 @@ template editing; a CMYK PDF wrapper for pro-press output; a JSON
   shipped (see Valentine deprecation).
 - **001-holiday-card-generator** (specs/): Original spec.
 
+## Strategic context — read before adding major features
+
+Two industry-panel reviews live in `docs/industry-review/`. Read the
+relevant consensus document **before** proposing or implementing a
+new feature, a new template direction, or a new strategic pivot —
+the panel has already weighed in on most of the obvious moves.
+
+- `docs/industry-review/README.md` — overview, what these are, and
+  the 6 personas
+- `docs/industry-review/consensus-general.md` — overall project
+  critique + 5 leapfrog moves the panel jointly endorsed (Q3 2026
+  → `--export-for moo-a6`; Q4 → curated taste layer; etc.)
+- `docs/industry-review/consensus-ai-feature.md` — verdict on
+  proposed OpenAI image generation feature (TL;DR: not now; Q1 2027,
+  in a much narrower form, after the prior leapfrogs land)
+- `docs/industry-review/critiques/` — 12 individual persona
+  critiques (6 general + 6 AI-feature) with per-persona depth
+
+**Key strategic decisions the panel has already informed:**
+
+- **Audience: stay Tyler-first** (engineer-using-the-CLI). Sandy
+  (the DIY-crafter persona) is well-served by Canva/Cricut. Don't
+  pivot to a Canva-clone.
+- **Sequencing: leapfrogs before features.** Bleed/CMYK, illustrator
+  commission, and sentiment library all come BEFORE AI imagery, web
+  preview, or new occasion expansion at the current quality bar.
+- **Hard rails on AI imagery:** sympathy / bereavement / religious
+  iconography / photo-card slots / recognizable likenesses default
+  to refuse with `--i-know-what-im-doing` override.
+
+If you want to evaluate a new feature proposal not covered above,
+spin up a fresh panel — the prompts are reproducible. Ask: "spin up
+the industry panel to evaluate [proposal]" and the workflow will
+fire 6 critic agents + a synthesis moderator.
+
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->
