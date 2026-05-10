@@ -242,26 +242,6 @@ class TestAssertBalanced:
             assert_balanced([object()])
 
 
-# ---------------------------------------------------------------------------
-# No production callers — guard against accidental coupling
-# ---------------------------------------------------------------------------
-
-
-def test_render_ir_is_not_imported_by_production_code() -> None:
-    """Step 1 of the migration is purely additive. If a future PR starts
-    importing render_ir from production code, this test reminds the author
-    to update the migration plan and remove this guard.
-    """
-    from pathlib import Path
-
-    src = Path(__file__).resolve().parent.parent.parent / "src" / "holiday_card"
-    importers: list[str] = []
-    for py_file in src.rglob("*.py"):
-        if py_file.name == "render_ir.py":
-            continue
-        if "render_ir" in py_file.read_text():
-            importers.append(str(py_file.relative_to(src)))
-    assert not importers, (
-        f"render_ir is imported by production code: {importers}. "
-        "If this is intentional (Step 2+ of the migration), delete this test."
-    )
+# The "no production callers" guard from Step 1 has been removed: Step 2b
+# (core/compiler.py) is the first production caller of render_ir, which is
+# the moment the guard told future authors to retire it.

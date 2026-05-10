@@ -1,0 +1,241 @@
+[
+  {
+    "cmd": "begin_page",
+    "height": 792.0,
+    "width": 612.0
+  },
+  {
+    "cmd": "set_metadata",
+    "key": "template_id",
+    "value": "generic-celebration"
+  },
+  {
+    "cmd": "set_metadata",
+    "key": "fold_type",
+    "value": "half_fold"
+  },
+  {
+    "cmd": "set_metadata",
+    "key": "theme_id",
+    "value": "generic-celebration"
+  },
+  {
+    "cmd": "begin_group",
+    "opacity": 1.0,
+    "transform": {
+      "rotate_deg": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "translate_x": 0.0,
+      "translate_y": 0.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.2,
+        "g": 0.5,
+        "r": 0.85
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 396.0,
+      "kind": "rect",
+      "width": 306.0,
+      "x": 306.0,
+      "y": 0.0
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_text",
+    "opacity": 1.0,
+    "run": {
+      "align": "center",
+      "color": {
+        "a": 1.0,
+        "b": 1.0,
+        "g": 1.0,
+        "r": 1.0
+      },
+      "font_id": "Helvetica",
+      "origin": {
+        "x": 459.0,
+        "y": 198.0
+      },
+      "size_pt": 30.0,
+      "text": "Congratulations!"
+    }
+  },
+  {
+    "cmd": "end_group"
+  },
+  {
+    "cmd": "begin_group",
+    "opacity": 1.0,
+    "transform": {
+      "rotate_deg": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "translate_x": 0.0,
+      "translate_y": 0.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 1.0,
+        "g": 1.0,
+        "r": 1.0
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 396.0,
+      "kind": "rect",
+      "width": 306.0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "end_group"
+  },
+  {
+    "cmd": "begin_group",
+    "opacity": 1.0,
+    "transform": {
+      "rotate_deg": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "translate_x": 0.0,
+      "translate_y": 0.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.97,
+        "g": 0.99,
+        "r": 1.0
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 396.0,
+      "kind": "rect",
+      "width": 306.0,
+      "x": 0.0,
+      "y": 396.0
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "end_group"
+  },
+  {
+    "cmd": "begin_group",
+    "opacity": 1.0,
+    "transform": {
+      "rotate_deg": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "translate_x": 0.0,
+      "translate_y": 0.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.97,
+        "g": 0.99,
+        "r": 1.0
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 396.0,
+      "kind": "rect",
+      "width": 306.0,
+      "x": 306.0,
+      "y": 396.0
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_text",
+    "opacity": 1.0,
+    "run": {
+      "align": "left",
+      "color": {
+        "a": 1.0,
+        "b": 0.2,
+        "g": 0.25,
+        "r": 0.3
+      },
+      "font_id": "Helvetica",
+      "origin": {
+        "x": 342.0,
+        "y": 612.0
+      },
+      "size_pt": 14.0,
+      "text": "Wishing you all the best on this"
+    }
+  },
+  {
+    "cmd": "draw_text",
+    "opacity": 1.0,
+    "run": {
+      "align": "left",
+      "color": {
+        "a": 1.0,
+        "b": 0.2,
+        "g": 0.25,
+        "r": 0.3
+      },
+      "font_id": "Helvetica",
+      "origin": {
+        "x": 342.0,
+        "y": 595.2
+      },
+      "size_pt": 14.0,
+      "text": "special occasion!"
+    }
+  },
+  {
+    "cmd": "end_group"
+  },
+  {
+    "cmd": "draw_fold_line",
+    "end": {
+      "x": 612.0,
+      "y": 396.0
+    },
+    "start": {
+      "x": 0.0,
+      "y": 396.0
+    },
+    "style": "dashed"
+  },
+  {
+    "cmd": "end_page"
+  }
+]
