@@ -27,11 +27,6 @@ jobs:
   type-check:
     name: Type-check (mypy)
     runs-on: ubuntu-latest
-    # TODO: drop continue-on-error after the Wave 2 RenderCommand IR refactor
-    # eliminates the panel-element type-narrowing issues. ~29 errors remain
-    # (mostly missing annotations + `Panel.position: str` vs PanelPosition
-    # enum drift). Job runs and reports failures so they stay visible.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -69,8 +64,7 @@ jobs:
   smoke:
     name: Smoke (entry point + render)
     runs-on: ubuntu-latest
-    # type-check intentionally not in `needs:` while it has known errors
-    needs: [lint, test]
+    needs: [lint, type-check, test]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

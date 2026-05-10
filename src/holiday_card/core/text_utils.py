@@ -159,8 +159,8 @@ def wrap_text(
         List of wrapped lines.
     """
     words = content.split()
-    lines = []
-    current_line = []
+    lines: list[str] = []
+    current_line: list[str] = []
 
     for word in words:
         # Try adding this word to current line
