@@ -1,0 +1,133 @@
+# Mother's Day card — soft pink, half-fold
+# Front: greeting with rose accents. Inside-right: handwritten-style message.
+
+id: "mothers-day"
+name: "Mother's Day"
+occasion: "generic"
+fold_type: "half_fold"
+default_theme_id: "generic-celebration"
+description: "Soft floral Mother's Day card in deep rose on pink"
+
+panels:
+  # Front panel (right half, bottom — visible when folded)
+  - id: "front"
+    position: "front"
+    x: 4.25
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.98
+      g: 0.86
+      b: 0.88   # soft pink
+    shape_elements:
+      # Decorative rose-tone circles in three corners
+      - type: circle
+        center_x: 0.6
+        center_y: 4.9
+        radius: 0.25
+        fill_color: "#E89BA6"
+        opacity: 0.5
+        z_index: 1
+      - type: circle
+        center_x: 0.5
+        center_y: 0.5
+        radius: 0.18
+        fill_color: "#D87C8A"
+        opacity: 0.6
+        z_index: 1
+      - type: circle
+        center_x: 3.65
+        center_y: 0.6
+        radius: 0.30
+        fill_color: "#E89BA6"
+        opacity: 0.5
+        z_index: 1
+      # Subtle accent line under the greeting
+      - type: rectangle
+        x: 1.2
+        y: 2.4
+        width: 1.85
+        height: 0.02
+        fill_color: "#D87C8A"
+        opacity: 0.7
+        z_index: 1
+    text_elements:
+      - id: "greeting"
+        content: "Happy Mother's Day"
+        x: 2.125
+        y: 3.0
+        width: 3.75
+        font_family: "Times-Roman"
+        font_size: 30
+        font_style: "italic"
+        alignment: "center"
+        overflow_strategy: "shrink"
+        color:
+          r: 0.55
+          g: 0.20
+          b: 0.30
+      - id: "subtitle"
+        content: "with love"
+        x: 2.125
+        y: 2.15
+        width: 3.5
+        font_family: "Times-Roman"
+        font_size: 16
+        font_style: "italic"
+        alignment: "center"
+        color:
+          r: 0.55
+          g: 0.20
+          b: 0.30
+
+  # Back panel (left half, bottom — typically blank)
+  - id: "back"
+    position: "back"
+    x: 0
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 1.0
+      b: 1.0
+
+  # Inside-left panel (left half, top — blank by default)
+  - id: "inside_left"
+    position: "inside_left"
+    x: 0
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 0.98
+      b: 0.98
+
+  # Inside-right panel (right half, top — where the personal message goes)
+  - id: "inside_right"
+    position: "inside_right"
+    x: 4.25
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 0.98
+      b: 0.98
+    text_elements:
+      - id: "message"
+        content: "Thank you for everything, Mom."
+        x: 0.5
+        y: 9.0
+        width: 3.25
+        font_family: "Times-Roman"
+        font_size: 16
+        font_style: "italic"
+        alignment: "left"
+        overflow_strategy: "wrap"
+        color:
+          r: 0.55
+          g: 0.20
+          b: 0.30

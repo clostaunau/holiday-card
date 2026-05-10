@@ -59,6 +59,7 @@ SUPPORTED_SNAPSHOT_TEMPLATES = (
     "birthday-balloons",
     "hanukkah-menorah",
     "generic-celebration",
+    "mothers-day",
 )
 
 # Templates expected to raise UnsupportedFeatureError. Empty after the
