@@ -46,7 +46,7 @@ class TestTemplatesCommand:
         # Each shipped occasion directory contributes templates that should
         # show up in the default table view.
         assert "christmas" in result.stdout
-        assert "valentine" in result.stdout
+        assert "birthday" in result.stdout
 
     def test_templates_json_format_is_valid_json_with_templates_key(
         self, runner: CliRunner
@@ -66,12 +66,12 @@ class TestTemplatesCommand:
         self, runner: CliRunner
     ) -> None:
         result = runner.invoke(
-            app, ["templates", "--occasion", "valentine", "--format", "json"]
+            app, ["templates", "--occasion", "christmas", "--format", "json"]
         )
         assert result.exit_code == 0
         payload = json.loads(result.stdout)
         assert len(payload["templates"]) > 0
-        assert all(t["occasion"] == "valentine" for t in payload["templates"])
+        assert all(t["occasion"] == "christmas" for t in payload["templates"])
 
     def test_templates_unknown_occasion_exits_zero_with_no_results(
         self, runner: CliRunner
@@ -96,12 +96,12 @@ class TestThemesCommand:
         self, runner: CliRunner
     ) -> None:
         result = runner.invoke(
-            app, ["themes", "--occasion", "valentine", "--format", "json"]
+            app, ["themes", "--occasion", "christmas", "--format", "json"]
         )
         assert result.exit_code == 0
         payload = json.loads(result.stdout)
         assert len(payload["themes"]) > 0
-        assert all(t["occasion"] == "valentine" for t in payload["themes"])
+        assert all(t["occasion"] == "christmas" for t in payload["themes"])
 
 
 # ---------------------------------------------------------------------------
@@ -123,17 +123,17 @@ class TestCreateCommand:
         # Real PDF starts with the %PDF magic number.
         assert out.read_bytes()[:4] == b"%PDF"
 
-    def test_create_valentine_hearts_writes_a_pdf(
+    def test_create_birthday_balloons_writes_a_pdf(
         self, runner: CliRunner, tmp_path: Path
     ) -> None:
-        out = tmp_path / "valentine.pdf"
+        out = tmp_path / "birthday.pdf"
         result = runner.invoke(
             app,
             [
                 "create",
-                "valentine-hearts",
-                "-m", "Be Mine!",
-                "--inside-message", "You make my heart smile",
+                "birthday-balloons",
+                "-m", "Happy Birthday!",
+                "--inside-message", "Hope your day is amazing",
                 "-o", str(out),
             ],
         )

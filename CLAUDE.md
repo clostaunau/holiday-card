@@ -1,11 +1,14 @@
 # holiday-card Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-02-14 (Valentine's Day Release!)
+Last updated: 2026-05-10. Wave 2 architecture refactor in progress; see
+the "Architecture (Wave 2)" section below for the IR seam.
 
 ## Active Technologies
-- Python 3.11+ + ReportLab 4.0+ (PDF generation with path/gradient support, TTF/OTF font embedding), Pillow 10.0+ (image processing for masks and effects), Pydantic 2.0+ (model validation), Typer 0.9+, PyYAML 6.0+
-- Filesystem - YAML templates with valentine occasion, image effects, photo frames, custom fonts
-- Valentine's Day 2026 Release: Added valentine occasion, heart clipping, image effects, photo frames, custom font support
+- Python 3.11+
+- ReportLab 4.0+ (PDF generation with path/gradient support, TTF/OTF font embedding)
+- Pillow 10.0+ (image processing for masks and effects)
+- Pydantic 2.0+ (model validation, including the RenderCommand IR)
+- Typer 0.9+, PyYAML 6.0+
 
 ## Project Structure
 
@@ -13,70 +16,38 @@ Auto-generated from all feature plans. Last updated: 2026-02-14 (Valentine's Day
 src/
   holiday_card/
     core/
-      models.py           # Pydantic models (Card, Template, Panel, shapes)
-      generators.py       # Card generation logic
-      templates.py        # Template loading/management
+      models.py           # Pydantic domain models (Card, Template, Panel, shapes)
+      generators.py       # Card generation orchestration
+      templates.py        # YAML template loading/discovery
       themes.py           # Theme definitions
-      decorative.py       # Decorative element library (NEW)
-      text_utils.py       # Text rendering utilities
+      text_utils.py       # Text measurement primitives
+      text_fitting.py     # Overflow strategies (extracted Wave 2 Step 2a)
+      render_ir.py        # RenderCommand IR — backend-neutral seam (Wave 2 Step 1)
+      compiler.py         # Card → list[RenderCommand] (Wave 2 Step 2b)
     renderers/
-      base.py             # Renderer protocol
-      reportlab_renderer.py  # ReportLab PDF renderer (with custom fonts)
-      shape_renderer.py   # Vector shape rendering
-      clipping_renderer.py  # Clipping masks (including heart)
-      image_effects.py    # Image effects (NEW: sepia, grayscale, vignette, blur)
-      preview_renderer.py # Preview image generation
+      base.py             # Legacy renderer protocol (slated for replacement)
+      reportlab_renderer.py  # Legacy ReportLab renderer (default today)
+      reportlab_backend.py   # IR-driven ReportLab renderer (Wave 2 Step 3)
+      shape_renderer.py   # Legacy vector shape rendering
+      clipping_renderer.py  # Clipping masks
+      image_effects.py    # Pillow effects (sepia, grayscale, vignette, blur)
+      preview_renderer.py # PNG preview generation
     cli/
       commands.py         # Typer CLI commands
     utils/
-      measurements.py     # Unit conversions
+      measurements.py     # inch ↔ point conversions
       validators.py       # Input validation
 tests/
-  unit/                   # Unit tests
-  integration/            # Integration tests
-  visual/                 # Visual regression tests
-  fixtures/
-    templates/            # Test templates
-    reference_cards/      # Reference PDFs for visual regression
+  unit/                   # Unit tests (incl. test_render_ir, test_compiler, test_cli)
+  integration/            # Integration tests (incl. test_ir_parity)
+  visual/                 # Reserved for visual regression (no tests yet)
 templates/                # Card template YAML files
-  christmas/
-    classic.yaml
-    modern.yaml
-    geometric.yaml
-  hanukkah/
-  birthday/
-  generic/
-  valentine/              # NEW: Valentine's Day templates
-    hearts.yaml           # Classic hearts design
-    cupid.yaml            # Cupid's arrow theme
-    elegant.yaml          # Elegant burgundy & gold
-decorative_elements/      # Pre-built decorative element library
-  christmas/
-    geometric_tree.yaml
-    traditional_tree.yaml
-    ornament_bauble.yaml
-    ornament_star.yaml
-    star_topper.yaml
-    wreath.yaml
-    snowflake.yaml
-  generic/
-    gift_box.yaml
-  hanukkah/
-    menorah.yaml
-    dreidel.yaml
-  valentine/              # NEW: Valentine's decorative elements
-    heart_simple.yaml     # Geometric heart
-    heart_outline.yaml    # SVG path heart outline
-    arrow_heart.yaml      # Cupid's arrow through heart
-    love_birds.yaml       # Two birds with heart
-themes/                   # Color theme definitions
-  christmas.yaml
-  hanukkah.yaml
-  birthday.yaml
-  generic.yaml
-  valentine.yaml          # NEW: 3 Valentine's themes
-fonts/                    # NEW: Custom font directory
-  # Place TTF/OTF fonts here for custom typography
+  christmas/              # 11 templates (classic, modern, geometric, ...)
+  hanukkah/               # 1 template
+  birthday/               # 1 template
+  generic/                # 1 template
+themes/                   # Color theme definitions (christmas, hanukkah, birthday, generic)
+fonts/                    # Custom TTF/OTF fonts (drop here, reference by font_file)
 ```
 
 ## Commands
@@ -117,58 +88,27 @@ Python 3.11+: Follow standard conventions
 - Measurements in inches (converted to points at render time)
 
 ## Recent Changes
-- **2026-02-14 Valentine's Day Release (v2.0.0)**:
-  - Added VALENTINE occasion type with 3 templates and 3 themes
-  - Added heart-shaped photo clipping masks
-  - Added image effects (grayscale, sepia, vignette, blur)
-  - Added photo frame styles (simple, rounded, shadow, polaroid)
-  - Added custom font support (TTF/OTF embedding)
-  - Created 4 Valentine's decorative elements (hearts, cupid arrow, love birds)
 
-- 004-vector-graphics-enhancement: Added Python 3.11+ + ReportLab 4.0+ (PDF generation with path/gradient support), Pillow 10.0+ (image processing for masks), Pydantic 2.0+ (model validation)
-- 003-vector-graphics-and-decorative-elements: Added vector graphics support with 5 shape types (Rectangle, Circle, Triangle, Star, Line), z-index layering, opacity/rotation/stroke styling, and decorative element library with 10 pre-built compositions
-- 001-holiday-card-generator: Added Python 3.11+ + ReportLab 4.0+, Pillow 10.0+, Typer 0.9+, PyYAML 6.0+, Pydantic 2.0+
+- **Wave 2 architecture refactor (in progress, 2026-05)**: Introduced a
+  backend-neutral `RenderCommand` IR sitting between `Card` and the
+  renderer. New `core/render_ir.py`, `core/compiler.py`,
+  `renderers/reportlab_backend.py`. `core/text_fitting.py` extracted
+  from the legacy renderer. The legacy `ReportLabRenderer` is still the
+  default code path; cutover is the next PR.
+- **Wave 1 DevEx audit (2026-05)**: Real CI on every push (lint + matrix
+  test + smoke + build); `requirements.txt` deleted (10 phantom deps);
+  pre-commit + ruff format config; 22 B904 exception-chain bugs and 10
+  null-deref defects fixed. CLI surface (556 LOC, was 0% covered) now at
+  ~58% via `tests/unit/test_cli.py` using `typer.testing.CliRunner`.
+- **Valentine deprecation (2026-05)**: The 2026-02 Valentine release
+  (`valentine` occasion + 3 templates + decorative-element library +
+  `HeartClipMask`) was removed when Wave 2 made decorative-element
+  expansion non-trivial to port. The dead code (decorative.py,
+  HeartClipMask, etc.) will be cleaned up in the Wave 2 Step 5 PR.
 
 ## Features
 
-### Valentine's Day Support (2026-02-14 Release)
-
-**Occasion Type**: `valentine`
-
-**Themes** (in `themes/valentine.yaml`):
-- `valentine-classic`: Traditional reds and pinks (Crimson #DC143C)
-- `valentine-blush`: Soft blush and rose gold tones (Old Rose #DE8F94)
-- `valentine-burgundy`: Rich burgundy and gold (Burgundy #800020)
-
-**Templates**:
-- `valentine-hearts`: Romantic cascading hearts design
-- `valentine-cupid`: Playful Cupid's arrow with love birds
-- `valentine-elegant`: Sophisticated burgundy and gold with minimalist border
-
-**Decorative Elements**:
-- `heart_simple`: Geometric heart (circles + triangle composition)
-- `heart_outline`: SVG path heart with clean curves
-- `arrow_heart`: Cupid's arrow piercing through heart
-- `love_birds`: Two birds facing each other with heart accent
-
-**Usage**:
-```bash
-# List Valentine's templates
-python -m holiday_card templates --occasion valentine
-
-# Create Valentine's card
-python -m holiday_card create valentine-hearts \
-  -m "Be Mine!" \
-  --inside-message "You make my heart smile" \
-  -o valentine.pdf
-```
-
-### Enhanced Photo Features (2026-02-14 Release)
-
-**Heart-Shaped Clipping**:
-- New `HeartClipMask` type for heart-shaped photo clipping
-- Uses cubic Bezier curves for smooth, professional results
-- Adjustable center position and size
+### Image Features
 
 **Image Effects**:
 - `grayscale`: Convert to black & white
@@ -191,10 +131,10 @@ image_elements:
     width: 2.5
     height: 2.5
     clip_mask:
-      type: heart          # Heart-shaped clipping!
+      type: circle
       center_x: 1.25
       center_y: 1.25
-      size: 2.5
+      radius: 1.25
     effects:
       sepia: true
       vignette: 0.4
@@ -204,7 +144,7 @@ image_elements:
 ```
 
 **Supported Clip Mask Types**:
-- `circle`, `rectangle`, `ellipse`, `star`, `svg_path`, `heart` (NEW!)
+- `circle`, `rectangle`, `ellipse`, `star`, `svg_path`
 
 ### Custom Font Support (2026-02-14 Release)
 
@@ -259,18 +199,18 @@ Download from [Google Fonts](https://fonts.google.com/) and place in `fonts/` di
 - `rotation`: 0-360 degrees
 - `z_index`: Layering order (higher = on top)
 
-**Decorative Elements**:
-Pre-built compositions of basic shapes. Available elements:
-- Christmas: geometric_tree, traditional_tree, ornament_bauble, ornament_star, star_topper, wreath, snowflake
-- Generic: gift_box
-- Hanukkah: menorah, dreidel
+**Decorative Elements** (deprecated; not supported by the Wave 2 compiler):
+Pre-built shape compositions used to live in `decorative_elements/`. The
+library was removed during the Wave 2 IR migration; the Python loader
+(`core/decorative.py`) and the `DecorativeElement` model remain only
+because the legacy renderer still references them, and will be deleted
+in the Wave 2 Step 5 PR.
 
 **Usage in Templates**:
 ```yaml
 panels:
   - position: front
     shape_elements:
-      # Basic shape
       - type: rectangle
         x: 1.0
         y: 2.0
@@ -279,27 +219,13 @@ panels:
         fill_color: "#A8B5A0"
         opacity: 0.8
         z_index: 1
-
-      # Decorative element
-      - type: decorative_element
-        name: geometric_tree
-        x: 4.25
-        y: 2.0
-        scale: 1.0
-        rotation: 0
-        color_palette:
-          tree_primary: "#A8B5A0"
-          tree_accent: "#B85C50"
-          ornament: "#D4AF37"
-          star: "#FFD700"
 ```
 
 **Key Files**:
 - `src/holiday_card/core/models.py`: Shape model definitions
-- `src/holiday_card/renderers/shape_renderer.py`: Shape rendering logic
-- `src/holiday_card/core/decorative.py`: Decorative element library
-- `decorative_elements/`: YAML definitions for decorative elements
-- `specs/003-vector-graphics-and/`: Complete feature specification
+- `src/holiday_card/renderers/shape_renderer.py`: Legacy shape rendering
+- `src/holiday_card/core/compiler.py`: IR-based shape compilation (Wave 2)
+- `specs/003-vector-graphics-and/`: Original feature specification
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->

@@ -85,11 +85,15 @@ jobs:
       - name: render one template per occasion
         run: |
           mkdir -p out
-          holiday-card create christmas-classic   -o out/christmas.pdf
-          holiday-card create valentine-hearts    -o out/valentine.pdf
+          holiday-card create christmas-classic    -o out/christmas.pdf
+          holiday-card create birthday-balloons    -o out/birthday.pdf
+          holiday-card create hanukkah-menorah     -o out/hanukkah.pdf
+          holiday-card create generic-celebration  -o out/generic.pdf
           ls -la out/
           test -s out/christmas.pdf
-          test -s out/valentine.pdf
+          test -s out/birthday.pdf
+          test -s out/hanukkah.pdf
+          test -s out/generic.pdf
 
   build:
     name: Build sdist + wheel
