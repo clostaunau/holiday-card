@@ -11,6 +11,13 @@ from pathlib import Path
 import typer
 
 from holiday_card import __version__
+from holiday_card.core.export_targets import (
+    REGISTRY as EXPORT_TARGET_REGISTRY,
+)
+from holiday_card.core.export_targets import (
+    ExportTargetNotFoundError,
+    get_target,
+)
 from holiday_card.core.generators import CardGenerator
 from holiday_card.core.models import FoldType, ImageElement
 from holiday_card.core.templates import (
@@ -210,6 +217,16 @@ def create(
         "--format",
         help="Output format: 'pdf', 'svg', or 'auto' (infers from --output extension).",
     ),
+    export_for: str = typer.Option(
+        "letter",
+        "--export-for",
+        help=(
+            "Print target preset. 'letter' (default) emits a single "
+            "imposed sheet; 'per-panel-pdf' and 'moo-a6' emit one file "
+            "per panel into a directory. See README for the full "
+            "registry."
+        ),
+    ),
 ) -> None:
     """Create a new card from a template.
 
@@ -220,11 +237,23 @@ def create(
         holiday-card create christmas-classic --message "Happy Holidays!" --output ./cards/holiday.pdf
 
         holiday-card create christmas-classic --format svg --output ./cards/holiday.svg
+
+        holiday-card create christmas-classic --export-for moo-a6 --output ./moo-card/
     """
     try:
         if debug_emit_ir:
             _emit_ir_debug(template, message, theme, fold_type, inside_message)
             return
+
+        # Resolve the export target up-front; bad target = early exit.
+        try:
+            target = get_target(export_for)
+        except ExportTargetNotFoundError as e:
+            typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
+            typer.echo("\nAvailable --export-for targets:", err=True)
+            for name in sorted(EXPORT_TARGET_REGISTRY):
+                typer.echo(f"  {name}: {EXPORT_TARGET_REGISTRY[name].description}", err=True)
+            raise typer.Exit(2) from e
 
         # Resolve output format and extension
         chosen_format = _resolve_output_format(output_format, output)
@@ -235,10 +264,17 @@ def create(
             output_dir = Path("output")
             output_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-            output = output_dir / f"{template}-{timestamp}{ext}"
+            if target.layout == "per-panel":
+                # Per-panel mode writes a directory of files; the timestamp
+                # becomes the directory name.
+                output = output_dir / f"{template}-{timestamp}"
+            else:
+                output = output_dir / f"{template}-{timestamp}{ext}"
 
-        # Ensure output has the expected extension
-        if not str(output).lower().endswith(ext):
+        # Single-file mode: ensure the path has the expected extension.
+        # Per-panel mode: path is a directory; extension is appended per
+        # panel filename inside _generate_per_panel.
+        if target.layout == "imposition" and not str(output).lower().endswith(ext):
             output = Path(f"{output}{ext}")
 
         generator = CardGenerator(renderer=_make_renderer(chosen_format))
@@ -292,21 +328,27 @@ def create(
                 )
 
         # Generate the card
-        card, pdf_path = generator.create_and_generate(
+        card = generator.create_card(
             template_id=template,
-            output_path=output,
             message=message,
+            output_path=output,
+            theme_id=theme,
             fold_type=fold_type_enum,
             images=image_elements if image_elements else None,
-            theme_id=theme,
             inside_message=inside_message,
         )
+        written = generator.generate(card, output, target)
 
         # Success output
-        typer.secho(f"Card created: {pdf_path}", fg=typer.colors.GREEN)
+        if target.layout == "per-panel":
+            typer.secho(f"Card created ({len(written)} files): {output}", fg=typer.colors.GREEN)
+            for path in written:
+                typer.echo(f"  - {path.name}")
+        else:
+            typer.secho(f"Card created: {written[0]}", fg=typer.colors.GREEN)
         typer.echo(f"  Template: {template}")
         typer.echo(f"  Fold: {card.fold_type.value}")
-        typer.echo("  Size: 8.5\" x 11\"")
+        typer.echo(f"  Target: {target.name} ({target.layout})")
         if message:
             msg_preview = message[:50] + "..." if len(message) > 50 else message
             typer.echo(f"  Message: {msg_preview}")
