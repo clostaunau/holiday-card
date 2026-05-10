@@ -61,17 +61,11 @@ SUPPORTED_SNAPSHOT_TEMPLATES = (
     "generic-celebration",
 )
 
-# Templates that currently raise UnsupportedFeatureError. Acts as a
-# watch-dog: if a follow-up PR makes one of these work, this test will
-# fail and force the author to either move it to SUPPORTED_SNAPSHOT_TEMPLATES
-# (and regenerate the snapshot) or remove it from this list. All three
-# fail today on DecorativeElement expansion, which is the next compiler
-# follow-up.
-SUPPORTED_REJECTING_TEMPLATES = (
-    "valentine-hearts",
-    "valentine-cupid",
-    "valentine-elegant",
-)
+# Templates expected to raise UnsupportedFeatureError. Empty after the
+# valentine/decorative-element removal — every shipped template now
+# compiles via the IR. Kept as a hook so a future feature with partial
+# coverage can re-enable the watch-dog without restructuring the test.
+SUPPORTED_REJECTING_TEMPLATES: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------
