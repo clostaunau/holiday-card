@@ -1,5 +1,6 @@
 """Integration tests for full card generation workflow."""
 
+import re
 import tempfile
 from pathlib import Path
 
@@ -139,6 +140,67 @@ class TestTemplateDiscovery:
         assert "name" in template
         assert "occasion" in template
         assert "fold_type" in template
+
+
+class TestBleedInPDF:
+    """The PDF must declare distinct MediaBox / TrimBox / BleedBox / ArtBox
+    so downstream POD preflight tools accept the file. Until this PR
+    landed they were all equal — the panel critique flagged this and
+    every POD service rejects unbroken-box PDFs.
+    """
+
+    def test_pdf_declares_distinct_boxes(self, tmp_path: Path) -> None:
+        """Render christmas-classic with the default 0.125\" bleed and
+        confirm the PDF byte-stream contains distinct /MediaBox,
+        /TrimBox, /BleedBox declarations with the expected dimensions.
+        """
+        out = tmp_path / "boxes.pdf"
+        CardGenerator().create_and_generate(
+            template_id="christmas-classic", output_path=out,
+        )
+        pdf_bytes = out.read_bytes()
+
+        # ReportLab serializes box arrays as e.g. "/TrimBox [9 9 621 801]".
+        # Numbers may have a trailing decimal in some ReportLab versions.
+        def find_box(name: bytes) -> tuple[float, float, float, float]:
+            match = re.search(
+                rb"/" + name + rb"\s*\[\s*([\d.\-]+)\s+([\d.\-]+)\s+([\d.\-]+)\s+([\d.\-]+)\s*\]",
+                pdf_bytes,
+            )
+            assert match, f"PDF does not declare /{name.decode()}"
+            return tuple(float(g) for g in match.groups())  # type: ignore[return-value]
+
+        # MediaBox = letter + 9pt bleed on every side = 630 x 810
+        media = find_box(b"MediaBox")
+        assert media == (0.0, 0.0, 630.0, 810.0)
+        # TrimBox sits inside MediaBox at (bleed, bleed) → top-right (621, 801)
+        trim = find_box(b"TrimBox")
+        assert trim == (9.0, 9.0, 621.0, 801.0)
+        # BleedBox equals MediaBox until a slug area is added
+        bleed = find_box(b"BleedBox")
+        assert bleed == media
+        # ArtBox is the safe area inside trim
+        art = find_box(b"ArtBox")
+        assert art == (27.0, 27.0, 603.0, 783.0)
+
+    def test_media_and_trim_differ_for_bleed_aware_pdf(self, tmp_path: Path) -> None:
+        """Regression watchdog for the previous defect: until this PR,
+        every box equaled MediaBox. After the change, MediaBox != TrimBox.
+        """
+        out = tmp_path / "regress.pdf"
+        CardGenerator().create_and_generate(
+            template_id="christmas-classic", output_path=out,
+        )
+        pdf_bytes = out.read_bytes()
+        # The exact serialized form of MediaBox should NOT also appear as
+        # the entire content of TrimBox.
+        media_match = re.search(rb"/MediaBox\s*\[\s*([^\]]+)\s*\]", pdf_bytes)
+        trim_match = re.search(rb"/TrimBox\s*\[\s*([^\]]+)\s*\]", pdf_bytes)
+        assert media_match and trim_match
+        assert media_match.group(1).strip() != trim_match.group(1).strip(), (
+            "MediaBox and TrimBox have identical contents — the bleed "
+            "extension did not propagate to the PDF box declarations."
+        )
 
 
 class TestThemeDiscovery:

@@ -21,7 +21,7 @@ pip install -e ".[dev]"            # one source of truth: pyproject.toml
 holiday-card create christmas-classic -m "Merry Christmas!"     # writes a PDF
 holiday-card create christmas-classic --format svg              # writes an SVG
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-pytest                              # all 324 tests, mypy-clean, ruff-clean
+pytest                              # all 378 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -134,8 +134,11 @@ holiday-card create christmas-classic --debug-emit-ir   # print compiled IR as J
 
 The compiler supports backgrounds, borders, basic shapes (Rectangle,
 Circle, Triangle, Star, Line) with **solid fills only**, text with
-left/center/right alignment, fold lines, and identity or rotation-only
-group transforms. **7 of the 11 templates currently compile cleanly:**
+left/center/right alignment, fold lines, identity or rotation-only
+group transforms, and **bleed extension** on edges that touch the
+page trim (default 0.125", set per Card via `card.bleed` or per
+Panel via `panel.bleed`). **7 of the 11 templates currently compile
+cleanly:**
 
 ```
 christmas-classic     christmas-geometric    christmas-modern
@@ -212,6 +215,12 @@ template editing; a CMYK PDF wrapper for pro-press output; a JSON
 
 ## Recent changes
 
+- **2026-05-10 — Bleed support + `PageGeometry` abstraction**: Backgrounds
+  now extend past the trim edge by 0.125" (industry default) on edges that
+  touch the page trim. `Card.bleed` and `Panel.bleed` configure it; the
+  PDF declares distinct `MediaBox` / `TrimBox` / `BleedBox` / `ArtBox`;
+  SVG `viewBox` and PNG canvas grow to include the bleed band. Lays the
+  rails for `--export-for moo-a6` (Leapfrog 1) without shipping it yet.
 - **2026-05-10 — Wave 2 complete + v1.1.0 release**: IR seam
   (PRs #4-#10), three rendering backends (PRs #7/#11/#12), working
   `preview` command (PR #12), version bump + zero mypy errors + strict

@@ -88,6 +88,7 @@ class CardGenerator:
             template_id=template.id,
             fold_type=fold_type or template.fold_type,
             theme_id=theme_id or template.default_theme_id,
+            bleed=template.bleed,
             panels=self._copy_panels(template.panels),
             output_path=output_path,
         )

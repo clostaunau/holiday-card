@@ -52,12 +52,15 @@ def test_png_renders_valid_image(template_id: str, tmp_path: Path) -> None:
 def test_png_dimensions_match_letter_at_chosen_dpi(
     template_id: str, tmp_path: Path
 ) -> None:
-    """Letter is 8.5" × 11" → at 72 DPI that's 612 × 792 pixels."""
+    """Letter trim is 8.5" × 11"; with the default 0.125" bleed the
+    media canvas is 8.75" × 11.25" → 630 × 810 pixels at 72 DPI.
+    """
     out = tmp_path / f"{template_id}.png"
     _render_png(template_id, out, dpi=72)
     img = Image.open(out)
-    assert img.size == (612, 792), (
-        f"{template_id} PNG should be 612x792 at 72 DPI, got {img.size}"
+    assert img.size == (630, 810), (
+        f"{template_id} PNG should be 630x810 (letter + 0.125\" bleed) "
+        f"at 72 DPI, got {img.size}"
     )
 
 
@@ -75,16 +78,39 @@ def test_png_higher_dpi_produces_proportionally_larger_image(tmp_path: Path) -> 
 def test_png_christmas_classic_has_red_pixel_in_front_panel(tmp_path: Path) -> None:
     """christmas-classic has a red front panel background. Sample a pixel
     from the front-panel area and confirm the red channel dominates.
+
+    The 0.125" bleed shifts every IR coord by +9 pixels at 72 DPI, so
+    the canvas is 630x810 (not 612x792). We sample (400, 700) — well
+    inside the front-panel red flood and clear of the centered greeting
+    text glyphs.
     """
     out = tmp_path / "christmas.png"
     _render_png("christmas-classic", out, dpi=72)
     img = Image.open(out).convert("RGB")
-    # Front panel is the right half of the page (x: 4.25"-8.5", y: 0-5.5").
-    # In Pillow pixel coords (top-left origin, 72 DPI), that's around
-    # (450, 600) — well within the panel and well away from any text.
-    r, g, b = img.getpixel((450, 600))
+    r, g, b = img.getpixel((400, 700))
     assert r > 150, f"Expected red-dominant pixel; got rgb=({r},{g},{b})"
     assert r > g and r > b, f"Expected red-dominant pixel; got rgb=({r},{g},{b})"
+
+
+def test_png_canvas_includes_bleed_pixels_on_every_side(tmp_path: Path) -> None:
+    """The PNG canvas grows by ``2 * bleed_px`` on each axis; we expect
+    the bleed border to be filled by the panel's background-color flood
+    where the panel touches a page-trim edge. Sample a pixel in the
+    bleed band right next to the trim corner — for christmas-classic's
+    front panel (red bg, touches right + bottom of page), the
+    bottom-right bleed strip should be red.
+    """
+    out = tmp_path / "bleed_band.png"
+    _render_png("christmas-classic", out, dpi=72)
+    img = Image.open(out).convert("RGB")
+    # Canvas is 630 x 810 (letter trim 612x792 + 9pt bleed each side).
+    # The bottom-right bleed strip (x: 621..629, y: 801..809) sits past
+    # the trim edge of the front panel. Sample inside that strip.
+    r, g, b = img.getpixel((625, 805))
+    assert r > 150 and r > g and r > b, (
+        "Bottom-right bleed strip should be red (front panel's bg flood "
+        f"extending past trim); got rgb=({r},{g},{b})."
+    )
 
 
 def test_png_renderer_rejects_invalid_dpi() -> None:
