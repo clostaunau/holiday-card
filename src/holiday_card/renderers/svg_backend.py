@@ -176,13 +176,54 @@ class SVGRenderer:
 
     def _begin_group(self, cmd: BeginGroup) -> None:
         attrib: dict[str, str] = {}
-        transform = _format_transform(cmd.transform)
+        transform = self._format_transform(cmd.transform)
         if transform:
             attrib["transform"] = transform
         if cmd.opacity != 1.0:
             attrib["opacity"] = _fmt(cmd.opacity)
         g = ET.SubElement(self._stack[-1], "g", attrib=attrib)
         self._stack.append(g)
+
+    def _format_transform(self, t: Transform) -> str:
+        """Build the SVG ``transform`` value matching the IR's pivot-rotate
+        semantics.
+
+        The IR's ``Transform`` represents "rotate ``rotate_deg`` around
+        the pivot ``(translate_x, translate_y)`` in IR coords, with
+        optional uniform scale" — the same idiom the legacy renderer
+        used (``translate; rotate; untranslate``). We emit the SVG
+        equivalent in SVG coordinate space (top-left origin), converting
+        the pivot via ``y_svg = page_height - y_ir`` and negating the
+        rotation to compensate for SVG's y-down direction.
+
+        Returns the empty string for identity transforms so the caller
+        can omit the attribute.
+        """
+        is_identity = (
+            t.translate_x == 0 and t.translate_y == 0
+            and t.rotate_deg == 0
+            and t.scale_x == 1.0 and t.scale_y == 1.0
+        )
+        if is_identity:
+            return ""
+        parts: list[str] = []
+        pivot_x_svg = t.translate_x
+        pivot_y_svg = self._page_height - t.translate_y
+        if t.translate_x != 0 or t.translate_y != 0:
+            parts.append(
+                f"translate({_fmt(pivot_x_svg)} {_fmt(pivot_y_svg)})"
+            )
+        if t.rotate_deg != 0:
+            # SVG positive rotation is CW in screen-space; the IR uses
+            # math convention (CCW positive). Negate.
+            parts.append(f"rotate({_fmt(-t.rotate_deg)})")
+        if t.scale_x != 1.0 or t.scale_y != 1.0:
+            parts.append(f"scale({_fmt(t.scale_x)} {_fmt(t.scale_y)})")
+        if t.translate_x != 0 or t.translate_y != 0:
+            parts.append(
+                f"translate({_fmt(-pivot_x_svg)} {_fmt(-pivot_y_svg)})"
+            )
+        return " ".join(parts)
 
     def _end_group(self) -> None:
         if len(self._stack) <= 1:
@@ -429,22 +470,3 @@ def _apply_paint_and_stroke(
         attrib["opacity"] = _fmt(opacity)
 
 
-def _format_transform(t: Transform) -> str:
-    """Build an SVG ``transform`` attribute value from an IR ``Transform``.
-
-    Returns the empty string if the transform is identity (so the caller
-    can omit the attribute).
-
-    The IR's transform semantics (translate → rotate → scale around the
-    transform origin) translate to SVG as a single
-    ``translate(x y) rotate(θ) scale(sx sy)`` chain. Rotation direction
-    flips because SVG y grows downward, so we negate ``rotate_deg``.
-    """
-    parts: list[str] = []
-    if t.translate_x != 0 or t.translate_y != 0:
-        parts.append(f"translate({_fmt(t.translate_x)} {_fmt(-t.translate_y)})")
-    if t.rotate_deg != 0:
-        parts.append(f"rotate({_fmt(-t.rotate_deg)})")
-    if t.scale_x != 1.0 or t.scale_y != 1.0:
-        parts.append(f"scale({_fmt(t.scale_x)} {_fmt(t.scale_y)})")
-    return " ".join(parts)
