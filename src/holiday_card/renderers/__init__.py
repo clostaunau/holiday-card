@@ -1,5 +1,10 @@
-"""Renderer implementations for card output generation."""
+"""Renderer implementations for card output generation.
 
-from holiday_card.renderers.base import Renderer
+After Wave 2 Step 5 there is one production renderer:
+``IRReportLabRenderer``, which consumes a ``RenderCommand`` stream
+produced by ``holiday_card.core.compiler.compile_card``.
+"""
 
-__all__ = ["Renderer"]
+from holiday_card.renderers.reportlab_backend import IRReportLabRenderer
+
+__all__ = ["IRReportLabRenderer"]
