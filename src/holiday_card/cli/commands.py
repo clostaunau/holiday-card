@@ -203,6 +203,12 @@ def create(
         hidden=True,
         help="(Wave 2 dev flag) Compile to RenderCommand IR and print as JSON; skip PDF output.",
     ),
+    legacy_renderer: bool = typer.Option(
+        False,
+        "--legacy-renderer",
+        help="(Deprecated escape hatch) Use the pre-Wave-2 ReportLabRenderer "
+             "instead of the IR pipeline. Slated for removal in the next release.",
+    ),
 ) -> None:
     """Create a new card from a template.
 
@@ -230,8 +236,8 @@ def create(
         if not str(output).lower().endswith(".pdf"):
             output = Path(f"{output}.pdf")
 
-        # Create card generator
-        generator = CardGenerator()
+        # Create card generator (legacy path is opt-in, slated for removal)
+        generator = CardGenerator(use_legacy_renderer=legacy_renderer)
 
         typer.echo(f"Creating card from template: {template}")
 
