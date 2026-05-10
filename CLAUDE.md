@@ -1,227 +1,231 @@
-# holiday-card Development Guidelines
+# holiday-card — Development Guidelines
 
-Last updated: 2026-05-10. Wave 2 architecture refactor in progress; see
-the "Architecture (Wave 2)" section below for the IR seam.
+Last updated: 2026-05-10. Wave 2 architecture refactor is **complete**;
+the codebase is at v1.1.0 with all CI quality gates blocking.
 
-## Active Technologies
-- Python 3.11+
-- ReportLab 4.0+ (PDF generation with path/gradient support, TTF/OTF font embedding)
-- Pillow 10.0+ (image processing for masks and effects)
-- Pydantic 2.0+ (model validation, including the RenderCommand IR)
-- Typer 0.9+, PyYAML 6.0+
+## TL;DR for a fresh session
 
-## Project Structure
+This is a Python 3.11+ CLI that produces print-ready greeting cards in
+**three output formats** (PDF, SVG, PNG) from YAML templates. The core
+architecture is a backend-neutral `RenderCommand` IR:
+
+```
+YAML template → Card (Pydantic) → compile_card() → list[RenderCommand] → Renderer → file
+```
+
+Three renderers consume the same IR: `IRReportLabRenderer` (PDF, default),
+`SVGRenderer`, `PNGRenderer`. Adding a fourth backend is the same pattern.
+
+```bash
+pip install -e ".[dev]"            # one source of truth: pyproject.toml
+holiday-card create christmas-classic -m "Merry Christmas!"     # writes a PDF
+holiday-card create christmas-classic --format svg              # writes an SVG
+holiday-card preview christmas-classic                          # writes a PNG and opens it
+pytest                              # all 324 tests, mypy-clean, ruff-clean
+```
+
+## Architecture
+
+The Wave 2 refactor (PRs #4-#10) replaced a 1063-LOC monolithic
+`ReportLabRenderer` with a three-layer pipeline:
+
+1. **Domain layer** — `core/models.py`. Pydantic models for `Card`,
+   `Template`, `Panel`, shapes, text, image, etc. Knows nothing about
+   points, ReportLab, or rendering order.
+2. **Compiler layer** — `core/compiler.py`. Pure function
+   `compile_card(card) -> list[RenderCommand]`. Owns z-sort, decorative
+   expansion, text-overflow strategy, font resolution, the single
+   inches→points conversion. The decision layer.
+3. **Backend layer** — `renderers/{reportlab,svg,png}_backend.py`. Each
+   implements `render(commands, output_path)` — a visitor over the
+   discriminated union of 11 commands. No semantic decisions; every
+   command has one obvious translation.
+
+The IR (`core/render_ir.py`) is the seam. 11 frozen Pydantic command
+types: `BeginPage`, `EndPage`, `SetMetadata`, `BeginGroup`, `EndGroup`,
+`BeginClip`, `EndClip`, `DrawShape`, `DrawText`, `DrawImage`,
+`DrawFoldLine`. Coordinate space is **points (1/72 inch) with origin at
+page bottom-left** (matches PDF). Every backend converts to its own
+coord system per element.
+
+## Active technologies
+
+- Python 3.11, 3.12, 3.13 (CI matrix on Ubuntu + macOS)
+- ReportLab 4.0+ (PDF backend)
+- Pillow 10.0+ (PNG backend + image effects)
+- Pydantic 2.0+ (domain models + IR)
+- Typer 0.9+ (CLI)
+- PyYAML 6.0+ (template loading)
+
+## Project layout
 
 ```text
-src/
-  holiday_card/
-    core/
-      models.py           # Pydantic domain models (Card, Template, Panel, shapes)
-      generators.py       # Card generation orchestration (Card → IR → PDF)
-      templates.py        # YAML template loading/discovery
-      themes.py           # Theme definitions
-      text_utils.py       # Text measurement primitives
-      text_fitting.py     # Overflow strategies (Wave 2 Step 2a)
-      render_ir.py        # RenderCommand IR — backend-neutral seam (Wave 2 Step 1)
-      compiler.py         # Card → list[RenderCommand] (Wave 2 Step 2b)
-    renderers/
-      reportlab_backend.py  # The renderer: IR → PDF (Wave 2 Steps 3-5)
-      image_effects.py      # Pillow effects (sepia, grayscale, vignette, blur)
-      preview_renderer.py   # PNG preview generation (separate path)
-    cli/
-      commands.py         # Typer CLI commands
-    utils/
-      measurements.py     # inch ↔ point conversions
-      svg_parser.py       # SVG path parser (kept for future IR support)
-      validators.py       # Input validation
+src/holiday_card/
+  core/
+    models.py           # Pydantic domain models
+    generators.py       # CardGenerator orchestration (Card → IR → backend)
+    templates.py        # YAML template loading/discovery
+    themes.py           # Theme definitions
+    text_utils.py       # Text measurement primitives
+    text_fitting.py     # Overflow strategies (extracted Wave 2 Step 2a)
+    render_ir.py        # The 11-command IR (Wave 2 Step 1)
+    compiler.py         # Card → list[RenderCommand] (Wave 2 Step 2b)
+    validators.py       # Domain validation helpers
+  renderers/
+    reportlab_backend.py  # IR → PDF (default)
+    svg_backend.py        # IR → SVG (browser-openable)
+    png_backend.py        # IR → PNG (powers `preview` command)
+    image_effects.py      # Pillow effects (sepia/grayscale/vignette/blur)
+  cli/
+    commands.py         # Typer CLI: create, preview, templates, themes, validate
+  utils/
+    measurements.py     # inch ↔ point conversions; page constants
+    svg_parser.py       # SVG path parser (preserved for future IR support)
+    validators.py       # Input validation (image format, etc.)
 tests/
-  unit/                   # Unit tests (test_render_ir, test_compiler, test_cli, ...)
-  integration/            # Integration tests (test_full_generation)
-  visual/                 # Reserved for visual regression (no tests yet)
-templates/                # Card template YAML files
-  christmas/              # Templates (classic, modern, geometric, ...)
-  hanukkah/, birthday/, generic/
-themes/                   # Color theme definitions
-fonts/                    # Custom TTF/OTF fonts
+  unit/                 # test_render_ir, test_compiler, test_cli, test_text_fitting,
+                        #   test_text_utils, test_models, test_clipping_masks,
+                        #   test_gradient_models, test_pattern_models,
+                        #   test_svg_models, test_svg_parser, test_validators,
+                        #   test_measurements
+    __snapshots__/      # JSON snapshots of compile_card() output per template
+  integration/          # test_full_generation, test_svg_backend, test_png_backend
+  visual/               # Reserved for future visual regression (no tests yet)
+templates/              # YAML card templates
+  christmas/            # 11 christmas templates (some have id-mismatch bugs — see "Known issues")
+  birthday/, hanukkah/, generic/
+themes/                 # Color theme YAML
+fonts/                  # Custom TTF/OTF fonts
+specs/                  # Historical spec-kit feature plans (001-004; some describe deleted features)
 ```
 
 ## Commands
 
-### Testing
+### Quality gates (run all of these — they're the CI blocking gates too)
+
 ```bash
-cd src
-pytest                          # Run all tests
-pytest -v tests/unit/           # Run unit tests
-pytest tests/integration/       # Run integration tests
+ruff check src/ tests/      # Lint — must be clean
+mypy src/                   # Type-check — must be clean (strict mode)
+pytest                      # All 324 tests pass
 ```
 
-### Linting
+### Card generation
+
 ```bash
-ruff check .                    # Run linter
-ruff check . --fix              # Auto-fix issues
-mypy src/                       # Type checking
+holiday-card --help
+holiday-card templates                                  # list templates
+holiday-card themes --occasion christmas                # list themes
+holiday-card create christmas-classic -o out/card.pdf   # PDF (default)
+holiday-card create christmas-classic --format svg      # SVG (opens in browser)
+holiday-card create christmas-classic -o out/card.svg   # auto-detect from extension
+holiday-card preview christmas-classic                  # 144 DPI PNG, opens in viewer
+holiday-card preview christmas-classic --dpi 300 --no-open -o p.png
+holiday-card validate templates/christmas/classic.yaml  # validate a template
 ```
 
-### Card Generation
+### Hidden / dev flags
+
 ```bash
-# Generate card from template
-python -m holiday_card create christmas-geometric -o output/card.pdf
-
-# List available templates
-python -m holiday_card templates
-
-# Validate template
-python -m holiday_card validate templates/christmas/geometric.yaml
+holiday-card create christmas-classic --debug-emit-ir   # print compiled IR as JSON
+                                                        # (skips PDF; for IR debugging)
 ```
 
-## Code Style
+## Currently supported template subset
 
-Python 3.11+: Follow standard conventions
-- Type hints for all functions
-- Pydantic models for data validation
-- Docstrings for all public APIs
-- Measurements in inches (converted to points at render time)
+The compiler supports backgrounds, borders, basic shapes (Rectangle,
+Circle, Triangle, Star, Line) with **solid fills only**, text with
+left/center/right alignment, fold lines, and identity or rotation-only
+group transforms. **7 of the 11 templates currently compile cleanly:**
 
-## Recent Changes
-
-- **Wave 2 architecture refactor (complete, 2026-05)**: A backend-neutral
-  `RenderCommand` IR sits between `Card` and the renderer. New
-  `core/render_ir.py`, `core/compiler.py`, `renderers/reportlab_backend.py`.
-  `core/text_fitting.py` extracted from the legacy renderer. The legacy
-  `ReportLabRenderer` (1063 LOC) and its dependent modules
-  (`shape_renderer`, `clipping_renderer`, `gradient_renderer`,
-  `pattern_renderer`, `decorative.py`) were deleted in Step 5 — about
-  3000 LOC removed. Mypy errors dropped from 29 to 10 as a side effect.
-- **Wave 1 DevEx audit (2026-05)**: Real CI on every push (lint + matrix
-  test + smoke + build); `requirements.txt` deleted (10 phantom deps);
-  pre-commit + ruff format config; 22 B904 exception-chain bugs and 10
-  null-deref defects fixed. CLI surface (556 LOC, was 0% covered) now at
-  ~58% via `tests/unit/test_cli.py` using `typer.testing.CliRunner`.
-- **Valentine deprecation (2026-05)**: The 2026-02 Valentine release
-  (`valentine` occasion + 3 templates + decorative-element library +
-  `HeartClipMask`) was removed when Wave 2 made decorative-element
-  expansion non-trivial to port. The dead code (decorative.py,
-  HeartClipMask, etc.) will be cleaned up in the Wave 2 Step 5 PR.
-
-## Features
-
-### Image Features
-
-**Image Effects**:
-- `grayscale`: Convert to black & white
-- `sepia`: Apply vintage sepia tone
-- `vignette`: Edge darkening (0.0-1.0 intensity)
-- `blur`: Gaussian blur (0-10 pixel radius)
-
-**Photo Frames**:
-- `simple`: Clean border
-- `rounded`: Rounded corners
-- `shadow`: Drop shadow effect
-- `polaroid`: Instant camera aesthetic with white border
-
-**Usage in Templates**:
-```yaml
-image_elements:
-  - source_path: "photo.jpg"
-    x: 1.0
-    y: 2.0
-    width: 2.5
-    height: 2.5
-    clip_mask:
-      type: circle
-      center_x: 1.25
-      center_y: 1.25
-      radius: 1.25
-    effects:
-      sepia: true
-      vignette: 0.4
-    frame_style: polaroid
-    frame_color: "#FFFFFF"
-    frame_width: 0.02
+```
+christmas-classic     christmas-geometric    christmas-modern
+christmas-artist      birthday-balloons      hanukkah-menorah
+generic-celebration
 ```
 
-**Supported Clip Mask Types**:
-- `circle`, `rectangle`, `ellipse`, `star`, `svg_path`
+Templates using gradients, patterns, clip masks, decorative elements,
+SVG paths, or image elements raise `UnsupportedFeatureError`. **Fail
+loud, not silent** is the convention — silent feature drop would let
+half-rendered PDFs ship.
 
-### Custom Font Support (2026-02-14 Release)
+To support a new feature: extend `core/compiler.py` to lower the
+relevant `Card` field into IR commands, then make sure each backend
+either handles the new command-type combinations or raises
+`NotImplementedError` with a clear message.
 
-**TTF/OTF Font Embedding**:
-- Full support for TrueType and OpenType fonts
-- Automatic registration with ReportLab
-- Graceful fallback to built-in fonts on error
+## How to add a new backend
 
-**Font Discovery**:
-- Place fonts in `fonts/` directory at project root
-- Supports subdirectories for organization
-- Relative paths resolved automatically
+The pattern that worked three times in PRs #7, #11, #12:
 
-**Usage in Templates**:
-```yaml
-text_elements:
-  - content: "With All My Love"
-    x: 2.125
-    y: 0.8
-    width: 3.5
-    font_family: "GreatVibes"
-    font_file: "GreatVibes-Regular.ttf"  # From fonts/ directory
-    font_size: 32
-    font_style: normal
-```
+1. Create `src/holiday_card/renderers/{name}_backend.py` with a class
+   exposing `render(commands, output_path) -> None`. Visitor over the
+   discriminated union of 11 commands. Convert IR (points, bottom-left)
+   to the backend's coordinate system per element.
+2. For stateful drawing (groups with rotation, clipping), maintain a
+   small stack and apply the IR's pivot-rotate idiom (translate; rotate;
+   untranslate) on group close.
+3. Strict on unknowns: anything you can't handle (e.g. gradient paints
+   for the moment) raises `NotImplementedError` with a useful message.
+4. Add `tests/integration/test_{name}_backend.py`. **Include
+   pixel-correctness checks**, not just structural validity — see the
+   `test_png_christmas_classic_has_red_pixel_in_front_panel` test for
+   how the PNG suite caught a transform bug the SVG suite missed.
+5. (CLI integration) Either expose via the existing `--format` enum on
+   `holiday-card create`, or via a new top-level command (like
+   `preview` does for PNG).
 
-**Recommended Fonts** (open source, free to use):
-- Great Vibes - Elegant script (SIL OFL)
-- Playfair Display - Sophisticated serif (SIL OFL)
-- Lora - Elegant serif (SIL OFL)
+Wave 4 ideas: HTML/Canvas renderer streaming over a websocket for live
+template editing; a CMYK PDF wrapper for pro-press output; a JSON
+"render plan" backend for downstream tooling.
 
-Download from [Google Fonts](https://fonts.google.com/) and place in `fonts/` directory.
+## Code style
 
-**Key Files**:
-- `src/holiday_card/core/models.py`: TextElement.font_file field
-- `src/holiday_card/renderers/reportlab_renderer.py`: Font registration logic
+- Type hints on every function; `mypy --strict` passes
+- Pydantic models for domain validation (frozen for IR, mutable for
+  Card so messages can be applied)
+- Docstrings on public APIs; one-line comment max for private helpers
+- Measurements in inches in YAML/Python; converted to points once in
+  the compiler
+- Imports organized by ruff (`I` rule); enforced in CI
+- Exception chaining: `raise X from e` everywhere (`B904` is enforced)
 
-### Vector Graphics (003-vector-graphics-and-decorative-elements)
+## Known issues (good first tasks for a fresh session)
 
-**Shape Types**:
-- Rectangle: Positioned rectangles with fill, stroke, opacity, rotation
-- Circle: Circles with center point and radius
-- Triangle: Three-vertex polygons
-- Star: Multi-pointed stars with configurable inner/outer radius
-- Line: Straight line segments
+- **Template id-mismatch bug:** Some YAML templates have `id` fields
+  that don't match their filename, so `discover_templates()` doesn't
+  find them by their expected names (e.g. `christmas-holly_wreath`,
+  `christmas-festive_stripes`). Look at `core/templates.py` discovery
+  logic.
+- **Dead Pydantic models in `models.py`:** `HeartClipMask`,
+  `DecorativeElement`, gradient/pattern fill models, `SVGPath` shape
+  exist but no production code imports them. They're referenced only
+  by `tests/unit/test_clipping_masks.py`, `test_gradient_models.py`,
+  `test_pattern_models.py`, `test_svg_models.py`. Pruning is a focused
+  PR.
+- **Compiler feature gaps:** Adding `ImageElement` support would
+  re-enable photo cards. Adding gradient + pattern fills would unlock
+  the 4 christmas templates that currently fail.
+- **`tests/visual/` is empty:** A perceptual SSIM gate against a
+  committed baseline PNG per template would catch layout regressions
+  the structural tests miss. The PNG backend produces deterministic
+  output, so this is tractable.
 
-**Styling Properties**:
-- `fill_color`: Hex color (#RRGGBB) for shape fill
-- `stroke_color`: Hex color for outline
-- `stroke_width`: Stroke width in points
-- `opacity`: 0.0 (transparent) to 1.0 (opaque)
-- `rotation`: 0-360 degrees
-- `z_index`: Layering order (higher = on top)
+## Recent changes
 
-**Decorative Elements** (removed):
-Pre-built shape compositions lived in `decorative_elements/` and were
-expanded by `core/decorative.py`. Both were removed during Wave 2
-(the YAML library in PR #8, the Python loader in Step 5). To re-add
-support, port `DecorativeElement` lowering into `core/compiler.py`.
-
-**Usage in Templates**:
-```yaml
-panels:
-  - position: front
-    shape_elements:
-      - type: rectangle
-        x: 1.0
-        y: 2.0
-        width: 3.0
-        height: 1.5
-        fill_color: "#A8B5A0"
-        opacity: 0.8
-        z_index: 1
-```
-
-**Key Files**:
-- `src/holiday_card/core/models.py`: Shape model definitions
-- `src/holiday_card/core/compiler.py`: Card → RenderCommand lowering
-- `src/holiday_card/renderers/reportlab_backend.py`: IR → PDF
-- `specs/003-vector-graphics-and/`: Original feature specification
+- **2026-05-10 — Wave 2 complete + v1.1.0 release**: IR seam
+  (PRs #4-#10), three rendering backends (PRs #7/#11/#12), working
+  `preview` command (PR #12), version bump + zero mypy errors + strict
+  CI gates (PR #13). Net: 12 PRs, ~6,950 LOC removed, ~3,800 added.
+- **2026-05 — Wave 1 DevEx audit (PR #1)**: Real CI on every push,
+  `requirements.txt` deleted, 22 B904 + 10 null-deref bugs fixed.
+- **2026-05 — Valentine deprecation (PR #8)**: Removed the 2026-02
+  Valentine release (templates + decorative-element library) when
+  porting to the IR proved non-trivial. Dead model code (HeartClipMask,
+  etc.) intentionally kept in `models.py` for now.
+- **003-vector-graphics-and-decorative-elements** (specs/): Original
+  spec for vector graphics. Decorative elements piece is no longer
+  shipped (see Valentine deprecation).
+- **001-holiday-card-generator** (specs/): Original spec.
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->

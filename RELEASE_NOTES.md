@@ -1,7 +1,86 @@
+# Holiday Card Generator — Release Notes
+
+## v1.1.0 — "Three backends on one IR" — 2026-05-10
+
+The Wave 2 architecture refactor lands. The PDF-only renderer is
+replaced by a backend-neutral pipeline: every template now compiles to
+the same intermediate representation (IR), and three rendering backends
+(PDF, SVG, PNG) consume that IR. Adding a fourth is a focused PR, not a
+rewrite.
+
+### What's new for users
+
+- **`holiday-card create <id> --format svg`** — the same card design as
+  a browser-openable SVG. Auto-detected from `-o card.svg`.
+- **`holiday-card preview <id>`** — fast PNG render at 144 DPI that
+  opens in your default image viewer. Useful for iterating on templates
+  without round-tripping through a PDF reader.
+- Configurable preview resolution (`--dpi`) and a `--no-open` flag for
+  CI / scripting.
+- Hidden `--debug-emit-ir` developer flag prints the compiled IR as
+  JSON for debugging custom templates.
+- All three output formats produce visually-equivalent output from the
+  same source template.
+
+### What's new for the codebase
+
+- Three-layer architecture: **`Card` (Pydantic) → `compile_card()`
+  (decisions) → `list[RenderCommand]` (the IR) → backend (visitor)**.
+- The legacy 1063-LOC monolithic `ReportLabRenderer` plus its
+  dependent modules (`shape_renderer`, `clipping_renderer`,
+  `gradient_renderer`, `pattern_renderer`, `decorative.py`) are
+  **deleted** — about 3,000 LOC removed. One renderer concern lives in
+  one place now.
+- 324 tests (was 253) including snapshot tests for the compiler output
+  on 7 templates, parity-style structural tests for SVG and PNG, and
+  pixel-correctness tests that catch backend bugs structural tests
+  miss.
+- All quality gates blocking on CI: ruff, mypy (strict mode, zero
+  errors), the full test matrix on Ubuntu + macOS across Python
+  3.11/3.12/3.13, smoke render + sdist/wheel build.
+
+### Breaking changes (relative to the unreleased v2.0.0 Valentine work)
+
+- Valentine occasion + 3 templates removed (`valentine-hearts`,
+  `valentine-cupid`, `valentine-elegant`).
+- `decorative_elements/` library removed; `core/decorative.py` removed.
+- `--show-guides` and `--format jpg` flags on `preview` removed (PNG
+  only; fold guides are always emitted as part of the IR).
+
+### Known limitations
+
+- The compiler currently supports a subset of features: backgrounds,
+  borders, basic shapes (Rectangle/Circle/Triangle/Star/Line) with
+  solid fills, text with three alignments, fold lines, and identity or
+  rotation-only group transforms. Templates using gradients, patterns,
+  clip masks, decorative elements, SVG paths, or image elements raise
+  `UnsupportedFeatureError`.
+- 7 of the 11 shipped Christmas templates compile cleanly. The other 4
+  use unsupported features (or have an `id`-vs-filename mismatch in
+  template discovery).
+- Some Pydantic models in `models.py` (`HeartClipMask`,
+  `DecorativeElement`, gradient/pattern fills, `SVGPath`) are kept for
+  reference but not used by any backend.
+
+### Numbers
+
+- 13 PRs landed.
+- ~6,950 LOC removed; ~3,800 LOC added (almost all in well-tested new
+  modules).
+- Mypy errors: 24+ → 0.
+- Ruff errors: 56 → 0.
+- Tests: 253 → 324.
+
+---
+
 # 🎀 Holiday Card Generator - Valentine's Day Edition Release Notes
 
+> **Note (2026-05):** the features described below were removed in
+> v1.1.0. The `valentine` occasion, decorative-element library, and
+> `HeartClipMask` no longer ship. Kept here as historical context.
+
 **Release Date:** February 14, 2026 (Valentine's Day!)
-**Version:** 2.0.0 - "Love is in the Air"
+**Version:** 2.0.0 - "Love is in the Air" (never tagged; superseded by v1.1.0)
 
 ---
 
