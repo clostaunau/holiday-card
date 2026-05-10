@@ -111,6 +111,9 @@ def templates(
 
             typer.echo(f"\n{len(templates_list)} template(s) found.")
 
+    except typer.Exit:
+        # Preserve intentional exit codes (e.g. Exit(0) for "no results").
+        raise
     except Exception as e:
         typer.secho(f"Error listing templates: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(1) from e
@@ -162,6 +165,9 @@ def list_themes(
 
             typer.echo(f"\n{len(themes_list)} theme(s) found.")
 
+    except typer.Exit:
+        # Preserve intentional exit codes (e.g. Exit(0) for "no results").
+        raise
     except Exception as e:
         typer.secho(f"Error listing themes: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(1) from e
@@ -285,6 +291,11 @@ def create(
             msg_preview = message[:50] + "..." if len(message) > 50 else message
             typer.echo(f"  Message: {msg_preview}")
 
+    except typer.Exit:
+        # Preserve intentional exit codes from inner validation
+        # (invalid fold type, missing image, etc.).
+        raise
+
     except TemplateNotFoundError as e:
         typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
         typer.echo("\nAvailable templates:", err=True)
@@ -387,6 +398,9 @@ def preview(
         typer.echo(f"  Resolution: {dpi} DPI")
         typer.echo(f"  Format: {format.upper()}")
         typer.echo(f"  Fold guides: {'shown' if show_guides else 'hidden'}")
+
+    except typer.Exit:
+        raise
 
     except TemplateNotFoundError as e:
         typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
@@ -538,6 +552,9 @@ def validate(
         typer.echo(f"  Occasion: {loaded.occasion.value}")
         typer.echo(f"  Fold type: {loaded.fold_type.value}")
         typer.echo(f"  Panels: {len(loaded.panels)}")
+
+    except typer.Exit:
+        raise
 
     except TemplateNotFoundError as e:
         typer.secho(f"Template not found: {e}", fg=typer.colors.RED, err=True)
