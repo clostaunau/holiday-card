@@ -21,7 +21,7 @@ pip install -e ".[dev]"            # one source of truth: pyproject.toml
 holiday-card create christmas-classic -m "Merry Christmas!"     # writes a PDF
 holiday-card create christmas-classic --format svg              # writes an SVG
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-pytest                              # all 378 tests, mypy-clean, ruff-clean
+pytest                              # all 409 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -121,6 +121,12 @@ holiday-card create christmas-classic -o out/card.svg   # auto-detect from exten
 holiday-card preview christmas-classic                  # 144 DPI PNG, opens in viewer
 holiday-card preview christmas-classic --dpi 300 --no-open -o p.png
 holiday-card validate templates/christmas/classic.yaml  # validate a template
+
+# Per-panel POD output: --export-for emits one file per panel
+holiday-card create christmas-classic --export-for moo-a6 -o out/moo-card/
+# → out/moo-card/{front,back,inside-left,inside-right}.pdf at A6 trim + bleed
+holiday-card create christmas-classic --export-for per-panel-pdf -o out/files/
+# → out/files/{front,back,inside-left,inside-right}.pdf at panel-native trim + bleed
 ```
 
 ### Hidden / dev flags
@@ -215,6 +221,13 @@ template editing; a CMYK PDF wrapper for pro-press output; a JSON
 
 ## Recent changes
 
+- **2026-05-10 — `--export-for` CLI flag + per-panel POD output**:
+  Three named export targets — `letter` (default, today's behavior),
+  `per-panel-pdf` (each panel as its own file at native trim + bleed),
+  and `moo-a6` (each panel at true A6 with content uniformly scaled to
+  fit). Adds `core/export_targets.py` (registry) and `core/per_panel.py`
+  (panel-content scaling helpers). Lays the rails for CMYK / ICC /
+  PDF/X-1a (next slice of Leapfrog 1).
 - **2026-05-10 — Bleed support + `PageGeometry` abstraction**: Backgrounds
   now extend past the trim edge by 0.125" (industry default) on edges that
   touch the page trim. `Card.bleed` and `Panel.bleed` configure it; the

@@ -10,6 +10,7 @@ __all__ = ["CardGenerator"]
 from pathlib import Path
 
 from holiday_card.core.compiler import compile_card
+from holiday_card.core.export_targets import ExportTarget, get_target
 from holiday_card.core.models import (
     Card,
     FoldType,
@@ -18,15 +19,32 @@ from holiday_card.core.models import (
     TextElement,
     Theme,
 )
+from holiday_card.core.per_panel import (
+    build_per_panel_card,
+    build_per_panel_context,
+)
 from holiday_card.core.templates import load_template
 from holiday_card.core.themes import ThemeNotFoundError, load_theme
+from holiday_card.renderers.png_backend import PNGRenderer
 from holiday_card.renderers.reportlab_backend import IRReportLabRenderer
 from holiday_card.renderers.svg_backend import SVGRenderer
 
-# Type alias for any renderer the generator can dispatch to. Both
+# Type alias for any renderer the generator can dispatch to. All three
 # implementations expose the same minimal interface
 # (``render(commands, output_path)``).
-Renderer = IRReportLabRenderer | SVGRenderer
+Renderer = IRReportLabRenderer | SVGRenderer | PNGRenderer
+
+# The four canonical panel filenames for per-panel layout. Order matches
+# the natural panel reading order on a half-fold card (front, back,
+# inside-left, inside-right). Position-name → filename-stem mapping
+# avoids leaking the underscore-style enum values to the file system
+# while staying recognizable.
+_PER_PANEL_FILENAMES: dict[str, str] = {
+    "front": "front",
+    "back": "back",
+    "inside_left": "inside-left",
+    "inside_right": "inside-right",
+}
 
 
 class CardGenerator:
@@ -252,6 +270,67 @@ class CardGenerator:
         commands = compile_card(card)
         self.renderer.render(commands, output_path)
         return output_path
+
+    def generate(
+        self,
+        card: Card,
+        output: Path,
+        target: ExportTarget | str = "letter",
+    ) -> list[Path]:
+        """Render a card to one or more files based on the export target.
+
+        Dispatches on ``target.layout``:
+
+        * ``imposition`` — emit one file at ``output``. ``output`` is
+          treated as a file path; its parent directory is created.
+        * ``per-panel`` — emit one file per panel inside ``output``.
+          ``output`` is treated as a directory; it (and its parents)
+          are created. Per-panel filenames are
+          ``{position}.{ext}`` (e.g. ``front.pdf``,
+          ``inside-left.pdf``).
+
+        Returns the list of written paths, in panel-iteration order.
+        Single-file mode returns a one-element list for uniform handling
+        by callers.
+        """
+        if isinstance(target, str):
+            target = get_target(target)
+        if target.layout == "imposition":
+            return [self._generate_imposition(card, output, target)]
+        if target.layout == "per-panel":
+            return self._generate_per_panel(card, output, target)
+        raise ValueError(f"unknown layout {target.layout!r} on target {target.name!r}")
+
+    def _generate_imposition(
+        self, card: Card, output_path: Path, target: ExportTarget
+    ) -> Path:
+        from holiday_card.core.compiler import CompileContext  # local: avoid top-level cycle risk
+
+        if target.geometry is None:
+            raise ValueError(
+                f"target {target.name!r} has layout='imposition' but no geometry"
+            )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        ctx = CompileContext(geometry=target.geometry)
+        commands = compile_card(card, ctx)
+        self.renderer.render(commands, output_path)
+        return output_path
+
+    def _generate_per_panel(
+        self, card: Card, output_dir: Path, target: ExportTarget
+    ) -> list[Path]:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        ext = self.renderer.file_extension  # ".pdf" / ".svg" / ".png"
+        written: list[Path] = []
+        for panel in card.panels:
+            per_card = build_per_panel_card(card, panel, target)
+            ctx = build_per_panel_context(panel, target)
+            commands = compile_card(per_card, ctx)
+            stem = _PER_PANEL_FILENAMES.get(panel.position.value, panel.position.value)
+            out = output_dir / f"{stem}{ext}"
+            self.renderer.render(commands, out)
+            written.append(out)
+        return written
 
     def create_and_generate(
         self,
