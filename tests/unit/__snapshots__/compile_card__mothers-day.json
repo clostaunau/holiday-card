@@ -1,0 +1,329 @@
+[
+  {
+    "cmd": "begin_page",
+    "height": 792.0,
+    "width": 612.0
+  },
+  {
+    "cmd": "set_metadata",
+    "key": "template_id",
+    "value": "mothers-day"
+  },
+  {
+    "cmd": "set_metadata",
+    "key": "fold_type",
+    "value": "half_fold"
+  },
+  {
+    "cmd": "set_metadata",
+    "key": "theme_id",
+    "value": "generic-celebration"
+  },
+  {
+    "cmd": "begin_group",
+    "opacity": 1.0,
+    "transform": {
+      "rotate_deg": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "translate_x": 0.0,
+      "translate_y": 0.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.88,
+        "g": 0.86,
+        "r": 0.98
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 396.0,
+      "kind": "rect",
+      "width": 306.0,
+      "x": 306.0,
+      "y": 0.0
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.6509803921568628,
+        "g": 0.6078431372549019,
+        "r": 0.9098039215686274
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 349.2,
+        "y": 352.8
+      },
+      "kind": "circle",
+      "radius": 18.0
+    },
+    "opacity": 0.5,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.5411764705882353,
+        "g": 0.48627450980392156,
+        "r": 0.8470588235294118
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 342.0,
+        "y": 36.0
+      },
+      "kind": "circle",
+      "radius": 12.959999999999999
+    },
+    "opacity": 0.6,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.6509803921568628,
+        "g": 0.6078431372549019,
+        "r": 0.9098039215686274
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 568.8000000000001,
+        "y": 43.199999999999996
+      },
+      "kind": "circle",
+      "radius": 21.599999999999998
+    },
+    "opacity": 0.5,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.5411764705882353,
+        "g": 0.48627450980392156,
+        "r": 0.8470588235294118
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 1.44,
+      "kind": "rect",
+      "width": 133.20000000000002,
+      "x": 392.40000000000003,
+      "y": 172.79999999999998
+    },
+    "opacity": 0.7,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_text",
+    "opacity": 1.0,
+    "run": {
+      "align": "center",
+      "color": {
+        "a": 1.0,
+        "b": 0.3,
+        "g": 0.2,
+        "r": 0.55
+      },
+      "font_id": "Times-Roman",
+      "origin": {
+        "x": 459.0,
+        "y": 216.0
+      },
+      "size_pt": 30.0,
+      "text": "Happy Mother's Day"
+    }
+  },
+  {
+    "cmd": "draw_text",
+    "opacity": 1.0,
+    "run": {
+      "align": "center",
+      "color": {
+        "a": 1.0,
+        "b": 0.3,
+        "g": 0.2,
+        "r": 0.55
+      },
+      "font_id": "Times-Roman",
+      "origin": {
+        "x": 459.0,
+        "y": 154.79999999999998
+      },
+      "size_pt": 16.0,
+      "text": "with love"
+    }
+  },
+  {
+    "cmd": "end_group"
+  },
+  {
+    "cmd": "begin_group",
+    "opacity": 1.0,
+    "transform": {
+      "rotate_deg": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "translate_x": 0.0,
+      "translate_y": 0.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 1.0,
+        "g": 1.0,
+        "r": 1.0
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 396.0,
+      "kind": "rect",
+      "width": 306.0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "end_group"
+  },
+  {
+    "cmd": "begin_group",
+    "opacity": 1.0,
+    "transform": {
+      "rotate_deg": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "translate_x": 0.0,
+      "translate_y": 0.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.98,
+        "g": 0.98,
+        "r": 1.0
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 396.0,
+      "kind": "rect",
+      "width": 306.0,
+      "x": 0.0,
+      "y": 396.0
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "end_group"
+  },
+  {
+    "cmd": "begin_group",
+    "opacity": 1.0,
+    "transform": {
+      "rotate_deg": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "translate_x": 0.0,
+      "translate_y": 0.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.98,
+        "g": 0.98,
+        "r": 1.0
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 396.0,
+      "kind": "rect",
+      "width": 306.0,
+      "x": 306.0,
+      "y": 396.0
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_text",
+    "opacity": 1.0,
+    "run": {
+      "align": "left",
+      "color": {
+        "a": 1.0,
+        "b": 0.3,
+        "g": 0.2,
+        "r": 0.55
+      },
+      "font_id": "Times-Roman",
+      "origin": {
+        "x": 342.0,
+        "y": 1044.0
+      },
+      "size_pt": 16.0,
+      "text": "Thank you for everything, Mom."
+    }
+  },
+  {
+    "cmd": "end_group"
+  },
+  {
+    "cmd": "draw_fold_line",
+    "end": {
+      "x": 612.0,
+      "y": 396.0
+    },
+    "start": {
+      "x": 0.0,
+      "y": 396.0
+    },
+    "style": "dashed"
+  },
+  {
+    "cmd": "end_page"
+  }
+]

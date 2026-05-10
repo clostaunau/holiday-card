@@ -24,6 +24,7 @@ PNG_TEMPLATES = (
     "birthday-balloons",
     "hanukkah-menorah",
     "generic-celebration",
+    "mothers-day",
 )
 
 

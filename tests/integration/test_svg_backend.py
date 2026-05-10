@@ -31,6 +31,7 @@ SVG_TEMPLATES = (
     "birthday-balloons",
     "hanukkah-menorah",
     "generic-celebration",
+    "mothers-day",
 )
 
 _SVG_NS = "http://www.w3.org/2000/svg"
