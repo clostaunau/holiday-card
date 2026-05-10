@@ -56,14 +56,19 @@ __all__ = [
     "EllipseClipMask",
     "StarClipMask",
     "SVGPathClipMask",
+    "HeartClipMask",
     "ClipMask",
+    # Image effects
+    "ImageEffectType",
+    "ImageEffects",
+    "PhotoFrameStyle",
     # Card structure
     "Panel",
     "Template",
     "Theme",
     "Card",
 ]
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
 from uuid import uuid4
@@ -114,7 +119,7 @@ class Colors:
     SILVER = Color(r=0.75, g=0.75, b=0.75)
 
 
-class FoldType(str, Enum):
+class FoldType(StrEnum):
     """Card fold format types.
 
     Each fold type defines how the 8.5" x 11" paper is folded:
@@ -128,7 +133,7 @@ class FoldType(str, Enum):
     TRI_FOLD = "tri_fold"
 
 
-class OccasionType(str, Enum):
+class OccasionType(StrEnum):
     """Types of occasions for card templates and themes."""
 
     CHRISTMAS = "christmas"
@@ -137,9 +142,10 @@ class OccasionType(str, Enum):
     GENERIC = "generic"
     NEW_YEAR = "new_year"
     THANKSGIVING = "thanksgiving"
+    VALENTINE = "valentine"
 
 
-class PanelPosition(str, Enum):
+class PanelPosition(StrEnum):
     """Position identifiers for card panels.
 
     Different fold types use different panels:
@@ -155,7 +161,7 @@ class PanelPosition(str, Enum):
     CENTER = "center"  # For tri-fold
 
 
-class TextAlignment(str, Enum):
+class TextAlignment(StrEnum):
     """Text alignment options."""
 
     LEFT = "left"
@@ -163,7 +169,7 @@ class TextAlignment(str, Enum):
     RIGHT = "right"
 
 
-class FontStyle(str, Enum):
+class FontStyle(StrEnum):
     """Font style options."""
 
     NORMAL = "normal"
@@ -172,7 +178,7 @@ class FontStyle(str, Enum):
     BOLD_ITALIC = "bold_italic"
 
 
-class BorderStyle(str, Enum):
+class BorderStyle(StrEnum):
     """Border style options."""
 
     SOLID = "solid"
@@ -181,7 +187,7 @@ class BorderStyle(str, Enum):
     DECORATIVE = "decorative"
 
 
-class OverflowStrategy(str, Enum):
+class OverflowStrategy(StrEnum):
     """Strategy for handling text that exceeds designated boundaries.
 
     - AUTO: Automatically select best strategy based on text characteristics
@@ -196,7 +202,7 @@ class OverflowStrategy(str, Enum):
     TRUNCATE = "truncate"
 
 
-class ShapeType(str, Enum):
+class ShapeType(StrEnum):
     """Vector shape types for discriminated union.
 
     Used as the discriminator field for shape polymorphism in Pydantic.
@@ -211,7 +217,7 @@ class ShapeType(str, Enum):
     DECORATIVE_ELEMENT = "decorative_element"
 
 
-class PatternType(str, Enum):
+class PatternType(StrEnum):
     """Pattern fill types for repeating patterns.
 
     - STRIPES: Parallel lines with configurable width and angle
@@ -289,8 +295,8 @@ class ColorStop(BaseModel):
             raise ValueError(f"Hex color must be 7 characters (#RRGGBB), got: {v}")
         try:
             int(v[1:], 16)  # Validate hex digits
-        except ValueError:
-            raise ValueError(f"Invalid hex color: {v}")
+        except ValueError as e:
+            raise ValueError(f"Invalid hex color: {v}") from e
         return v
 
 
@@ -310,8 +316,8 @@ class SolidFill(BaseModel):
             raise ValueError(f"Hex color must be 7 characters (#RRGGBB), got: {v}")
         try:
             int(v[1:], 16)
-        except ValueError:
-            raise ValueError(f"Invalid hex color: {v}")
+        except ValueError as e:
+            raise ValueError(f"Invalid hex color: {v}") from e
         return v
 
 
@@ -383,8 +389,8 @@ class PatternFill(BaseModel):
                 raise ValueError(f"Hex color must be 7 characters (#RRGGBB), got: {color}")
             try:
                 int(color[1:], 16)
-            except ValueError:
-                raise ValueError(f"Invalid hex color: {color}")
+            except ValueError as e:
+                raise ValueError(f"Invalid hex color: {color}") from e
             validated.append(color)
         return validated
 
@@ -467,11 +473,48 @@ class SVGPathClipMask(BaseModel):
         return v
 
 
+class HeartClipMask(BaseModel):
+    """Heart-shaped clipping mask for images."""
+
+    type: Literal["heart"] = "heart"
+    center_x: float = Field(ge=0.0, description="Center X position in inches (relative to image)")
+    center_y: float = Field(ge=0.0, description="Center Y position in inches (relative to image)")
+    size: float = Field(gt=0.0, description="Heart size (width) in inches")
+
+
 # Discriminated union for clip masks
 ClipMask = Annotated[
-    CircleClipMask | RectangleClipMask | EllipseClipMask | StarClipMask | SVGPathClipMask,
+    CircleClipMask | RectangleClipMask | EllipseClipMask | StarClipMask | SVGPathClipMask | HeartClipMask,
     Field(discriminator='type')
 ]
+
+
+class ImageEffectType(StrEnum):
+    """Types of image effects that can be applied."""
+
+    GRAYSCALE = "grayscale"
+    SEPIA = "sepia"
+    VIGNETTE = "vignette"
+    BLUR = "blur"
+
+
+class ImageEffects(BaseModel):
+    """Collection of effects to apply to an image."""
+
+    grayscale: bool = Field(default=False, description="Convert to grayscale")
+    sepia: bool = Field(default=False, description="Apply sepia tone")
+    vignette: float = Field(default=0.0, ge=0.0, le=1.0, description="Vignette intensity (0=none, 1=max)")
+    blur: float = Field(default=0.0, ge=0.0, le=10.0, description="Gaussian blur radius in pixels")
+
+
+class PhotoFrameStyle(StrEnum):
+    """Photo frame/border styles."""
+
+    NONE = "none"
+    SIMPLE = "simple"
+    ROUNDED = "rounded"
+    SHADOW = "shadow"
+    POLAROID = "polaroid"
 
 
 class ImageElement(BaseModel):
@@ -491,6 +534,10 @@ class ImageElement(BaseModel):
     opacity: float = Field(default=1.0, ge=0.0, le=1.0, description="Image opacity (0-1)")
     z_index: int = Field(default=100, description="Rendering layer (higher = on top)")
     clip_mask: ClipMask | None = Field(default=None, description="Optional clipping mask")  # T018
+    effects: ImageEffects | None = Field(default=None, description="Image processing effects")
+    frame_style: PhotoFrameStyle = Field(default=PhotoFrameStyle.NONE, description="Photo frame style")
+    frame_color: str | None = Field(default=None, description="Frame color as hex (#RRGGBB)")
+    frame_width: float = Field(default=0.0, ge=0.0, le=0.5, description="Frame width in inches")
 
 
 class TextElement(BaseModel):
@@ -507,6 +554,10 @@ class TextElement(BaseModel):
     font_family: str = Field(default="Helvetica", description="Font family name")
     font_size: int = Field(default=12, ge=6, le=144, description="Font size in points")
     font_style: FontStyle = Field(default=FontStyle.NORMAL, description="Font style")
+    font_file: str | None = Field(
+        default=None,
+        description="Path to TTF/OTF font file for custom fonts"
+    )
     color: Color | None = Field(default=None, description="Text color (uses theme if None)")
     alignment: TextAlignment = Field(default=TextAlignment.LEFT, description="Text alignment")
     rotation: float = Field(default=0.0, description="Rotation in degrees")
@@ -575,8 +626,8 @@ class BaseShape(BaseModel):
             raise ValueError(f"Hex color must be 7 characters (#RRGGBB), got: {v}")
         try:
             int(v[1:], 16)  # Validate hex digits
-        except ValueError:
-            raise ValueError(f"Invalid hex color: {v}")
+        except ValueError as e:
+            raise ValueError(f"Invalid hex color: {v}") from e
         return v
 
 

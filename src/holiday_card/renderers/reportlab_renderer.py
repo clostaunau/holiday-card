@@ -174,7 +174,7 @@ class ReportLabRenderer(BaseRenderer):
         abs_y = inches_to_points(panel.y + text.y)
 
         # Get font name
-        font_name = self._get_font_name(text.font_family, text.font_style.value)
+        font_name = self._get_font_name(text.font_family, text.font_style.value, text.font_file)
 
         # Fit text using overflow strategy
         if text.width:
@@ -227,6 +227,20 @@ class ReportLabRenderer(BaseRenderer):
             pil_image = Image.open(image.source_path)
             img_width_px, img_height_px = pil_image.size
 
+            # Apply image effects if specified
+            render_path = image.source_path
+            if image.effects:
+                import tempfile
+
+                from holiday_card.renderers.image_effects import apply_effects
+                pil_image = apply_effects(pil_image, image.effects)
+                # Save processed image to temp file for ReportLab.
+                # The file outlives this `with` block (delete=False) because
+                # ReportLab reads it lazily; the OS cleans it up at process exit.
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_file:
+                    pil_image.save(temp_file.name, 'PNG')
+                    render_path = temp_file.name
+
             # Get DPI for size calculation (default to 72 if not available)
             dpi = pil_image.info.get("dpi", (72, 72))
             if isinstance(dpi, tuple):
@@ -266,6 +280,11 @@ class ReportLabRenderer(BaseRenderer):
             width_pts = inches_to_points(final_width)
             height_pts = inches_to_points(final_height)
 
+            # Apply photo frame if specified
+            from holiday_card.core.models import PhotoFrameStyle
+            if image.frame_style != PhotoFrameStyle.NONE:
+                self._render_photo_frame(image, abs_x, abs_y, width_pts, height_pts)
+
             # T072-T073: Apply clipping mask if present
             if image.clip_mask is not None:
                 # Save canvas state before clipping
@@ -281,7 +300,7 @@ class ReportLabRenderer(BaseRenderer):
 
                 # Draw the image within the clipping path
                 self._canvas.drawImage(
-                    image.source_path,
+                    render_path,
                     abs_x,
                     abs_y,
                     width=width_pts,
@@ -295,7 +314,7 @@ class ReportLabRenderer(BaseRenderer):
             else:
                 # Draw the image without clipping
                 self._canvas.drawImage(
-                    image.source_path,
+                    render_path,
                     abs_x,
                     abs_y,
                     width=width_pts,
@@ -306,10 +325,72 @@ class ReportLabRenderer(BaseRenderer):
 
             pil_image.close()
 
-        except FileNotFoundError:
-            raise RuntimeError(f"Image file not found: {image.source_path}")
+        except FileNotFoundError as e:
+            raise RuntimeError(f"Image file not found: {image.source_path}") from e
         except Exception as e:
-            raise RuntimeError(f"Error rendering image: {e}")
+            raise RuntimeError(f"Error rendering image: {e}") from e
+
+    def _render_photo_frame(
+        self,
+        image: ImageElement,
+        x: float, y: float,
+        width: float, height: float
+    ) -> None:
+        """Render a photo frame/border around an image.
+
+        Args:
+            image: ImageElement with frame settings.
+            x, y: Position in points.
+            width, height: Dimensions in points.
+        """
+        if self._canvas is None:
+            return
+
+        from reportlab.lib.colors import HexColor
+
+        from holiday_card.core.models import PhotoFrameStyle
+
+        frame_width = inches_to_points(image.frame_width) if image.frame_width > 0 else 2.0
+        frame_color = image.frame_color or "#000000"
+
+        self._canvas.saveState()
+
+        if image.frame_style == PhotoFrameStyle.SIMPLE:
+            self._canvas.setStrokeColor(HexColor(frame_color))
+            self._canvas.setLineWidth(frame_width)
+            self._canvas.rect(x, y, width, height, stroke=1, fill=0)
+
+        elif image.frame_style == PhotoFrameStyle.ROUNDED:
+            self._canvas.setStrokeColor(HexColor(frame_color))
+            self._canvas.setLineWidth(frame_width)
+            radius = min(width, height) * 0.05
+            self._canvas.roundRect(x, y, width, height, radius, stroke=1, fill=0)
+
+        elif image.frame_style == PhotoFrameStyle.SHADOW:
+            # Draw shadow offset
+            shadow_offset = 3
+            self._canvas.setFillColorRGB(0.3, 0.3, 0.3)
+            self._canvas.setFillAlpha(0.3)
+            self._canvas.rect(x + shadow_offset, y - shadow_offset, width, height, fill=1, stroke=0)
+            self._canvas.setFillAlpha(1.0)
+            # Draw border
+            self._canvas.setStrokeColor(HexColor(frame_color))
+            self._canvas.setLineWidth(frame_width)
+            self._canvas.rect(x, y, width, height, stroke=1, fill=0)
+
+        elif image.frame_style == PhotoFrameStyle.POLAROID:
+            # White border with extra space at bottom
+            pad = inches_to_points(0.15)
+            bottom_pad = inches_to_points(0.4)
+            self._canvas.setFillColorRGB(1, 1, 1)
+            self._canvas.rect(x - pad, y - bottom_pad, width + 2 * pad, height + pad + bottom_pad, fill=1, stroke=0)
+            # Subtle shadow
+            self._canvas.setFillColorRGB(0.3, 0.3, 0.3)
+            self._canvas.setFillAlpha(0.15)
+            self._canvas.rect(x - pad + 2, y - bottom_pad - 2, width + 2 * pad, height + pad + bottom_pad, fill=1, stroke=0)
+            self._canvas.setFillAlpha(1.0)
+
+        self._canvas.restoreState()
 
     def _calculate_image_size(
         self,
@@ -433,7 +514,7 @@ class ReportLabRenderer(BaseRenderer):
         # Long text without height - shrink to single line
         return OverflowStrategy.SHRINK
 
-    def _apply_shrink_strategy(self, text: TextElement, panel: Panel) -> tuple[int, str]:
+    def _apply_shrink_strategy(self, text: TextElement, panel: Panel) -> tuple[int, str]:  # noqa: ARG002
         """Apply shrink strategy to fit text within width.
 
         Args:
@@ -446,7 +527,7 @@ class ReportLabRenderer(BaseRenderer):
         if self._canvas is None or text.width is None:
             return (text.font_size, text.content)
 
-        font_name = self._get_font_name(text.font_family, text.font_style.value)
+        font_name = self._get_font_name(text.font_family, text.font_style.value, text.font_file)
         max_width_pts = inches_to_points(text.width)
 
         # Shrink font to fit
@@ -493,7 +574,7 @@ class ReportLabRenderer(BaseRenderer):
         if self._canvas is None or text.width is None:
             return (text.font_size, [text.content])
 
-        font_name = self._get_font_name(text.font_family, text.font_style.value)
+        font_name = self._get_font_name(text.font_family, text.font_style.value, text.font_file)
         max_width_pts = inches_to_points(text.width)
         font_size = text.font_size
 
@@ -560,7 +641,7 @@ class ReportLabRenderer(BaseRenderer):
 
         return (font_size, lines)
 
-    def _apply_truncate_strategy(self, text: TextElement, panel: Panel) -> tuple[int, str]:
+    def _apply_truncate_strategy(self, text: TextElement, panel: Panel) -> tuple[int, str]:  # noqa: ARG002
         """Apply truncate strategy (existing behavior).
 
         Args:
@@ -573,7 +654,7 @@ class ReportLabRenderer(BaseRenderer):
         if self._canvas is None or text.width is None:
             return (text.font_size, text.content)
 
-        font_name = self._get_font_name(text.font_family, text.font_style.value)
+        font_name = self._get_font_name(text.font_family, text.font_style.value, text.font_file)
         max_width_pts = inches_to_points(text.width)
 
         content = self._handle_text_overflow(
@@ -671,17 +752,27 @@ class ReportLabRenderer(BaseRenderer):
 
         self._canvas.restoreState()
 
-    def _get_font_name(self, family: str, style: str) -> str:
-        """Get ReportLab font name from family and style.
+    def _get_font_name(self, family: str, style: str, font_file: str | None = None) -> str:
+        """Get ReportLab font name from family, style, and optional font file.
+
+        If font_file is provided, registers the TTF/OTF font with ReportLab.
+        Falls back to built-in fonts if custom font fails to load.
 
         Args:
             family: Font family name.
             style: Font style (normal, bold, italic, bold_italic).
+            font_file: Optional path to TTF/OTF font file.
 
         Returns:
             ReportLab font name.
         """
-        # Map common font families
+        # Try custom font if specified
+        if font_file:
+            registered_name = self._register_custom_font(family, font_file)
+            if registered_name:
+                return registered_name
+
+        # Fall back to built-in font mapping
         family_map = {
             "helvetica": "Helvetica",
             "times": "Times-Roman",
@@ -708,6 +799,85 @@ class ReportLabRenderer(BaseRenderer):
             return f"{base_font}-BoldItalic"
 
         return base_font
+
+    def _register_custom_font(self, family: str, font_file: str) -> str | None:
+        """Register a custom TTF/OTF font with ReportLab.
+
+        Args:
+            family: Font family name for registration.
+            font_file: Path to font file.
+
+        Returns:
+            Registered font name, or None if registration fails.
+        """
+        import logging
+        from pathlib import Path
+
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+
+        logger = logging.getLogger(__name__)
+
+        font_path = Path(font_file)
+
+        # Check bundled fonts directory first
+        if not font_path.is_absolute():
+            bundled_path = self._resolve_bundled_font(font_file)
+            if bundled_path:
+                font_path = bundled_path
+
+        if not font_path.exists():
+            logger.warning(f"Custom font file not found: {font_file}, falling back to built-in")
+            return None
+
+        suffix = font_path.suffix.lower()
+        if suffix not in ('.ttf', '.otf'):
+            logger.warning(f"Unsupported font format: {suffix}, falling back to built-in")
+            return None
+
+        try:
+            # Use family name as registration key
+            reg_name = family.replace(" ", "-")
+            pdfmetrics.registerFont(TTFont(reg_name, str(font_path)))
+            return reg_name
+        except Exception as e:
+            logger.warning(f"Failed to register custom font '{family}': {e}, falling back to built-in")
+            return None
+
+    def _resolve_bundled_font(self, font_name: str) -> Path | None:
+        """Resolve a font name to a bundled font path.
+
+        Checks the fonts/ directory in the project root.
+
+        Args:
+            font_name: Font filename or path fragment.
+
+        Returns:
+            Path to bundled font, or None if not found.
+        """
+        from pathlib import Path
+
+        # Check fonts/ directory at project root
+        project_root = Path(__file__).parent.parent.parent.parent
+        fonts_dir = project_root / "fonts"
+
+        if fonts_dir.exists():
+            # Try exact match
+            candidate = fonts_dir / font_name
+            if candidate.exists():
+                return candidate
+
+            # Try with extensions
+            for ext in ('.ttf', '.otf'):
+                candidate = fonts_dir / f"{font_name}{ext}"
+                if candidate.exists():
+                    return candidate
+
+                # Search subdirectories
+                for match in fonts_dir.glob(f"**/{font_name}{ext}"):
+                    return match
+
+        return None
 
     def draw_fold_lines(self, fold_type: str) -> None:
         """Draw fold guide lines on the canvas.
@@ -741,6 +911,7 @@ class ReportLabRenderer(BaseRenderer):
 
         Single horizontal fold at the middle of the page.
         """
+        assert self._canvas is not None  # guarded by draw_fold_lines
         mid_y = height / 2
         self._canvas.line(0, mid_y, width, mid_y)
 
@@ -749,6 +920,7 @@ class ReportLabRenderer(BaseRenderer):
 
         Horizontal fold at middle, vertical fold at middle.
         """
+        assert self._canvas is not None  # guarded by draw_fold_lines
         mid_x = width / 2
         mid_y = height / 2
 
@@ -763,6 +935,7 @@ class ReportLabRenderer(BaseRenderer):
 
         Two vertical folds dividing the page into thirds.
         """
+        assert self._canvas is not None  # guarded by draw_fold_lines
         third_x = width / 3
 
         # First fold line
@@ -771,11 +944,13 @@ class ReportLabRenderer(BaseRenderer):
         # Second fold line
         self._canvas.line(third_x * 2, 0, third_x * 2, height)
 
-    def save(self, path: Path) -> None:
+    def save(self, path: Path) -> None:  # noqa: ARG002
         """Save the rendered PDF to a file.
 
         Args:
-            path: Output file path.
+            path: Output file path. Currently unused; the canvas was bound to
+                an output path in ``create_canvas``. Retained for interface
+                conformance with ``BaseRenderer.save``.
         """
         if self._canvas is None:
             raise RuntimeError("Canvas not initialized. Call create_canvas first.")

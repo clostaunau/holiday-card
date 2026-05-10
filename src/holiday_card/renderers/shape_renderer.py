@@ -381,6 +381,7 @@ class ShapeRenderer:
                 has_fill = False
 
             if has_stroke:
+                assert svg_path.stroke_color is not None  # narrowed by has_stroke
                 canvas.setStrokeColor(self._hex_to_color(svg_path.stroke_color))
                 canvas.setLineWidth(svg_path.stroke_width)
 
@@ -408,7 +409,7 @@ class ShapeRenderer:
     def _apply_gradient_fill(self, canvas, fill_style, x: float, y: float, width: float, height: float,
                              panel_offset_x: float, panel_offset_y: float):
         """Apply gradient fill using GradientRenderer.
-        
+
         Args:
             canvas: ReportLab canvas
             fill_style: LinearGradientFill or RadialGradientFill
@@ -437,7 +438,7 @@ class ShapeRenderer:
                            x: float, y: float, width: float, height: float,
                            panel_offset_x: float, panel_offset_y: float):
         """Apply pattern fill using PatternRenderer.
-        
+
         Args:
             canvas: ReportLab canvas
             fill_style: PatternFill configuration
@@ -467,17 +468,17 @@ class ShapeRenderer:
     def _apply_fill(self, canvas, shape, x: float, y: float, width: float, height: float,
                     panel_offset_x: float, panel_offset_y: float) -> bool:
         """Apply fill (solid, gradient, or pattern) to a shape.
-        
+
         Args:
             canvas: ReportLab canvas
             shape: Shape with fill/fill_color attributes
             x: Shape X in inches
-            y: Shape Y in inches  
+            y: Shape Y in inches
             width: Shape width in inches
             height: Shape height in inches
             panel_offset_x: Panel offset X in inches
             panel_offset_y: Panel offset Y in inches
-            
+
         Returns:
             True if fill should be drawn, False otherwise
         """
@@ -536,6 +537,7 @@ class ShapeRenderer:
         has_stroke = rect.stroke_color is not None and rect.stroke_width > 0
 
         if has_stroke:
+            assert rect.stroke_color is not None  # narrowed by has_stroke
             canvas.setStrokeColor(self._hex_to_color(rect.stroke_color))
             canvas.setLineWidth(rect.stroke_width)
 
@@ -583,6 +585,7 @@ class ShapeRenderer:
         has_stroke = circle.stroke_color is not None and circle.stroke_width > 0
 
         if has_stroke:
+            assert circle.stroke_color is not None  # narrowed by has_stroke
             canvas.setStrokeColor(self._hex_to_color(circle.stroke_color))
             canvas.setLineWidth(circle.stroke_width)
 
@@ -640,6 +643,7 @@ class ShapeRenderer:
         has_stroke = triangle.stroke_color is not None and triangle.stroke_width > 0
 
         if has_stroke:
+            assert triangle.stroke_color is not None  # narrowed by has_stroke
             canvas.setStrokeColor(self._hex_to_color(triangle.stroke_color))
             canvas.setLineWidth(triangle.stroke_width)
 
@@ -702,6 +706,7 @@ class ShapeRenderer:
         has_stroke = star.stroke_color is not None and star.stroke_width > 0
 
         if has_stroke:
+            assert star.stroke_color is not None  # narrowed by has_stroke
             canvas.setStrokeColor(self._hex_to_color(star.stroke_color))
             canvas.setLineWidth(star.stroke_width)
 

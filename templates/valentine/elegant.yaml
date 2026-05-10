@@ -1,0 +1,168 @@
+id: valentine-elegant
+name: "Elegant Valentine"
+occasion: valentine
+fold_type: half_fold
+description: "Sophisticated Valentine's card with burgundy and gold accents"
+default_theme_id: valentine-burgundy
+
+panels:
+  - id: front
+    position: front
+    x: 4.25
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 0.98
+      b: 0.96
+
+    shape_elements:
+      # Elegant border rectangle
+      - type: rectangle
+        x: 0.3
+        y: 0.3
+        width: 3.65
+        height: 4.9
+        stroke_color: "#D4AF37"
+        stroke_width: 1.5
+        z_index: 1
+
+      # Inner border
+      - type: rectangle
+        x: 0.45
+        y: 0.45
+        width: 3.35
+        height: 4.6
+        stroke_color: "#D4AF37"
+        stroke_width: 0.5
+        opacity: 0.6
+        z_index: 1
+
+      # Single centered heart outline
+      - type: decorative_element
+        name: heart_outline
+        x: 1.125
+        y: 1.5
+        scale: 1.0
+        color_palette:
+          heart_stroke: "#800020"
+        z_index: 5
+
+      # Gold corner stars
+      - type: star
+        center_x: 0.6
+        center_y: 4.9
+        outer_radius: 0.12
+        inner_radius: 0.06
+        points: 5
+        fill_color: "#D4AF37"
+        opacity: 0.7
+        z_index: 3
+      - type: star
+        center_x: 3.65
+        center_y: 4.9
+        outer_radius: 0.12
+        inner_radius: 0.06
+        points: 5
+        fill_color: "#D4AF37"
+        opacity: 0.7
+        z_index: 3
+      - type: star
+        center_x: 0.6
+        center_y: 0.6
+        outer_radius: 0.12
+        inner_radius: 0.06
+        points: 5
+        fill_color: "#D4AF37"
+        opacity: 0.7
+        z_index: 3
+      - type: star
+        center_x: 3.65
+        center_y: 0.6
+        outer_radius: 0.12
+        inner_radius: 0.06
+        points: 5
+        fill_color: "#D4AF37"
+        opacity: 0.7
+        z_index: 3
+
+    text_elements:
+      - id: greeting
+        content: "With Love"
+        x: 2.125
+        y: 0.8
+        width: 3.0
+        font_size: 28
+        font_style: italic
+        alignment: center
+        overflow_strategy: shrink
+        min_font_size: 16
+        color:
+          r: 0.5
+          g: 0.0
+          b: 0.13
+        z_index: 100
+
+  - id: inside_left
+    position: inside_left
+    x: 0.0
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180
+    background_color:
+      r: 1.0
+      g: 0.98
+      b: 0.96
+
+    shape_elements:
+      - type: line
+        start_x: 0.5
+        start_y: 3.2
+        end_x: 3.75
+        end_y: 3.2
+        stroke_color: "#D4AF37"
+        stroke_width: 0.5
+        opacity: 0.5
+        z_index: 1
+
+    text_elements:
+      - id: message
+        content: "You are my today and all of my tomorrows."
+        x: 0.5
+        y: 3.8
+        width: 3.25
+        font_size: 14
+        font_style: italic
+        alignment: center
+        overflow_strategy: wrap
+        max_lines: 8
+        color:
+          r: 0.35
+          g: 0.15
+          b: 0.2
+        z_index: 100
+
+  - id: inside_right
+    position: inside_right
+    x: 4.25
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180
+    background_color:
+      r: 1.0
+      g: 0.98
+      b: 0.96
+
+  - id: back
+    position: back
+    x: 0.0
+    y: 0.0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 0.98
+      b: 0.96

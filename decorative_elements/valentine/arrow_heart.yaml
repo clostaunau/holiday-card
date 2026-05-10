@@ -1,0 +1,90 @@
+name: arrow_heart
+description: "Cupid's arrow through a heart"
+default_width: 3.0
+default_height: 2.5
+
+color_roles:
+  heart_fill: "#DC143C"
+  arrow_shaft: "#8B4513"
+  arrow_tip: "#C0C0C0"
+  arrow_feather: "#FFE4E1"
+
+shapes:
+  # Heart body (left circle)
+  - type: circle
+    center_x: 1.25
+    center_y: 1.65
+    radius: 0.45
+    fill_color: "{heart_fill}"
+    z_index: 2
+
+  # Heart body (right circle)
+  - type: circle
+    center_x: 1.85
+    center_y: 1.65
+    radius: 0.45
+    fill_color: "{heart_fill}"
+    z_index: 2
+
+  # Heart point triangle
+  - type: triangle
+    x1: 0.8
+    y1: 1.45
+    x2: 2.3
+    y2: 1.45
+    x3: 1.55
+    y3: 0.3
+    fill_color: "{heart_fill}"
+    z_index: 1
+
+  # Heart center fill
+  - type: rectangle
+    x: 1.0
+    y: 1.1
+    width: 1.1
+    height: 0.65
+    fill_color: "{heart_fill}"
+    z_index: 3
+
+  # Arrow shaft (diagonal line)
+  - type: line
+    start_x: 0.2
+    start_y: 2.2
+    end_x: 2.8
+    end_y: 0.8
+    stroke_color: "{arrow_shaft}"
+    stroke_width: 3
+    z_index: 10
+
+  # Arrow tip (small triangle)
+  - type: triangle
+    x1: 2.8
+    y1: 0.8
+    x2: 2.5
+    y2: 0.65
+    x3: 2.65
+    y3: 1.1
+    fill_color: "{arrow_tip}"
+    z_index: 11
+
+  # Arrow feather 1
+  - type: triangle
+    x1: 0.2
+    y1: 2.2
+    x2: 0.0
+    y2: 2.35
+    x3: 0.35
+    y3: 2.45
+    fill_color: "{arrow_feather}"
+    z_index: 11
+
+  # Arrow feather 2
+  - type: triangle
+    x1: 0.3
+    y1: 2.1
+    x2: 0.05
+    y2: 2.0
+    x3: 0.15
+    y3: 2.3
+    fill_color: "{arrow_feather}"
+    z_index: 11

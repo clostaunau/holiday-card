@@ -14,6 +14,7 @@ from holiday_card.core.models import (
     CircleClipMask,
     ClipMask,
     EllipseClipMask,
+    HeartClipMask,
     RectangleClipMask,
     StarClipMask,
     SVGPathClipMask,
@@ -203,6 +204,69 @@ class ClippingRenderer:
 
         return path
 
+    def create_heart_path(
+        self,
+        mask: HeartClipMask,
+        image_x: float,
+        image_y: float
+    ) -> Path:
+        """Create a heart-shaped clipping path using cubic Bezier curves.
+
+        Args:
+            mask: HeartClipMask model with center and size
+            image_x: Image X position in points
+            image_y: Image Y position in points
+
+        Returns:
+            ReportLab Path object for heart clip
+        """
+        cx = mask.center_x * self.POINTS_PER_INCH
+        cy = mask.center_y * self.POINTS_PER_INCH
+        s = mask.size * self.POINTS_PER_INCH
+
+        # Heart proportions based on size
+        hw = s / 2  # half width
+        hh = s * 0.9  # height (slightly taller than wide)
+
+        path = Path()
+        # Start at bottom point
+        bx = image_x + cx
+        by = image_y + cy - hh * 0.4
+
+        path.moveTo(bx, by)
+        # Left curve
+        path.curveTo(
+            bx - hw * 0.6, by + hh * 0.4,
+            bx - hw, by + hh * 0.7,
+            bx - hw * 0.5, by + hh
+        )
+        # Top-left to center
+        path.curveTo(
+            bx - hw * 0.1, by + hh * 1.15,
+            bx, by + hh * 0.85,
+            bx, by + hh * 0.7
+        )
+        # Center to top-right
+        path.curveTo(
+            bx, by + hh * 0.85,
+            bx + hw * 0.1, by + hh * 1.15,
+            bx + hw * 0.5, by + hh
+        )
+        # Right curve back to bottom
+        path.curveTo(
+            bx + hw, by + hh * 0.7,
+            bx + hw * 0.6, by + hh * 0.4,
+            bx, by
+        )
+        path.close()
+
+        logger.debug(
+            f"Created heart clip path: center=({cx:.2f},{cy:.2f}), "
+            f"size={s:.2f}pts"
+        )
+
+        return path
+
     def create_svg_path(
         self,
         mask: SVGPathClipMask,
@@ -336,6 +400,8 @@ class ClippingRenderer:
                 path = self.create_ellipse_path(mask, image_x, image_y)
             elif mask.type == "star":
                 path = self.create_star_path(mask, image_x, image_y)
+            elif mask.type == "heart":
+                path = self.create_heart_path(mask, image_x, image_y)
             elif mask.type == "svg_path":
                 path = self.create_svg_path(mask, image_x, image_y)
             else:

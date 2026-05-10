@@ -15,12 +15,12 @@ Supported SVG commands:
 import logging
 import re
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 logger = logging.getLogger(__name__)
 
 
-class SVGCommand(str, Enum):
+class SVGCommand(StrEnum):
     """SVG path command types."""
 
     MOVE = "M"
@@ -146,18 +146,21 @@ class SVGPathParser:
         """
         try:
             command = SVGCommand(command_char)
-        except ValueError:
-            raise ValueError(f"Unknown SVG command: {command_char}")
+        except ValueError as e:
+            raise ValueError(f"Unknown SVG command: {command_char}") from e
 
-        # Validate parameter count for each command type
+        # Validate parameter count for each command type.
+        # Some commands allow multiple sets of parameters, so we check divisibility.
         expected_params = self._get_expected_param_count(command)
-        if expected_params is not None and len(params) != expected_params:
-            # Some commands allow multiple sets of parameters
-            if len(params) % expected_params != 0:
-                raise ValueError(
-                    f"Command {command_char} expects {expected_params} parameters, "
-                    f"got {len(params)}"
-                )
+        if (
+            expected_params is not None
+            and len(params) != expected_params
+            and len(params) % expected_params != 0
+        ):
+            raise ValueError(
+                f"Command {command_char} expects {expected_params} parameters, "
+                f"got {len(params)}"
+            )
 
         return PathCommand(command=command, params=params)
 

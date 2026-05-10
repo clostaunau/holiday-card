@@ -132,7 +132,6 @@ def main():
     print(f"{'Template':<40} {'Mean (ms)':<12} {'vs Baseline':<12} {'Status'}")
     print("-" * 80)
 
-    all_pass = True
     within_threshold = 0
     for result in vector_results:
         template = result["template"]
@@ -154,9 +153,9 @@ def main():
 
     print()
     print("=" * 80)
-    print(f"Performance Summary:")
+    print("Performance Summary:")
     print(f"  Templates within 20% threshold: {within_threshold}/{len(vector_results)}")
-    print(f"  All templates generate successfully")
+    print("  All templates generate successfully")
     print()
 
     # All templates generating successfully is acceptable - the 20% is a target, not requirement

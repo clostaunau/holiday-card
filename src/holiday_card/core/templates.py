@@ -10,8 +10,6 @@ from pathlib import Path
 
 import yaml
 
-logger = logging.getLogger(__name__)
-
 from holiday_card.core.models import (
     Circle,
     Color,
@@ -34,6 +32,8 @@ from holiday_card.core.models import (
     TextElement,
     Triangle,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class TemplateNotFoundError(Exception):
@@ -177,12 +177,12 @@ def load_template_from_file(path: Path) -> Template:
         with open(path) as f:
             data = yaml.safe_load(f)
     except (yaml.YAMLError, OSError) as e:
-        raise TemplateLoadError(f"Failed to read template file {path}: {e}")
+        raise TemplateLoadError(f"Failed to read template file {path}: {e}") from e
 
     try:
         return _parse_template(data)
     except (KeyError, ValueError, TypeError) as e:
-        raise TemplateLoadError(f"Failed to parse template {path}: {e}")
+        raise TemplateLoadError(f"Failed to parse template {path}: {e}") from e
 
 
 def _parse_template(data: dict) -> Template:
