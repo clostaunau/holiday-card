@@ -61,9 +61,12 @@ def test_svg_renders_valid_xml(template_id: str, tmp_path: Path) -> None:
         f"Root element is {root.tag!r}, expected svg"
     )
 
-    # The page is letter size in points.
-    assert root.get("width") == "612", "Unexpected SVG width"
-    assert root.get("height") == "792", "Unexpected SVG height"
+    # Letter trim is 612x792 pt; with the default 0.125" bleed the
+    # media canvas is 630x810 pt.
+    assert root.get("width") == "630", "Unexpected SVG width"
+    assert root.get("height") == "810", "Unexpected SVG height"
+    # viewBox starts at -bleed so IR (0, 0) lands at the trim corner.
+    assert root.get("viewBox") == "-9 -9 630 810", "Unexpected SVG viewBox"
 
 
 @pytest.mark.parametrize("template_id", SVG_TEMPLATES)
@@ -123,6 +126,23 @@ def test_svg_fold_line_is_dashed(tmp_path: Path) -> None:
     assert any(
         line.get("stroke-dasharray") == "3 3" for line in lines
     ), "Expected at least one dashed line (the fold guide)"
+
+
+def test_svg_viewbox_includes_negative_bleed_offset(tmp_path: Path) -> None:
+    """The viewBox starts at ``(-bleed, -bleed)`` so IR (0, 0) lands at
+    the trim corner. Without this, content positioned at IR coords would
+    appear in the bleed area.
+    """
+    out = tmp_path / "viewbox.svg"
+    _render_svg("christmas-classic", out)
+    root = ET.parse(out).getroot()
+    vb = root.get("viewBox")
+    parts = vb.split() if vb else []
+    assert len(parts) == 4
+    assert float(parts[0]) == -9.0  # -bleed_pts
+    assert float(parts[1]) == -9.0
+    assert float(parts[2]) == 630.0  # media width
+    assert float(parts[3]) == 810.0  # media height
 
 
 def test_svg_rotated_panel_uses_pivot_rotate_transform(tmp_path: Path) -> None:

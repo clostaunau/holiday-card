@@ -1,13 +1,17 @@
 """Unit tests for measurement utilities."""
 
 
+import pytest
+
 from holiday_card.utils.measurements import (
+    DEFAULT_BLEED,
     FOLD_LINE_WIDTH,
     MIN_DPI,
     PAGE_HEIGHT,
     PAGE_WIDTH,
     POINTS_PER_INCH,
     SAFE_MARGIN,
+    PageGeometry,
     inches_to_points,
     points_to_inches,
 )
@@ -67,3 +71,72 @@ class TestConversions:
         # Letter size in points is 612 x 792
         assert width_pts == 612.0
         assert height_pts == 792.0
+
+
+class TestPageGeometryNoBleed:
+    """``PageGeometry`` collapses to flat trim==media when bleed==0."""
+
+    @pytest.fixture
+    def geom(self) -> PageGeometry:
+        return PageGeometry.us_letter(bleed_in=0.0)
+
+    def test_all_boxes_equal_when_no_bleed(self, geom: PageGeometry) -> None:
+        # ArtBox is inset by SAFE_MARGIN, so it's smaller than the rest.
+        # Media / Trim / Bleed all collapse to the same rect when bleed=0.
+        assert geom.media_box_pts == (0.0, 0.0, 612.0, 792.0)
+        assert geom.trim_box_pts == (0.0, 0.0, 612.0, 792.0)
+        assert geom.bleed_box_pts == (0.0, 0.0, 612.0, 792.0)
+
+    def test_art_box_is_inset_by_safe_margin(self, geom: PageGeometry) -> None:
+        margin_pt = inches_to_points(SAFE_MARGIN)
+        x, y, w, h = geom.art_box_pts
+        assert (x, y) == (margin_pt, margin_pt)
+        assert w == 612.0 - 2 * margin_pt
+        assert h == 792.0 - 2 * margin_pt
+
+
+class TestPageGeometryWithBleed:
+    """``PageGeometry`` with the industry-standard 0.125" bleed."""
+
+    @pytest.fixture
+    def geom(self) -> PageGeometry:
+        return PageGeometry.us_letter()  # default bleed = 0.125"
+
+    def test_default_bleed_matches_industry_standard(self, geom: PageGeometry) -> None:
+        assert geom.bleed_in == DEFAULT_BLEED == 0.125
+        assert geom.bleed_pts == 9.0
+
+    def test_media_box_extends_past_trim_on_every_side(self, geom: PageGeometry) -> None:
+        # Trim is 612 x 792 pt; bleed adds 9 pt on every side.
+        x, y, w, h = geom.media_box_pts
+        assert (x, y) == (0.0, 0.0)
+        assert w == 612.0 + 18.0
+        assert h == 792.0 + 18.0
+
+    def test_trim_box_is_offset_by_bleed(self, geom: PageGeometry) -> None:
+        # TrimBox sits inside the MediaBox, anchored at (bleed, bleed).
+        x, y, w, h = geom.trim_box_pts
+        assert (x, y) == (9.0, 9.0)
+        assert (w, h) == (612.0, 792.0)
+
+    def test_bleed_box_equals_media_box(self, geom: PageGeometry) -> None:
+        # Until a slug area is added, BleedBox == MediaBox by spec.
+        assert geom.bleed_box_pts == geom.media_box_pts
+
+    def test_art_box_is_inset_from_trim_corner(self, geom: PageGeometry) -> None:
+        margin_pt = inches_to_points(SAFE_MARGIN)
+        x, y, w, h = geom.art_box_pts
+        assert (x, y) == (9.0 + margin_pt, 9.0 + margin_pt)
+        assert w == 612.0 - 2 * margin_pt
+        assert h == 792.0 - 2 * margin_pt
+
+
+class TestPageGeometryMOO:
+    """``PageGeometry.moo_a6()`` is a stub for the upcoming --export-for PR."""
+
+    def test_moo_a6_has_industry_bleed_and_a6_trim(self) -> None:
+        geom = PageGeometry.moo_a6()
+        assert geom.bleed_in == 0.125
+        # A6 is roughly 4.13 x 5.83 inches
+        assert geom.trim_width_in == 4.13
+        assert geom.trim_height_in == 5.83

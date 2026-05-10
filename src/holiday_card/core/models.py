@@ -760,6 +760,16 @@ class Panel(BaseModel):
     width: float = Field(gt=0.0, description="Panel width in inches")
     height: float = Field(gt=0.0, description="Panel height in inches")
     rotation: float = Field(default=0.0, description="Rotation in degrees (for quarter-fold)")
+    bleed: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=0.5,
+        description=(
+            "Per-panel bleed extension in inches. None (the default) "
+            "inherits from Card.bleed. Background fills extend past the "
+            "trim edge by this amount on edges that touch the page trim."
+        ),
+    )
     background_color: Color | None = Field(default=None, description="Panel background color")
     background_image: str | None = Field(default=None, description="Path to background image")
     border: Border | None = Field(default=None, description="Panel border styling")
@@ -779,6 +789,16 @@ class Template(BaseModel):
     occasion: OccasionType = Field(description="Occasion type")
     fold_type: FoldType = Field(description="Default fold type")
     default_theme_id: str | None = Field(default=None, description="Default theme ID")
+    bleed: float = Field(
+        default=0.125,
+        ge=0.0,
+        le=0.5,
+        description=(
+            "Default bleed in inches applied to every panel that doesn't "
+            "set its own. 0.125 is the industry default accepted by all "
+            "major POD services."
+        ),
+    )
     panels: list[Panel] = Field(description="Panel configurations")
     description: str | None = Field(default=None, description="Template description")
     preview_image: str | None = Field(default=None, description="Path to preview image")
@@ -822,6 +842,15 @@ class Card(BaseModel):
     template_id: str = Field(description="Reference to base template")
     fold_type: FoldType = Field(description="Card fold type")
     theme_id: str | None = Field(default=None, description="Override theme")
+    bleed: float = Field(
+        default=0.125,
+        ge=0.0,
+        le=0.5,
+        description=(
+            "Default bleed in inches. Each Panel inherits this unless it "
+            "sets its own Panel.bleed. 0.125 matches the industry default."
+        ),
+    )
     panels: list[Panel] = Field(description="Panel configurations")
     output_path: Path | None = Field(default=None, description="Target PDF file path")
     created_at: datetime = Field(default_factory=datetime.now, description="Creation timestamp")

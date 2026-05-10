@@ -199,16 +199,19 @@ def _parse_template(data: dict) -> Template:
         panel = _parse_panel(panel_data)
         panels.append(panel)
 
-    return Template(
-        id=data["id"],
-        name=data["name"],
-        occasion=OccasionType(data["occasion"]),
-        fold_type=FoldType(data["fold_type"]),
-        default_theme_id=data.get("default_theme_id"),
-        panels=panels,
-        description=data.get("description"),
-        preview_image=data.get("preview_image"),
-    )
+    template_kwargs: dict = {
+        "id": data["id"],
+        "name": data["name"],
+        "occasion": OccasionType(data["occasion"]),
+        "fold_type": FoldType(data["fold_type"]),
+        "default_theme_id": data.get("default_theme_id"),
+        "panels": panels,
+        "description": data.get("description"),
+        "preview_image": data.get("preview_image"),
+    }
+    if "bleed" in data:
+        template_kwargs["bleed"] = data["bleed"]
+    return Template(**template_kwargs)
 
 
 def _parse_panel(data: dict) -> Panel:
@@ -245,6 +248,7 @@ def _parse_panel(data: dict) -> Panel:
         width=data["width"],
         height=data["height"],
         rotation=data.get("rotation", 0.0),
+        bleed=data.get("bleed"),  # None means inherit from card
         background_color=background_color,
         background_image=data.get("background_image"),
         text_elements=text_elements,

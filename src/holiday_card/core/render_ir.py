@@ -338,9 +338,26 @@ class SetMetadata(_IRBase):
 
 
 class BeginPage(_IRBase):
+    """Begin a page. ``width`` / ``height`` are the **trim box** in points.
+
+    The optional ``bleed`` extends the canvas (media box) past the trim
+    edge by that many points on every side; backends are responsible for
+    sizing their canvas to ``width + 2*bleed`` × ``height + 2*bleed`` and
+    translating IR coordinates by ``+bleed`` so that IR ``(0, 0)`` lands
+    at the trim box's bottom-left corner. ``safe_margin`` records the
+    inset for the PDF /ArtBox; backends consume it metadata-only and do
+    not enforce content placement against it (the compiler / templates do).
+    """
+
     cmd: Literal["begin_page"] = "begin_page"
-    width: float = Field(gt=0.0, description="Page width in points")
-    height: float = Field(gt=0.0, description="Page height in points")
+    width: float = Field(gt=0.0, description="Trim box width in points")
+    height: float = Field(gt=0.0, description="Trim box height in points")
+    bleed: float = Field(
+        default=0.0, ge=0.0, description="Bleed extension past trim, in points"
+    )
+    safe_margin: float = Field(
+        default=0.0, ge=0.0, description="Safe area inset from trim, in points"
+    )
 
 
 class EndPage(_IRBase):

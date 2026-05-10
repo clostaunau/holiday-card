@@ -143,15 +143,28 @@ class SVGRenderer:
     # ------------------------------------------------------------------
 
     def _begin_page(self, cmd: BeginPage) -> None:
+        # Trim dimensions drive the per-element y-flip math (page_height
+        # below is the trim height); the bleed extension is folded into
+        # the SVG viewBox so IR coords (origin at trim corner) land
+        # naturally without a per-element translate. The viewBox starts
+        # at ``-bleed`` so element ``(0, 0)`` is the trim corner; the
+        # outer ``width``/``height`` attributes report the media box so
+        # browsers and SVG-to-PDF tools render the bleed area.
         self._page_width = cmd.width
         self._page_height = cmd.height
+        bleed = cmd.bleed
+        media_w = cmd.width + 2 * bleed
+        media_h = cmd.height + 2 * bleed
         self._root = ET.Element(
             "svg",
             attrib={
                 "xmlns": _SVG_NS,
-                "width": _fmt(cmd.width),
-                "height": _fmt(cmd.height),
-                "viewBox": f"0 0 {_fmt(cmd.width)} {_fmt(cmd.height)}",
+                "width": _fmt(media_w),
+                "height": _fmt(media_h),
+                "viewBox": (
+                    f"{_fmt(-bleed)} {_fmt(-bleed)} "
+                    f"{_fmt(media_w)} {_fmt(media_h)}"
+                ),
             },
         )
         self._defs = ET.SubElement(self._root, "defs")

@@ -102,6 +102,25 @@ class TestFieldValidation:
         with pytest.raises(ValidationError):
             PolygonGeom(points=(Point(x=0, y=0), Point(x=1, y=1)))
 
+    def test_begin_page_bleed_and_safe_default_to_zero(self) -> None:
+        """Old-shape ``BeginPage(width=, height=)`` still works — the bleed
+        and safe_margin fields default to 0 so callers that don't care
+        about prepress aren't forced to supply them."""
+        bp = BeginPage(width=612, height=792)
+        assert bp.bleed == 0.0
+        assert bp.safe_margin == 0.0
+
+    def test_begin_page_accepts_bleed_and_safe_margin(self) -> None:
+        bp = BeginPage(width=612, height=792, bleed=9.0, safe_margin=18.0)
+        assert bp.bleed == 9.0
+        assert bp.safe_margin == 18.0
+
+    def test_begin_page_rejects_negative_bleed(self) -> None:
+        with pytest.raises(ValidationError):
+            BeginPage(width=612, height=792, bleed=-1.0)
+        with pytest.raises(ValidationError):
+            BeginPage(width=612, height=792, safe_margin=-1.0)
+
     def test_linear_gradient_requires_at_least_two_stops(self) -> None:
         with pytest.raises(ValidationError):
             LinearGradientPaint(

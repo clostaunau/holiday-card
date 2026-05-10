@@ -28,10 +28,18 @@ from pathlib import Path
 import pytest
 
 from holiday_card.core.compiler import (
+    CompileContext,
     UnsupportedFeatureError,
     compile_card,
 )
 from holiday_card.core.generators import CardGenerator
+from holiday_card.core.models import (
+    Card,
+    Color,
+    FoldType,
+    Panel,
+    PanelPosition,
+)
 from holiday_card.core.render_ir import (
     BeginGroup,
     BeginPage,
@@ -40,9 +48,11 @@ from holiday_card.core.render_ir import (
     DrawText,
     EndGroup,
     EndPage,
+    RectGeom,
     SetMetadata,
     assert_balanced,
 )
+from holiday_card.utils.measurements import PageGeometry
 
 SNAPSHOT_DIR = Path(__file__).parent / "__snapshots__"
 UPDATE_SNAPSHOTS = os.environ.get("UPDATE_COMPILER_SNAPSHOTS") == "1"
@@ -188,3 +198,153 @@ def test_compiler_snapshot(template_id: str) -> None:
         f"If the change is intentional, regenerate with:\n"
         f"  UPDATE_COMPILER_SNAPSHOTS=1 pytest {__file__}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Bleed extension — edge-aware background expansion
+# ---------------------------------------------------------------------------
+
+
+def _single_panel_card(
+    *,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    rotation: float = 0.0,
+    panel_bleed: float | None = None,
+    card_bleed: float = 0.125,
+) -> Card:
+    """Build a minimal 1-panel card whose only feature is a red background.
+
+    The compiler then emits exactly one DrawShape (the background) per
+    panel, which is what the bleed tests inspect.
+    """
+    panel = Panel(
+        position=PanelPosition.FRONT,
+        x=x, y=y, width=width, height=height,
+        rotation=rotation,
+        bleed=panel_bleed,
+        background_color=Color(r=1.0, g=0.0, b=0.0),
+    )
+    return Card(
+        name="bleed-fixture",
+        template_id="bleed-fixture",
+        fold_type=FoldType.HALF_FOLD,
+        bleed=card_bleed,
+        panels=[panel],
+    )
+
+
+def _bg_rect(commands: list[object]) -> RectGeom:
+    """Locate the (single) panel-background DrawShape's RectGeom."""
+    rects = [
+        c.geometry for c in commands  # type: ignore[attr-defined]
+        if isinstance(c, DrawShape)
+        and isinstance(c.geometry, RectGeom)
+        and c.fill is not None
+    ]
+    assert len(rects) == 1, f"expected exactly one bg rect, got {len(rects)}"
+    return rects[0]
+
+
+class TestBleedExtension:
+    """The compiler's bleed pass extends panel backgrounds on edges that
+    touch the page trim. Page edges interior to the imposition (the
+    fold line, panel-to-panel borders) do not get extended.
+    """
+
+    def test_panel_touching_all_four_edges_extends_on_all_four(self) -> None:
+        # A full-page panel at (0, 0, 8.5, 11) touches every page edge.
+        card = _single_panel_card(x=0, y=0, width=8.5, height=11.0)
+        commands = compile_card(card)
+        rect = _bg_rect(commands)
+        # 0.125" bleed = 9 pt extension on every side.
+        assert rect.x == -9.0
+        assert rect.y == -9.0
+        assert rect.width == 612.0 + 18.0
+        assert rect.height == 792.0 + 18.0
+
+    def test_panel_touching_only_right_edge_extends_only_on_right(self) -> None:
+        # Front panel of a half-fold: x=4.25, y=0 → touches right + bottom
+        # but not left or top. Use a smaller height to drop the top touch.
+        card = _single_panel_card(x=4.25, y=2.0, width=4.25, height=4.0)
+        commands = compile_card(card)
+        rect = _bg_rect(commands)
+        # x unchanged (left does NOT touch trim), width grows by 9 pt.
+        assert rect.x == 4.25 * 72  # 306
+        assert rect.width == 4.25 * 72 + 9.0  # 315
+        # y unchanged (bottom does NOT touch trim), height unchanged.
+        assert rect.y == 2.0 * 72  # 144
+        assert rect.height == 4.0 * 72  # 288
+
+    def test_no_bleed_when_card_bleed_and_panel_bleed_both_zero(self) -> None:
+        card = _single_panel_card(
+            x=0, y=0, width=8.5, height=11.0, card_bleed=0.0, panel_bleed=None
+        )
+        rect = _bg_rect(compile_card(card))
+        assert rect.x == 0.0 and rect.y == 0.0
+        assert rect.width == 612.0 and rect.height == 792.0
+
+    def test_panel_bleed_overrides_card_bleed_with_zero(self) -> None:
+        # Card says 0.125 but panel says 0 — panel wins (explicit override).
+        card = _single_panel_card(
+            x=0, y=0, width=8.5, height=11.0, card_bleed=0.125, panel_bleed=0.0
+        )
+        rect = _bg_rect(compile_card(card))
+        # No extension despite card-level default.
+        assert rect.x == 0.0 and rect.y == 0.0
+        assert rect.width == 612.0 and rect.height == 792.0
+
+    def test_panel_bleed_overrides_card_bleed_with_larger_value(self) -> None:
+        card = _single_panel_card(
+            x=0, y=0, width=8.5, height=11.0, card_bleed=0.125, panel_bleed=0.25
+        )
+        rect = _bg_rect(compile_card(card))
+        # 0.25" = 18 pt extension on every side.
+        assert rect.x == -18.0 and rect.y == -18.0
+        assert rect.width == 612.0 + 36.0
+        assert rect.height == 792.0 + 36.0
+
+    def test_rotated_180_panel_extends_on_swapped_local_edges(self) -> None:
+        # Inside-left of a half-fold: x=0, y=5.5, w=4.25, h=5.5, rotation=180.
+        # Page-touches: left, top. After 180° rotation, those map to
+        # panel-local right + bottom — meaning the LOCAL rect drawn inside
+        # the BeginGroup extends rightward (+9 width) and downward (-9 y,
+        # +9 height).
+        card = _single_panel_card(x=0, y=5.5, width=4.25, height=5.5, rotation=180.0)
+        rect = _bg_rect(compile_card(card))
+        # x stays 0 (local left edge does NOT touch); width grows by 9.
+        assert rect.x == 0.0
+        assert rect.width == 4.25 * 72 + 9.0  # 315
+        # y drops by 9 (local bottom edge maps to page-top touch).
+        assert rect.y == 5.5 * 72 - 9.0  # 387
+        # height grows by 9 (local-bottom extension only; local-top did not).
+        assert rect.height == 5.5 * 72 + 9.0  # 405
+
+    def test_unsupported_rotation_with_bleed_fails_loudly(self) -> None:
+        card = _single_panel_card(x=0, y=0, width=8.5, height=11.0, rotation=90.0)
+        with pytest.raises(UnsupportedFeatureError, match="rotation"):
+            compile_card(card)
+
+
+class TestBeginPageBleedFields:
+    """``BeginPage`` now carries the bleed and safe-margin in points."""
+
+    def test_default_geometry_emits_industry_bleed(self) -> None:
+        # Default CompileContext = PageGeometry.us_letter() with 0.125" bleed.
+        card = CardGenerator().create_card(template_id="christmas-classic")
+        commands = compile_card(card)
+        bp = commands[0]
+        assert isinstance(bp, BeginPage)
+        assert bp.width == 612.0  # trim width unchanged
+        assert bp.height == 792.0
+        assert bp.bleed == 9.0  # 0.125" in points
+        assert bp.safe_margin == 18.0  # 0.25" in points
+
+    def test_zero_bleed_geometry_zeros_the_field(self) -> None:
+        card = CardGenerator().create_card(template_id="christmas-classic")
+        ctx = CompileContext(geometry=PageGeometry.us_letter(bleed_in=0.0))
+        bp = compile_card(card, ctx)[0]
+        assert isinstance(bp, BeginPage)
+        assert bp.bleed == 0.0

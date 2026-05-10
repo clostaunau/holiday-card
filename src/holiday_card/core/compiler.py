@@ -31,7 +31,7 @@ flips ``CardGenerator`` over.
 from __future__ import annotations
 
 import io
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas as _reportlab_canvas
@@ -75,8 +75,7 @@ from holiday_card.core.render_ir import (
 )
 from holiday_card.core.text_fitting import fit_text_element
 from holiday_card.utils.measurements import (
-    PAGE_HEIGHT,
-    PAGE_WIDTH,
+    PageGeometry,
     inches_to_points,
 )
 
@@ -90,6 +89,11 @@ __all__ = [
 # Default fold-line styling — matches the legacy renderer.
 _FOLD_LINE_GREY = RGBA(r=0.7, g=0.7, b=0.7)
 
+# Tolerance for "panel edge touches page trim edge" comparisons. Inches
+# come from YAML and may have small float drift after arithmetic; 0.001"
+# is well below print precision (a typical inkjet dot is ~0.005").
+_EDGE_TOUCH_EPSILON: float = 1e-3
+
 
 class UnsupportedFeatureError(NotImplementedError):
     """Raised when the compiler encounters a Card feature not yet ported.
@@ -102,13 +106,25 @@ class UnsupportedFeatureError(NotImplementedError):
 class CompileContext:
     """Optional context for compilation.
 
-    Defaults are derived from ``utils.measurements`` — the simplest call is
-    ``compile_card(card)`` with no context.
+    Holds the :class:`PageGeometry` that tells the compiler the trim
+    dimensions, the bleed extension, and the safe margin. Defaults to
+    ``PageGeometry.us_letter()`` with the industry-standard 0.125" bleed.
+    Tests that need byte-stable, no-bleed output construct the context
+    with ``PageGeometry.us_letter(bleed_in=0.0)``.
     """
 
-    page_width_inches: float = PAGE_WIDTH
-    page_height_inches: float = PAGE_HEIGHT
+    geometry: PageGeometry = field(default_factory=PageGeometry.us_letter)
     emit_fold_lines: bool = True
+
+    @property
+    def page_width_inches(self) -> float:
+        """Backwards-compat alias for ``geometry.trim_width_in``."""
+        return self.geometry.trim_width_in
+
+    @property
+    def page_height_inches(self) -> float:
+        """Backwards-compat alias for ``geometry.trim_height_in``."""
+        return self.geometry.trim_height_in
 
 
 # ---------------------------------------------------------------------------
@@ -130,16 +146,19 @@ def compile_card(card: Card, ctx: CompileContext | None = None) -> list[RenderCo
     """
     ctx = ctx or CompileContext()
     measurer = _make_measurer()
+    geometry = ctx.geometry
 
     commands: list[RenderCommand] = []
     commands.append(BeginPage(
-        width=inches_to_points(ctx.page_width_inches),
-        height=inches_to_points(ctx.page_height_inches),
+        width=geometry.trim_width_pts,
+        height=geometry.trim_height_pts,
+        bleed=geometry.bleed_pts,
+        safe_margin=geometry.safe_margin_pts,
     ))
     commands.extend(_emit_metadata(card))
 
     for panel in card.panels:
-        commands.extend(_compile_panel(panel, measurer))
+        commands.extend(_compile_panel(panel, card, geometry, measurer))
 
     if ctx.emit_fold_lines:
         commands.extend(_emit_fold_lines(card.fold_type, ctx))
@@ -172,6 +191,8 @@ def _emit_metadata(card: Card) -> list[RenderCommand]:
 
 def _compile_panel(
     panel: Panel,
+    card: Card,
+    geometry: PageGeometry,
     measurer: _reportlab_canvas.Canvas,
 ) -> list[RenderCommand]:
     out: list[RenderCommand] = []
@@ -182,7 +203,7 @@ def _compile_panel(
     transform = _panel_transform(panel)
     out.append(BeginGroup(transform=transform))
 
-    out.extend(_emit_panel_background(panel))
+    out.extend(_emit_panel_background(panel, card, geometry))
     out.extend(_emit_panel_border(panel))
 
     for kind, element in _flatten_and_sort(panel):
@@ -219,20 +240,93 @@ def _panel_transform(panel: Panel) -> Transform:
     return Transform(translate_x=cx_pt, translate_y=cy_pt, rotate_deg=panel.rotation)
 
 
-def _emit_panel_background(panel: Panel) -> list[RenderCommand]:
+def _emit_panel_background(
+    panel: Panel, card: Card, geometry: PageGeometry
+) -> list[RenderCommand]:
+    """Emit the panel's solid-color background, extended by bleed on
+    edges that touch the page trim.
+
+    Effective bleed resolves as ``panel.bleed if panel.bleed is not None
+    else card.bleed``. Per-panel ``None`` is the inherit signal; an
+    explicit ``Panel(bleed=0.0)`` overrides the card default to zero.
+
+    Edge-detection is in **page coords** (panel.x, .y, .width, .height
+    are page-coords already). For each page-edge the panel touches, the
+    background extends outward by the bleed amount in **panel-local
+    coords** — the mapping accounts for panel rotation so that a 180°
+    rotated panel still bleeds in the correct page direction.
+    """
     if panel.background_color is None:
         return []
+    rect = _bleed_extended_panel_rect(panel, card, geometry)
     return [
         DrawShape(
-            geometry=RectGeom(
-                x=inches_to_points(panel.x),
-                y=inches_to_points(panel.y),
-                width=inches_to_points(panel.width),
-                height=inches_to_points(panel.height),
-            ),
+            geometry=rect,
             fill=SolidPaint(color=_color_to_rgba(panel.background_color)),
         ),
     ]
+
+
+def _bleed_extended_panel_rect(
+    panel: Panel, card: Card, geometry: PageGeometry
+) -> RectGeom:
+    """Compute the panel-background ``RectGeom`` with bleed applied on
+    panel-local edges that map to page-trim edges.
+
+    Returns coordinates in **points**, in the panel's local frame
+    (i.e. inside the BeginGroup that applies ``_panel_transform``).
+    """
+    effective_bleed_in = panel.bleed if panel.bleed is not None else card.bleed
+    if effective_bleed_in == 0.0:
+        return RectGeom(
+            x=inches_to_points(panel.x),
+            y=inches_to_points(panel.y),
+            width=inches_to_points(panel.width),
+            height=inches_to_points(panel.height),
+        )
+
+    # Page-coord trim-edge touches.
+    eps = _EDGE_TOUCH_EPSILON
+    touches_left = abs(panel.x) <= eps
+    touches_right = abs((panel.x + panel.width) - geometry.trim_width_in) <= eps
+    touches_bottom = abs(panel.y) <= eps
+    touches_top = abs((panel.y + panel.height) - geometry.trim_height_in) <= eps
+
+    # Map page-touches to panel-local edges. The panel's transform rotates
+    # the local rect around the panel center; for the rect we draw inside
+    # the group, "extend leftward in panel-local" maps to "extend rightward
+    # in page" under a 180° rotation. Compose the page-edge touches into
+    # panel-local touches accordingly.
+    if panel.rotation == 0:
+        local_left, local_right = touches_left, touches_right
+        local_bottom, local_top = touches_bottom, touches_top
+    elif panel.rotation in (180.0, -180.0):
+        # Page L↔panel-local R, page B↔panel-local T.
+        local_left, local_right = touches_right, touches_left
+        local_bottom, local_top = touches_top, touches_bottom
+    else:
+        raise UnsupportedFeatureError(
+            f"Bleed extension is only implemented for panel rotations "
+            f"of 0° or 180°; panel {panel.position.value!r} has rotation "
+            f"{panel.rotation}°. Set Panel.bleed=0 to opt out, or extend "
+            f"_bleed_extended_panel_rect to map page-edges through arbitrary "
+            f"rotations."
+        )
+
+    bleed_pt = inches_to_points(effective_bleed_in)
+    x_pt = inches_to_points(panel.x) - (bleed_pt if local_left else 0.0)
+    y_pt = inches_to_points(panel.y) - (bleed_pt if local_bottom else 0.0)
+    width_pt = (
+        inches_to_points(panel.width)
+        + (bleed_pt if local_left else 0.0)
+        + (bleed_pt if local_right else 0.0)
+    )
+    height_pt = (
+        inches_to_points(panel.height)
+        + (bleed_pt if local_bottom else 0.0)
+        + (bleed_pt if local_top else 0.0)
+    )
+    return RectGeom(x=x_pt, y=y_pt, width=width_pt, height=height_pt)
 
 
 def _emit_panel_border(panel: Panel) -> list[RenderCommand]:

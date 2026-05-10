@@ -90,20 +90,25 @@ class IRReportLabRenderer:
         # Pydantic discriminated unions resolve to a concrete class at
         # construction time, so isinstance dispatch is safe and fast.
         if isinstance(cmd, BeginPage):
-            # The canvas was opened with letter size already; reset state
-            # for the new page (matches the legacy renderer's first page).
-            canvas.setPageSize((cmd.width, cmd.height))
-            # Explicitly declare TrimBox / BleedBox / ArtBox / CropBox so
-            # downstream prepress and POD tools find them. Until the IR
-            # carries a bleed dimension (a separate, larger PR), all four
-            # equal MediaBox — but declaring them at all moves the file
-            # from "boxes are the implicit MediaBox default" to "boxes
-            # are explicit", which is what preflight tools check for.
-            page_box = (0, 0, cmd.width, cmd.height)
-            canvas.setTrimBox(page_box)
-            canvas.setBleedBox(page_box)
-            canvas.setArtBox(page_box)
-            canvas.setCropBox(page_box)
+            # ReportLab's MediaBox is set implicitly via setPageSize.
+            # TrimBox marks the cut line; BleedBox equals MediaBox until
+            # we add a slug area; ArtBox is the safe-content rectangle.
+            # IR coordinates are in trim-relative coords with bottom-left
+            # origin, so we translate the canvas by +bleed to align IR
+            # (0, 0) with the trim corner of the larger media canvas.
+            bleed = cmd.bleed
+            safe = cmd.safe_margin
+            media_w = cmd.width + 2 * bleed
+            media_h = cmd.height + 2 * bleed
+            canvas.setPageSize((media_w, media_h))
+            canvas.setTrimBox((bleed, bleed, bleed + cmd.width, bleed + cmd.height))
+            canvas.setBleedBox((0, 0, media_w, media_h))
+            canvas.setArtBox(
+                (bleed + safe, bleed + safe, bleed + cmd.width - safe, bleed + cmd.height - safe)
+            )
+            canvas.setCropBox((0, 0, media_w, media_h))
+            if bleed:
+                canvas.translate(bleed, bleed)
         elif isinstance(cmd, EndPage):
             canvas.showPage()
         elif isinstance(cmd, SetMetadata):

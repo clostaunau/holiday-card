@@ -240,6 +240,39 @@ class TestPanel:
         assert len(panel.text_elements) == 1
         assert panel.background_color == Colors.WHITE
 
+    def test_panel_bleed_default_is_inherit(self):
+        """Panel.bleed defaults to None (inherit from card)."""
+        panel = Panel(
+            position=PanelPosition.FRONT, x=0, y=0, width=4.25, height=5.5,
+        )
+        assert panel.bleed is None
+
+    def test_panel_bleed_accepts_explicit_value(self):
+        panel = Panel(
+            position=PanelPosition.FRONT,
+            x=0, y=0, width=4.25, height=5.5,
+            bleed=0.0625,
+        )
+        assert panel.bleed == 0.0625
+
+    def test_panel_bleed_rejects_negative(self):
+        with pytest.raises(ValidationError):
+            Panel(
+                position=PanelPosition.FRONT,
+                x=0, y=0, width=4.25, height=5.5,
+                bleed=-0.01,
+            )
+
+    def test_panel_bleed_rejects_excessive(self):
+        # 0.5" cap protects against geometry mistakes (a half-inch bleed
+        # would push past the sheet on most printers).
+        with pytest.raises(ValidationError):
+            Panel(
+                position=PanelPosition.FRONT,
+                x=0, y=0, width=4.25, height=5.5,
+                bleed=0.6,
+            )
+
 
 class TestTemplate:
     """Tests for Template model."""
@@ -295,6 +328,34 @@ class TestCard:
         )
         assert card.name == "My Card"
         assert card.template_id == "test-template"
+
+    def test_card_bleed_defaults_to_industry_standard(self):
+        panel = Panel(position=PanelPosition.FRONT, x=0, y=0, width=4.25, height=5.5)
+        card = Card(
+            name="X", template_id="t", fold_type=FoldType.HALF_FOLD, panels=[panel],
+        )
+        assert card.bleed == 0.125
+
+    def test_card_bleed_accepts_zero(self):
+        panel = Panel(position=PanelPosition.FRONT, x=0, y=0, width=4.25, height=5.5)
+        card = Card(
+            name="X", template_id="t", fold_type=FoldType.HALF_FOLD, bleed=0.0,
+            panels=[panel],
+        )
+        assert card.bleed == 0.0
+
+    def test_card_bleed_rejects_out_of_range(self):
+        panel = Panel(position=PanelPosition.FRONT, x=0, y=0, width=4.25, height=5.5)
+        with pytest.raises(ValidationError):
+            Card(
+                name="X", template_id="t", fold_type=FoldType.HALF_FOLD,
+                bleed=-0.1, panels=[panel],
+            )
+        with pytest.raises(ValidationError):
+            Card(
+                name="X", template_id="t", fold_type=FoldType.HALF_FOLD,
+                bleed=0.7, panels=[panel],
+            )
 
 
 class TestTheme:

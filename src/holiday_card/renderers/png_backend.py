@@ -118,6 +118,7 @@ class PNGRenderer:
 
         # State accumulated across the visit
         self._page_height_pts: float = 0.0
+        self._bleed_pts: float = 0.0
         self._image: Image.Image | None = None
         self._draw: ImageDraw.ImageDraw | None = None
         self._metadata: dict[str, str] = {}
@@ -158,11 +159,16 @@ class PNGRenderer:
     # ------------------------------------------------------------------
 
     def _x(self, x: float) -> float:
-        return x * self._scale
+        """IR x (trim-relative, points) → Pillow x (media-relative, pixels)."""
+        return (x + self._bleed_pts) * self._scale
 
     def _y(self, y: float) -> float:
-        """IR (bottom-left, points) → Pillow (top-left, pixels)."""
-        return (self._page_height_pts - y) * self._scale
+        """IR (bottom-left, points) → Pillow (top-left, pixels).
+
+        Includes the bleed offset so IR ``(0, 0)`` lands at the trim
+        corner of the media canvas, not the media corner itself.
+        """
+        return (self._page_height_pts - y + self._bleed_pts) * self._scale
 
     def _len(self, value: float) -> float:
         return value * self._scale
@@ -212,9 +218,16 @@ class PNGRenderer:
     # ------------------------------------------------------------------
 
     def _begin_page(self, cmd: BeginPage) -> None:
+        # Trim height drives the y-flip math; bleed grows the canvas
+        # outward by 2*bleed on each axis. The _x / _y helpers fold the
+        # bleed into the IR-to-pixel transform so trim coords (0, 0)
+        # land at the trim-corner of the media canvas.
         self._page_height_pts = cmd.height
-        width_px = max(1, int(round(cmd.width * self._scale)))
-        height_px = max(1, int(round(cmd.height * self._scale)))
+        self._bleed_pts = cmd.bleed
+        media_w = cmd.width + 2 * cmd.bleed
+        media_h = cmd.height + 2 * cmd.bleed
+        width_px = max(1, int(round(media_w * self._scale)))
+        height_px = max(1, int(round(media_h * self._scale)))
         # Start with an opaque white canvas — matches a printed page.
         self._image = Image.new("RGB", (width_px, height_px), (255, 255, 255))
         self._draw = ImageDraw.Draw(self._image)
