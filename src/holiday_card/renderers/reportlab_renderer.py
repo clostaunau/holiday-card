@@ -12,22 +12,18 @@ from reportlab.pdfgen import canvas
 
 from holiday_card.core.decorative import get_library
 from holiday_card.core.models import (
-    AdjustmentResult,
     Border,
     BorderStyle,
     Card,
     Color,
     Colors,
     ImageElement,
-    OverflowStrategy,
     Panel,
     TextElement,
 )
+from holiday_card.core.text_fitting import fit_text_element
 from holiday_card.core.text_utils import (
     calculate_line_height,
-    measure_text,
-    shrink_to_fit,
-    wrap_text,
 )
 from holiday_card.renderers.base import BaseRenderer
 from holiday_card.renderers.clipping_renderer import ClippingRenderer  # T072
@@ -178,7 +174,10 @@ class ReportLabRenderer(BaseRenderer):
 
         # Fit text using overflow strategy
         if text.width:
-            final_font_size, lines, adjustment_result = self._fit_text_element(text, panel)
+            assert self._canvas is not None  # render_text guards above
+            final_font_size, lines, adjustment_result = fit_text_element(
+                self._canvas, text, panel, font_name
+            )
             text.set_adjustment_result(adjustment_result)
         else:
             # No width constraint - use original text as-is
@@ -457,263 +456,9 @@ class ReportLabRenderer(BaseRenderer):
 
             return (final_width, final_height)
 
-    def _handle_text_overflow(self, content: str, font_name: str, font_size: int, max_width: float) -> str:
-        """Handle text that exceeds the available width.
-
-        Truncates text with ellipsis if it exceeds the maximum width.
-
-        Args:
-            content: Original text content.
-            font_name: Font name for width calculation.
-            font_size: Font size in points.
-            max_width: Maximum width in points.
-
-        Returns:
-            Potentially truncated text with ellipsis.
-        """
-        if self._canvas is None:
-            return content
-
-        text_width = self._canvas.stringWidth(content, font_name, font_size)
-        if text_width <= max_width:
-            return content
-
-        # Truncate with ellipsis
-        ellipsis = "..."
-        ellipsis_width = self._canvas.stringWidth(ellipsis, font_name, font_size)
-        available_width = max_width - ellipsis_width
-
-        # Binary search for the right truncation point
-        truncated = content
-        while self._canvas.stringWidth(truncated, font_name, font_size) > available_width and len(truncated) > 0:
-            truncated = truncated[:-1]
-
-        return truncated.rstrip() + ellipsis
-
-
-    def _select_auto_strategy(self, text: TextElement) -> OverflowStrategy:
-        """Select overflow strategy automatically based on text characteristics.
-
-        Args:
-            text: Text element to analyze.
-
-        Returns:
-            Selected OverflowStrategy (SHRINK or WRAP).
-        """
-        text_length = len(text.content)
-        has_height = text.width is not None
-
-        # Short text (< 30 chars) - shrink preserves impact
-        if text_length < 30:
-            return OverflowStrategy.SHRINK
-
-        # Long text with width constraint - wrap for readability
-        if text_length >= 30 and has_height:
-            return OverflowStrategy.WRAP
-
-        # Long text without height - shrink to single line
-        return OverflowStrategy.SHRINK
-
-    def _apply_shrink_strategy(self, text: TextElement, panel: Panel) -> tuple[int, str]:  # noqa: ARG002
-        """Apply shrink strategy to fit text within width.
-
-        Args:
-            text: Text element to fit.
-            panel: Parent panel.
-
-        Returns:
-            Tuple of (final_font_size, content).
-        """
-        if self._canvas is None or text.width is None:
-            return (text.font_size, text.content)
-
-        font_name = self._get_font_name(text.font_family, text.font_style.value, text.font_file)
-        max_width_pts = inches_to_points(text.width)
-
-        # Shrink font to fit
-        final_size = shrink_to_fit(
-            self._canvas,
-            text.content,
-            font_name,
-            text.font_size,
-            max_width_pts,
-            text.min_font_size,
-        )
-
-        # If shrunk to minimum and still doesn't fit, truncate
-        if final_size == text.min_font_size:
-            metrics = measure_text(
-                self._canvas,
-                text.content,
-                font_name,
-                final_size,
-                max_width_pts,
-            )
-            if not metrics.fits_within_bounds:
-                # Fall back to truncation
-                content = self._handle_text_overflow(
-                    text.content,
-                    font_name,
-                    final_size,
-                    max_width_pts,
-                )
-                return (final_size, content)
-
-        return (final_size, text.content)
-
-    def _apply_wrap_strategy(self, text: TextElement, panel: Panel) -> tuple[int, list[str]]:
-        """Apply wrap strategy to fit text within width and height.
-
-        Args:
-            text: Text element to fit.
-            panel: Parent panel.
-
-        Returns:
-            Tuple of (final_font_size, list_of_lines).
-        """
-        if self._canvas is None or text.width is None:
-            return (text.font_size, [text.content])
-
-        font_name = self._get_font_name(text.font_family, text.font_style.value, text.font_file)
-        max_width_pts = inches_to_points(text.width)
-        font_size = text.font_size
-
-        # Try wrapping at current font size
-        lines = wrap_text(
-            self._canvas,
-            text.content,
-            font_name,
-            font_size,
-            max_width_pts,
-            text.max_lines,
-        )
-
-        # Check if wrapped text fits within height (if specified)
-        if text.width and hasattr(panel, 'height'):
-            max_height_pts = inches_to_points(panel.height) if panel.height else None
-            if max_height_pts:
-                metrics = measure_text(
-                    self._canvas,
-                    text.content,
-                    font_name,
-                    font_size,
-                    max_width_pts,
-                    max_height_pts,
-                    lines,
-                )
-
-                # If doesn't fit vertically, reduce font size and re-wrap
-                if not metrics.fits_within_bounds and font_size > text.min_font_size:
-                    # Binary search for font size that fits with wrapping
-                    low = text.min_font_size
-                    high = font_size
-                    best_size = text.min_font_size
-                    best_lines = lines
-
-                    while low <= high:
-                        mid = (low + high) // 2
-                        test_lines = wrap_text(
-                            self._canvas,
-                            text.content,
-                            font_name,
-                            mid,
-                            max_width_pts,
-                            text.max_lines,
-                        )
-                        test_metrics = measure_text(
-                            self._canvas,
-                            text.content,
-                            font_name,
-                            mid,
-                            max_width_pts,
-                            max_height_pts,
-                            test_lines,
-                        )
-
-                        if test_metrics.fits_within_bounds:
-                            best_size = mid
-                            best_lines = test_lines
-                            low = mid + 1
-                        else:
-                            high = mid - 1
-
-                    return (best_size, best_lines)
-
-        return (font_size, lines)
-
-    def _apply_truncate_strategy(self, text: TextElement, panel: Panel) -> tuple[int, str]:  # noqa: ARG002
-        """Apply truncate strategy (existing behavior).
-
-        Args:
-            text: Text element to fit.
-            panel: Parent panel.
-
-        Returns:
-            Tuple of (original_font_size, truncated_content).
-        """
-        if self._canvas is None or text.width is None:
-            return (text.font_size, text.content)
-
-        font_name = self._get_font_name(text.font_family, text.font_style.value, text.font_file)
-        max_width_pts = inches_to_points(text.width)
-
-        content = self._handle_text_overflow(
-            text.content,
-            font_name,
-            text.font_size,
-            max_width_pts,
-        )
-
-        return (text.font_size, content)
-
-    def _fit_text_element(self, text: TextElement, panel: Panel) -> tuple[int, list[str], AdjustmentResult]:
-        """Fit text element using configured overflow strategy.
-
-        Args:
-            text: Text element to fit.
-            panel: Parent panel.
-
-        Returns:
-            Tuple of (font_size, lines, adjustment_result).
-        """
-        # Select strategy
-        strategy = text.overflow_strategy
-        if strategy == OverflowStrategy.AUTO:
-            strategy = self._select_auto_strategy(text)
-
-        original_font_size = text.font_size
-
-        # Apply strategy
-        if strategy == OverflowStrategy.SHRINK:
-            final_size, content = self._apply_shrink_strategy(text, panel)
-            lines = [content]
-            truncated = content != text.content and content.endswith("...")
-        elif strategy == OverflowStrategy.WRAP:
-            final_size, lines = self._apply_wrap_strategy(text, panel)
-            truncated = False
-        elif strategy == OverflowStrategy.TRUNCATE:
-            final_size, content = self._apply_truncate_strategy(text, panel)
-            lines = [content]
-            truncated = content != text.content
-        else:
-            # Fallback
-            final_size = text.font_size
-            lines = [text.content]
-            truncated = False
-
-        # Create adjustment result
-        was_adjusted = (final_size != original_font_size) or truncated or (len(lines) > 1)
-        result = AdjustmentResult(
-            was_adjusted=was_adjusted,
-            strategy_applied=strategy,
-            original_font_size=original_font_size,
-            final_font_size=final_size,
-            lines_used=len(lines),
-            content_truncated=truncated,
-        )
-
-        return (final_size, lines, result)
-
+    # Text overflow strategies were extracted to core/text_fitting.py
+    # in the Wave 2 Step 2a refactor. The single remaining call site is
+    # the render_text method above, which delegates via fit_text_element.
 
     def _render_border(self, x: float, y: float, width: float, height: float, border: Border) -> None:
         """Render a border around a region.
