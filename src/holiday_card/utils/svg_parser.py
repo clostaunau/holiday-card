@@ -146,8 +146,8 @@ class SVGPathParser:
         """
         try:
             command = SVGCommand(command_char)
-        except ValueError:
-            raise ValueError(f"Unknown SVG command: {command_char}")
+        except ValueError as e:
+            raise ValueError(f"Unknown SVG command: {command_char}") from e
 
         # Validate parameter count for each command type
         expected_params = self._get_expected_param_count(command)

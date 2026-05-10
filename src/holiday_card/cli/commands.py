@@ -113,7 +113,7 @@ def templates(
 
     except Exception as e:
         typer.secho(f"Error listing templates: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 @app.command(name="themes")
@@ -164,7 +164,7 @@ def list_themes(
 
     except Exception as e:
         typer.secho(f"Error listing themes: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 @app.command()
@@ -224,14 +224,14 @@ def create(
         if fold_type:
             try:
                 fold_type_enum = FoldType(fold_type)
-            except ValueError:
+            except ValueError as e:
                 typer.secho(
                     f"Error: Invalid fold type '{fold_type}'. "
                     f"Valid options: half_fold, quarter_fold, tri_fold",
                     fg=typer.colors.RED,
                     err=True,
                 )
-                raise typer.Exit(2)
+                raise typer.Exit(2) from e
 
         # Validate and prepare images if provided
         image_elements: list[ImageElement] = []
@@ -251,7 +251,7 @@ def create(
                     validate_image_format(img_path)
                 except ValidationError as e:
                     typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
-                    raise typer.Exit(2)
+                    raise typer.Exit(2) from e
 
                 # Create image element with default positioning
                 # Images are placed on the front panel, stacked vertically
@@ -294,20 +294,20 @@ def create(
         if len(templates_list) > 5:
             typer.echo(f"  ... and {len(templates_list) - 5} more", err=True)
         typer.echo("\nRun 'holiday-card templates' to see all options.", err=True)
-        raise typer.Exit(2)
+        raise typer.Exit(2) from e
 
     except TemplateLoadError as e:
         typer.secho(f"Error loading template: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(2)
+        raise typer.Exit(2) from e
 
-    except PermissionError:
+    except PermissionError as e:
         typer.secho(f"Error: Cannot write to {output}", fg=typer.colors.RED, err=True)
         typer.echo("Check that you have write permission to the output directory.", err=True)
-        raise typer.Exit(4)
+        raise typer.Exit(4) from e
 
     except Exception as e:
         typer.secho(f"Error creating card: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 @app.command()
@@ -390,11 +390,11 @@ def preview(
 
     except TemplateNotFoundError as e:
         typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(2)
+        raise typer.Exit(2) from e
 
     except Exception as e:
         typer.secho(f"Error generating preview: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 @app.command()
@@ -541,15 +541,15 @@ def validate(
 
     except TemplateNotFoundError as e:
         typer.secho(f"Template not found: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(2)
+        raise typer.Exit(2) from e
 
     except TemplateLoadError as e:
         typer.secho(f"Template invalid: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(2)
+        raise typer.Exit(2) from e
 
     except Exception as e:
         typer.secho(f"Validation error: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 if __name__ == "__main__":

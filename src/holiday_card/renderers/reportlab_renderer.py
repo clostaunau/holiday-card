@@ -230,8 +230,9 @@ class ReportLabRenderer(BaseRenderer):
             # Apply image effects if specified
             render_path = image.source_path
             if image.effects:
-                from holiday_card.renderers.image_effects import apply_effects
                 import tempfile
+
+                from holiday_card.renderers.image_effects import apply_effects
                 pil_image = apply_effects(pil_image, image.effects)
                 # Save processed image to temp file for ReportLab
                 temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
@@ -322,10 +323,10 @@ class ReportLabRenderer(BaseRenderer):
 
             pil_image.close()
 
-        except FileNotFoundError:
-            raise RuntimeError(f"Image file not found: {image.source_path}")
+        except FileNotFoundError as e:
+            raise RuntimeError(f"Image file not found: {image.source_path}") from e
         except Exception as e:
-            raise RuntimeError(f"Error rendering image: {e}")
+            raise RuntimeError(f"Error rendering image: {e}") from e
 
     def _render_photo_frame(
         self,
@@ -344,6 +345,7 @@ class ReportLabRenderer(BaseRenderer):
             return
 
         from reportlab.lib.colors import HexColor
+
         from holiday_card.core.models import PhotoFrameStyle
 
         frame_width = inches_to_points(image.frame_width) if image.frame_width > 0 else 2.0
@@ -907,6 +909,7 @@ class ReportLabRenderer(BaseRenderer):
 
         Single horizontal fold at the middle of the page.
         """
+        assert self._canvas is not None  # guarded by draw_fold_lines
         mid_y = height / 2
         self._canvas.line(0, mid_y, width, mid_y)
 
@@ -915,6 +918,7 @@ class ReportLabRenderer(BaseRenderer):
 
         Horizontal fold at middle, vertical fold at middle.
         """
+        assert self._canvas is not None  # guarded by draw_fold_lines
         mid_x = width / 2
         mid_y = height / 2
 
@@ -929,6 +933,7 @@ class ReportLabRenderer(BaseRenderer):
 
         Two vertical folds dividing the page into thirds.
         """
+        assert self._canvas is not None  # guarded by draw_fold_lines
         third_x = width / 3
 
         # First fold line

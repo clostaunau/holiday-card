@@ -295,8 +295,8 @@ class ColorStop(BaseModel):
             raise ValueError(f"Hex color must be 7 characters (#RRGGBB), got: {v}")
         try:
             int(v[1:], 16)  # Validate hex digits
-        except ValueError:
-            raise ValueError(f"Invalid hex color: {v}")
+        except ValueError as e:
+            raise ValueError(f"Invalid hex color: {v}") from e
         return v
 
 
@@ -316,8 +316,8 @@ class SolidFill(BaseModel):
             raise ValueError(f"Hex color must be 7 characters (#RRGGBB), got: {v}")
         try:
             int(v[1:], 16)
-        except ValueError:
-            raise ValueError(f"Invalid hex color: {v}")
+        except ValueError as e:
+            raise ValueError(f"Invalid hex color: {v}") from e
         return v
 
 
@@ -389,8 +389,8 @@ class PatternFill(BaseModel):
                 raise ValueError(f"Hex color must be 7 characters (#RRGGBB), got: {color}")
             try:
                 int(color[1:], 16)
-            except ValueError:
-                raise ValueError(f"Invalid hex color: {color}")
+            except ValueError as e:
+                raise ValueError(f"Invalid hex color: {color}") from e
             validated.append(color)
         return validated
 
@@ -626,8 +626,8 @@ class BaseShape(BaseModel):
             raise ValueError(f"Hex color must be 7 characters (#RRGGBB), got: {v}")
         try:
             int(v[1:], 16)  # Validate hex digits
-        except ValueError:
-            raise ValueError(f"Invalid hex color: {v}")
+        except ValueError as e:
+            raise ValueError(f"Invalid hex color: {v}") from e
         return v
 
 

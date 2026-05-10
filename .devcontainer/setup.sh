@@ -36,63 +36,18 @@ fi
 
 echo ""
 echo "=========================================="
-echo "Installing Python Development Tools"
+echo "Installing holiday-card (editable, with dev tools)"
 echo "=========================================="
 
-# Upgrade pip
+# Single source of truth: pyproject.toml
 pip install --upgrade pip
+pip install -e ".[dev]"
 
-# Install Python development and testing tools
-echo "Installing linters, formatters, and test tools..."
-pip install --user black isort ruff pylint pytest pytest-cov mypy
-
-echo ""
-echo "=========================================="
-echo "Installing Graphics & Document Libraries"
-echo "=========================================="
-
-# Install core graphics and PDF libraries for card creation
-echo "Installing Pillow (image manipulation)..."
-pip install --user Pillow
-
-echo "Installing ReportLab (PDF generation)..."
-pip install --user reportlab
-
-echo "Installing svglib (SVG support)..."
-pip install --user svglib
-
-echo "Installing CairoSVG (advanced SVG rendering)..."
-pip install --user cairosvg
-
-echo "Installing PyPDF2 (PDF manipulation)..."
-pip install --user pypdf2
-
-# Install additional useful libraries for design
-echo "Installing matplotlib (for charts/graphics)..."
-pip install --user matplotlib
-
-echo "Installing qrcode (for QR codes on cards)..."
-pip install --user qrcode[pil]
-
-# Install color and font utilities
-echo "Installing colorama (colored terminal output)..."
-pip install --user colorama
-
-echo "Installing Pillow color utilities..."
-pip install --user pillow-heif  # For HEIF/HEIC image support
-
-echo ""
-echo "=========================================="
-echo "Installing Optional Web Preview Tools"
-echo "=========================================="
-
-# Install Flask for potential web-based card preview
-echo "Installing Flask (web preview server)..."
-pip install --user flask flask-cors
-
-# Install Jinja2 for templating (useful for card templates)
-echo "Installing Jinja2 (templating)..."
-pip install --user jinja2
+# Install pre-commit hooks if config is present
+if [ -f .pre-commit-config.yaml ] && command -v pre-commit &> /dev/null; then
+    pre-commit install
+    echo "✓ pre-commit hooks installed"
+fi
 
 echo ""
 echo "=========================================="
@@ -115,19 +70,8 @@ echo "=========================================="
 echo "Creating Project Structure"
 echo "=========================================="
 
-# Create basic project directories if they don't exist
+# Create runtime output directory if missing
 mkdir -p output
-mkdir -p templates
-mkdir -p assets/images
-mkdir -p assets/fonts
-mkdir -p tests
-
-echo "✓ Created project directories:"
-echo "  - output/          (for generated cards)"
-echo "  - templates/       (for card templates)"
-echo "  - assets/images/   (for graphics and images)"
-echo "  - assets/fonts/    (for custom fonts)"
-echo "  - tests/           (for test files)"
 
 echo ""
 echo "=========================================="
@@ -142,30 +86,18 @@ command -v uv && uv --version
 command -v specify && echo "✓ SpecKit (specify)"
 command -v claude && claude --version || echo "⚠️  Claude CLI (may need manual setup)"
 command -v bats && bats --version
+command -v holiday-card && holiday-card --version || echo "⚠️  holiday-card entry point not on PATH"
 
 echo ""
-echo "Installed Python Libraries for Card Creation:"
+echo "Quick Start:"
 echo "-------------------------------------------"
-pip list | grep -E "(Pillow|reportlab|svglib|cairosvg|PyPDF2|matplotlib|qrcode|Flask|Jinja2)" || echo "Run 'pip list' to see all installed packages"
-
-echo ""
-echo "Quick Start Guide:"
-echo "-------------------------------------------"
-echo "1. Create card designs in Python using Pillow or ReportLab"
-echo "2. Save generated cards to the 'output/' directory"
-echo "3. Preview PDFs directly in VS Code"
-echo "4. Run tests with: pytest tests/"
-echo "5. Format code with: black ."
-echo "6. Type check with: mypy ."
-echo ""
-echo "Example Commands:"
-echo "  specify --help        # Get started with SpecKit"
-echo "  claude --help         # Get started with Claude Code CLI"
-echo "  python -m http.server # Start simple HTTP server (port 8000)"
-echo "  flask run             # Run Flask preview server (port 5000)"
+echo "  holiday-card --help              # Show CLI usage"
+echo "  holiday-card templates           # List available templates"
+echo "  pytest                           # Run the test suite"
+echo "  ruff check src/ tests/           # Lint"
+echo "  mypy src/                        # Type-check"
 echo ""
 echo "Happy Holiday Card Creating! 🎄✨"
 echo ""
 
-# Exit successfully
 exit 0

@@ -154,9 +154,9 @@ def main():
 
     print()
     print("=" * 80)
-    print(f"Performance Summary:")
+    print("Performance Summary:")
     print(f"  Templates within 20% threshold: {within_threshold}/{len(vector_results)}")
-    print(f"  All templates generate successfully")
+    print("  All templates generate successfully")
     print()
 
     # All templates generating successfully is acceptable - the 20% is a target, not requirement

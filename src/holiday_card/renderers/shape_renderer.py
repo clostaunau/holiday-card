@@ -381,6 +381,7 @@ class ShapeRenderer:
                 has_fill = False
 
             if has_stroke:
+                assert svg_path.stroke_color is not None  # narrowed by has_stroke
                 canvas.setStrokeColor(self._hex_to_color(svg_path.stroke_color))
                 canvas.setLineWidth(svg_path.stroke_width)
 
@@ -536,6 +537,7 @@ class ShapeRenderer:
         has_stroke = rect.stroke_color is not None and rect.stroke_width > 0
 
         if has_stroke:
+            assert rect.stroke_color is not None  # narrowed by has_stroke
             canvas.setStrokeColor(self._hex_to_color(rect.stroke_color))
             canvas.setLineWidth(rect.stroke_width)
 
@@ -583,6 +585,7 @@ class ShapeRenderer:
         has_stroke = circle.stroke_color is not None and circle.stroke_width > 0
 
         if has_stroke:
+            assert circle.stroke_color is not None  # narrowed by has_stroke
             canvas.setStrokeColor(self._hex_to_color(circle.stroke_color))
             canvas.setLineWidth(circle.stroke_width)
 
@@ -640,6 +643,7 @@ class ShapeRenderer:
         has_stroke = triangle.stroke_color is not None and triangle.stroke_width > 0
 
         if has_stroke:
+            assert triangle.stroke_color is not None  # narrowed by has_stroke
             canvas.setStrokeColor(self._hex_to_color(triangle.stroke_color))
             canvas.setLineWidth(triangle.stroke_width)
 
@@ -702,6 +706,7 @@ class ShapeRenderer:
         has_stroke = star.stroke_color is not None and star.stroke_width > 0
 
         if has_stroke:
+            assert star.stroke_color is not None  # narrowed by has_stroke
             canvas.setStrokeColor(self._hex_to_color(star.stroke_color))
             canvas.setLineWidth(star.stroke_width)
 
