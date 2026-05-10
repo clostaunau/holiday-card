@@ -50,6 +50,10 @@ from holiday_card.core.render_ir import (
     SolidPaint,
     Stroke,
 )
+from holiday_card.renderers.font_registry import (
+    ensure_default_fonts_registered,
+    resolve_font_id,
+)
 
 __all__ = ["IRReportLabRenderer"]
 
@@ -67,6 +71,10 @@ class IRReportLabRenderer:
     def render(self, commands: Iterable[RenderCommand], output: Path) -> None:
         """Consume ``commands`` and write a PDF at ``output``."""
         output.parent.mkdir(parents=True, exist_ok=True)
+        # Register the embedded Liberation default-font chain. Idempotent
+        # — called every render so a fresh process picks up the fonts;
+        # subsequent calls are no-ops.
+        ensure_default_fonts_registered()
         canvas = _canvas.Canvas(str(output), pagesize=letter)
         try:
             for cmd in commands:
@@ -302,7 +310,9 @@ class IRReportLabRenderer:
 
     def _draw_text(self, canvas: _canvas.Canvas, cmd: DrawText) -> None:
         run = cmd.run
-        canvas.setFont(run.font_id, run.size_pt)
+        # font_id is canonicalized (e.g. "Helvetica" → "LiberationSans")
+        # so the default base-14 names map to the embedded TTFs.
+        canvas.setFont(resolve_font_id(run.font_id), run.size_pt)
         canvas.setFillColorRGB(run.color.r, run.color.g, run.color.b)
         if cmd.opacity != 1.0:
             canvas.setFillAlpha(cmd.opacity)

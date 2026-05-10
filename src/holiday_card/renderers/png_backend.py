@@ -427,11 +427,29 @@ class PNGRenderer:
     def _get_font(
         self, font_id: str, size_px: int
     ) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-        """Resolve ``font_id`` + size to a Pillow font, with fallbacks."""
+        """Resolve ``font_id`` + size to a Pillow font, with fallbacks.
+
+        Prefers the bundled Liberation TTF for the default font_ids
+        (Helvetica/Times-Roman/Courier and bold/italic variants), so the
+        PNG preview matches what the PDF backend renders byte-for-byte.
+        Falls back to system font lookup for custom font_ids.
+        """
+        from holiday_card.renderers.font_registry import ttf_path_for
+
         key = (font_id, size_px)
         cached = self._font_cache.get(key)
         if cached is not None:
             return cached
+
+        # Bundled Liberation TTF, if this font_id is one of the defaults
+        bundled = ttf_path_for(font_id)
+        if bundled is not None:
+            try:
+                font = ImageFont.truetype(str(bundled), size=size_px)
+                self._font_cache[key] = font
+                return font
+            except OSError:
+                pass  # fall through to fallback chain
 
         candidates = list(_FONT_FALLBACKS.get(font_id, ())) + list(_GENERIC_FALLBACKS)
         for candidate in candidates:
