@@ -17,37 +17,32 @@ src/
   holiday_card/
     core/
       models.py           # Pydantic domain models (Card, Template, Panel, shapes)
-      generators.py       # Card generation orchestration
+      generators.py       # Card generation orchestration (Card → IR → PDF)
       templates.py        # YAML template loading/discovery
       themes.py           # Theme definitions
       text_utils.py       # Text measurement primitives
-      text_fitting.py     # Overflow strategies (extracted Wave 2 Step 2a)
+      text_fitting.py     # Overflow strategies (Wave 2 Step 2a)
       render_ir.py        # RenderCommand IR — backend-neutral seam (Wave 2 Step 1)
       compiler.py         # Card → list[RenderCommand] (Wave 2 Step 2b)
     renderers/
-      base.py             # Legacy renderer protocol (slated for replacement)
-      reportlab_renderer.py  # Legacy ReportLab renderer (default today)
-      reportlab_backend.py   # IR-driven ReportLab renderer (Wave 2 Step 3)
-      shape_renderer.py   # Legacy vector shape rendering
-      clipping_renderer.py  # Clipping masks
-      image_effects.py    # Pillow effects (sepia, grayscale, vignette, blur)
-      preview_renderer.py # PNG preview generation
+      reportlab_backend.py  # The renderer: IR → PDF (Wave 2 Steps 3-5)
+      image_effects.py      # Pillow effects (sepia, grayscale, vignette, blur)
+      preview_renderer.py   # PNG preview generation (separate path)
     cli/
       commands.py         # Typer CLI commands
     utils/
       measurements.py     # inch ↔ point conversions
+      svg_parser.py       # SVG path parser (kept for future IR support)
       validators.py       # Input validation
 tests/
-  unit/                   # Unit tests (incl. test_render_ir, test_compiler, test_cli)
-  integration/            # Integration tests (incl. test_ir_parity)
+  unit/                   # Unit tests (test_render_ir, test_compiler, test_cli, ...)
+  integration/            # Integration tests (test_full_generation)
   visual/                 # Reserved for visual regression (no tests yet)
 templates/                # Card template YAML files
-  christmas/              # 11 templates (classic, modern, geometric, ...)
-  hanukkah/               # 1 template
-  birthday/               # 1 template
-  generic/                # 1 template
-themes/                   # Color theme definitions (christmas, hanukkah, birthday, generic)
-fonts/                    # Custom TTF/OTF fonts (drop here, reference by font_file)
+  christmas/              # Templates (classic, modern, geometric, ...)
+  hanukkah/, birthday/, generic/
+themes/                   # Color theme definitions
+fonts/                    # Custom TTF/OTF fonts
 ```
 
 ## Commands
@@ -89,12 +84,14 @@ Python 3.11+: Follow standard conventions
 
 ## Recent Changes
 
-- **Wave 2 architecture refactor (in progress, 2026-05)**: Introduced a
-  backend-neutral `RenderCommand` IR sitting between `Card` and the
-  renderer. New `core/render_ir.py`, `core/compiler.py`,
-  `renderers/reportlab_backend.py`. `core/text_fitting.py` extracted
-  from the legacy renderer. The legacy `ReportLabRenderer` is still the
-  default code path; cutover is the next PR.
+- **Wave 2 architecture refactor (complete, 2026-05)**: A backend-neutral
+  `RenderCommand` IR sits between `Card` and the renderer. New
+  `core/render_ir.py`, `core/compiler.py`, `renderers/reportlab_backend.py`.
+  `core/text_fitting.py` extracted from the legacy renderer. The legacy
+  `ReportLabRenderer` (1063 LOC) and its dependent modules
+  (`shape_renderer`, `clipping_renderer`, `gradient_renderer`,
+  `pattern_renderer`, `decorative.py`) were deleted in Step 5 — about
+  3000 LOC removed. Mypy errors dropped from 29 to 10 as a side effect.
 - **Wave 1 DevEx audit (2026-05)**: Real CI on every push (lint + matrix
   test + smoke + build); `requirements.txt` deleted (10 phantom deps);
   pre-commit + ruff format config; 22 B904 exception-chain bugs and 10
@@ -199,12 +196,11 @@ Download from [Google Fonts](https://fonts.google.com/) and place in `fonts/` di
 - `rotation`: 0-360 degrees
 - `z_index`: Layering order (higher = on top)
 
-**Decorative Elements** (deprecated; not supported by the Wave 2 compiler):
-Pre-built shape compositions used to live in `decorative_elements/`. The
-library was removed during the Wave 2 IR migration; the Python loader
-(`core/decorative.py`) and the `DecorativeElement` model remain only
-because the legacy renderer still references them, and will be deleted
-in the Wave 2 Step 5 PR.
+**Decorative Elements** (removed):
+Pre-built shape compositions lived in `decorative_elements/` and were
+expanded by `core/decorative.py`. Both were removed during Wave 2
+(the YAML library in PR #8, the Python loader in Step 5). To re-add
+support, port `DecorativeElement` lowering into `core/compiler.py`.
 
 **Usage in Templates**:
 ```yaml
@@ -223,8 +219,8 @@ panels:
 
 **Key Files**:
 - `src/holiday_card/core/models.py`: Shape model definitions
-- `src/holiday_card/renderers/shape_renderer.py`: Legacy shape rendering
-- `src/holiday_card/core/compiler.py`: IR-based shape compilation (Wave 2)
+- `src/holiday_card/core/compiler.py`: Card → RenderCommand lowering
+- `src/holiday_card/renderers/reportlab_backend.py`: IR → PDF
 - `specs/003-vector-graphics-and/`: Original feature specification
 
 <!-- MANUAL ADDITIONS START -->

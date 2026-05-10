@@ -21,38 +21,24 @@ from holiday_card.core.models import (
 from holiday_card.core.templates import load_template
 from holiday_card.core.themes import ThemeNotFoundError, load_theme
 from holiday_card.renderers.reportlab_backend import IRReportLabRenderer
-from holiday_card.renderers.reportlab_renderer import ReportLabRenderer
-from holiday_card.utils.measurements import PAGE_HEIGHT, PAGE_WIDTH
 
 
 class CardGenerator:
     """Orchestrates card generation from template to PDF output.
 
-    Coordinates template loading, customization, and PDF rendering.
-    Defaults to the Wave 2 IR pipeline (``Card → compile_card →
-    IRReportLabRenderer``); pass ``use_legacy_renderer=True`` to fall
-    back to the legacy ``ReportLabRenderer`` for one release while the
-    new path bakes.
+    Coordinates template loading, customization, and PDF rendering via
+    the Wave 2 IR pipeline (``Card → compile_card → IRReportLabRenderer``).
+    The legacy single-class renderer was removed in Wave 2 Step 5.
     """
 
-    def __init__(
-        self,
-        templates_dir: Path | None = None,
-        use_legacy_renderer: bool = False,
-    ) -> None:
+    def __init__(self, templates_dir: Path | None = None) -> None:
         """Initialize the card generator.
 
         Args:
             templates_dir: Path to templates directory. Uses default if None.
-            use_legacy_renderer: If True, render via the original
-                ``ReportLabRenderer`` instead of the IR pipeline. Slated
-                for removal in the Wave 2 Step 5 PR.
         """
         self.templates_dir = templates_dir
-        self.use_legacy_renderer = use_legacy_renderer
-        self.renderer: ReportLabRenderer | IRReportLabRenderer = (
-            ReportLabRenderer() if use_legacy_renderer else IRReportLabRenderer()
-        )
+        self.renderer = IRReportLabRenderer()
 
     def create_card(
         self,
@@ -239,11 +225,7 @@ class CardGenerator:
                     text.color = theme.text
 
     def generate_pdf(self, card: Card, output_path: Path) -> Path:
-        """Generate a PDF file from a card.
-
-        Dispatches to the IR pipeline by default, or to the legacy
-        renderer if ``use_legacy_renderer=True`` was set on this
-        ``CardGenerator``.
+        """Generate a PDF file from a card via the IR pipeline.
 
         Args:
             card: Card to render.
@@ -253,17 +235,8 @@ class CardGenerator:
             Path to generated PDF file.
         """
         output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        if isinstance(self.renderer, IRReportLabRenderer):
-            commands = compile_card(card)
-            self.renderer.render(commands, output_path)
-        else:
-            # Legacy path — slated for removal in Wave 2 Step 5.
-            self.renderer.setup_canvas(PAGE_WIDTH, PAGE_HEIGHT)
-            self.renderer.create_canvas(output_path)
-            self.renderer.render_card(card)
-            self.renderer.save(output_path)
-
+        commands = compile_card(card)
+        self.renderer.render(commands, output_path)
         return output_path
 
     def create_and_generate(
