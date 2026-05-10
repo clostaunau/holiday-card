@@ -20,6 +20,8 @@ from holiday_card.core.templates import (
     load_template_from_file,
 )
 from holiday_card.core.themes import discover_themes
+from holiday_card.renderers.reportlab_backend import IRReportLabRenderer
+from holiday_card.renderers.svg_backend import SVGRenderer
 from holiday_card.utils.validators import ValidationError, validate_image_format
 
 # Create main Typer app
@@ -203,6 +205,11 @@ def create(
         hidden=True,
         help="(Wave 2 dev flag) Compile to RenderCommand IR and print as JSON; skip PDF output.",
     ),
+    output_format: str = typer.Option(
+        "auto",
+        "--format",
+        help="Output format: 'pdf', 'svg', or 'auto' (infers from --output extension).",
+    ),
 ) -> None:
     """Create a new card from a template.
 
@@ -212,25 +219,29 @@ def create(
 
         holiday-card create christmas-classic --message "Happy Holidays!" --output ./cards/holiday.pdf
 
-        holiday-card create birthday-balloons -m "Happy Birthday!" --image ./photo.jpg
+        holiday-card create christmas-classic --format svg --output ./cards/holiday.svg
     """
     try:
         if debug_emit_ir:
             _emit_ir_debug(template, message, theme, fold_type, inside_message)
             return
 
+        # Resolve output format and extension
+        chosen_format = _resolve_output_format(output_format, output)
+        ext = ".pdf" if chosen_format == "pdf" else ".svg"
+
         # Generate default output path if not specified
         if output is None:
             output_dir = Path("output")
             output_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-            output = output_dir / f"{template}-{timestamp}.pdf"
+            output = output_dir / f"{template}-{timestamp}{ext}"
 
-        # Ensure output has .pdf extension
-        if not str(output).lower().endswith(".pdf"):
-            output = Path(f"{output}.pdf")
+        # Ensure output has the expected extension
+        if not str(output).lower().endswith(ext):
+            output = Path(f"{output}{ext}")
 
-        generator = CardGenerator()
+        generator = CardGenerator(renderer=_make_renderer(chosen_format))
 
         typer.echo(f"Creating card from template: {template}")
 
@@ -576,6 +587,41 @@ def validate(
     except Exception as e:
         typer.secho(f"Validation error: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(1) from e
+
+
+_SUPPORTED_FORMATS = ("pdf", "svg")
+
+
+def _resolve_output_format(requested: str, output: Path | None) -> str:
+    """Pick the actual output format from --format and the output path.
+
+    Precedence:
+    - explicit ``--format pdf|svg`` wins
+    - ``--format auto`` infers from the output path's suffix
+    - default is ``pdf``
+    """
+    requested = requested.lower()
+    if requested in _SUPPORTED_FORMATS:
+        return requested
+    if requested != "auto":
+        typer.secho(
+            f"Error: --format must be one of {_SUPPORTED_FORMATS} or 'auto', got {requested!r}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(2)
+    if output is not None:
+        suffix = output.suffix.lower().lstrip(".")
+        if suffix in _SUPPORTED_FORMATS:
+            return suffix
+    return "pdf"
+
+
+def _make_renderer(output_format: str) -> "IRReportLabRenderer | SVGRenderer":
+    """Construct the right renderer for the chosen output format."""
+    if output_format == "svg":
+        return SVGRenderer()
+    return IRReportLabRenderer()
 
 
 def _emit_ir_debug(

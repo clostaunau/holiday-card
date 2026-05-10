@@ -21,24 +21,37 @@ from holiday_card.core.models import (
 from holiday_card.core.templates import load_template
 from holiday_card.core.themes import ThemeNotFoundError, load_theme
 from holiday_card.renderers.reportlab_backend import IRReportLabRenderer
+from holiday_card.renderers.svg_backend import SVGRenderer
+
+# Type alias for any renderer the generator can dispatch to. Both
+# implementations expose the same minimal interface
+# (``render(commands, output_path)``).
+Renderer = IRReportLabRenderer | SVGRenderer
 
 
 class CardGenerator:
     """Orchestrates card generation from template to PDF output.
 
-    Coordinates template loading, customization, and PDF rendering via
-    the Wave 2 IR pipeline (``Card → compile_card → IRReportLabRenderer``).
-    The legacy single-class renderer was removed in Wave 2 Step 5.
+    Coordinates template loading, customization, and rendering via the
+    Wave 2 IR pipeline (``Card → compile_card → Renderer``). The default
+    backend is ``IRReportLabRenderer`` (PDF); pass ``renderer=SVGRenderer()``
+    for SVG output. New backends plug in here.
     """
 
-    def __init__(self, templates_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        templates_dir: Path | None = None,
+        renderer: Renderer | None = None,
+    ) -> None:
         """Initialize the card generator.
 
         Args:
             templates_dir: Path to templates directory. Uses default if None.
+            renderer: Backend to render with. Defaults to PDF
+                (``IRReportLabRenderer``); pass ``SVGRenderer()`` for SVG.
         """
         self.templates_dir = templates_dir
-        self.renderer = IRReportLabRenderer()
+        self.renderer = renderer or IRReportLabRenderer()
 
     def create_card(
         self,
