@@ -469,21 +469,48 @@ def _compile_text(
 ) -> list[RenderCommand]:
     """Run the overflow strategy and emit one ``DrawText`` per resulting line.
 
+    Hard line breaks (``\\n`` in ``text.content``) split into separate
+    visual lines before any width-based wrapping runs — so a poem or
+    address keeps its author-intended structure even inside a width
+    constraint. Empty content emits no commands (supports blank-inside
+    cards).
+
     Uses ``Helvetica`` as the font_id when no custom font is registered,
     matching the legacy renderer's default. Backends are responsible for
     resolving the font_id to a real font.
     """
     from holiday_card.core.text_utils import calculate_line_height  # local: small module
 
+    if not text.content:
+        return []  # blank-inside
+
     font_id = text.font_family or "Helvetica"
     color = _color_to_rgba(text.color) if text.color else RGBA(r=0, g=0, b=0)
     align = text.alignment.value  # already "left"/"center"/"right" by enum
 
+    # Hard line breaks first; width-based wrapping happens per-segment.
+    hard_segments = text.content.split("\n")
+
     if text.width:
-        final_size, lines, _ = fit_text_element(measurer, text, panel, font_id)
+        final_size = text.font_size
+        all_lines: list[str] = []
+        for segment in hard_segments:
+            if not segment:
+                all_lines.append("")  # preserve blank lines for stanza spacing
+                continue
+            # Run the overflow strategy on this segment alone. We use a
+            # transient TextElement so fit_text_element doesn't see the
+            # joined-by-newline string.
+            seg_element = text.model_copy(update={"content": segment})
+            seg_size, seg_lines, _ = fit_text_element(measurer, seg_element, panel, font_id)
+            # If any segment shrinks, the smallest size wins for the whole
+            # block (avoids per-line size jitter in a stanza).
+            final_size = min(final_size, seg_size)
+            all_lines.extend(seg_lines)
+        lines = all_lines
     else:
         final_size = text.font_size
-        lines = [text.content]
+        lines = hard_segments
 
     abs_x = inches_to_points(panel.x + text.x)
     abs_y = inches_to_points(panel.y + text.y)
@@ -491,6 +518,8 @@ def _compile_text(
 
     commands: list[RenderCommand] = []
     for i, line in enumerate(lines):
+        if not line:
+            continue  # blank line consumes vertical space below but emits nothing
         line_y = abs_y - (i * line_height)
         commands.append(
             DrawText(

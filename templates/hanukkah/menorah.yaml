@@ -53,6 +53,7 @@ panels:
     y: 5.5
     width: 4.25
     height: 5.5
+    rotation: 180  # half-fold imposition
     background_color:
       r: 0.98
       g: 0.98
@@ -65,6 +66,7 @@ panels:
     y: 5.5
     width: 4.25
     height: 5.5
+    rotation: 180  # half-fold imposition
     background_color:
       r: 0.98
       g: 0.98

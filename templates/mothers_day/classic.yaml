@@ -3,7 +3,7 @@
 
 id: "mothers-day"
 name: "Mother's Day"
-occasion: "generic"
+occasion: "mothers_day"
 fold_type: "half_fold"
 default_theme_id: "generic-celebration"
 description: "Soft floral Mother's Day card in deep rose on pink"
@@ -100,6 +100,7 @@ panels:
     y: 5.5
     width: 4.25
     height: 5.5
+    rotation: 180  # half-fold imposition
     background_color:
       r: 1.0
       g: 0.98
@@ -112,6 +113,7 @@ panels:
     y: 5.5
     width: 4.25
     height: 5.5
+    rotation: 180  # half-fold imposition
     background_color:
       r: 1.0
       g: 0.98
