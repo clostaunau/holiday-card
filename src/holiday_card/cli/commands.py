@@ -348,21 +348,19 @@ def preview(
         None, "--message", "-m", help="Greeting message text"
     ),
     output: Path | None = typer.Option(
-        None, "--output", "-o", help="Output image file path"
+        None, "--output", "-o", help="Output PNG file path"
     ),
     dpi: int = typer.Option(
-        150, "--dpi", "-d", help="Preview resolution (dots per inch)"
+        144, "--dpi", "-d", help="Preview resolution (dots per inch)"
     ),
-    format: str = typer.Option(
-        "png", "--format", "-f", help="Output format: png, jpg"
-    ),
-    show_guides: bool = typer.Option(
-        True, "--show-guides/--no-guides", help="Show fold line guides"
+    open_after: bool = typer.Option(
+        True, "--open/--no-open", help="Open the preview in your default image viewer."
     ),
 ) -> None:
-    """Generate a preview image of a card.
+    """Generate a fast PNG preview of a card and open it in your default viewer.
 
-    Creates a raster image showing how the card will look when printed.
+    Uses the same Wave 2 RenderCommand IR as the PDF and SVG backends, so
+    what you see in the preview is what you'll get when you print.
 
     Examples:
 
@@ -370,54 +368,35 @@ def preview(
 
         holiday-card preview christmas-classic -m "Merry Christmas!" --dpi 300
 
-        holiday-card preview christmas-classic --no-guides --format jpg
+        holiday-card preview christmas-classic --no-open -o out/preview.png
     """
-    from holiday_card.renderers.preview_renderer import generate_preview
+    from holiday_card.core.compiler import compile_card
+    from holiday_card.renderers.png_backend import PNGRenderer
 
     try:
-        # Generate default output path if not specified
+        # Default output path
         if output is None:
             output_dir = Path("output")
             output_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-            ext = "jpg" if format.lower() in ("jpg", "jpeg") else "png"
-            output = output_dir / f"{template}-preview-{timestamp}.{ext}"
+            output = output_dir / f"{template}-preview-{timestamp}.png"
 
-        # Validate format
-        if format.lower() not in ("png", "jpg", "jpeg"):
-            typer.secho(
-                f"Error: Invalid format '{format}'. Valid options: png, jpg",
-                fg=typer.colors.RED,
-                err=True,
-            )
-            raise typer.Exit(2)
-
-        # Create card generator
-        generator = CardGenerator()
+        # Ensure .png suffix (Pillow infers format from extension)
+        if not str(output).lower().endswith(".png"):
+            output = Path(f"{output}.png")
 
         typer.echo(f"Generating preview for template: {template}")
 
-        # Create the card (without generating PDF)
-        card = generator.create_card(
-            template_id=template,
-            message=message,
-        )
+        card = CardGenerator().create_card(template_id=template, message=message)
+        commands = compile_card(card)
+        PNGRenderer(dpi=dpi).render(commands, output)
 
-        # Generate preview
-        preview_path = generate_preview(
-            card=card,
-            output_path=output,
-            dpi=dpi,
-            format=format,
-            show_guides=show_guides,
-        )
-
-        # Success output
-        typer.secho(f"Preview generated: {preview_path}", fg=typer.colors.GREEN)
+        typer.secho(f"Preview generated: {output}", fg=typer.colors.GREEN)
         typer.echo(f"  Template: {template}")
         typer.echo(f"  Resolution: {dpi} DPI")
-        typer.echo(f"  Format: {format.upper()}")
-        typer.echo(f"  Fold guides: {'shown' if show_guides else 'hidden'}")
+
+        if open_after:
+            _open_in_default_viewer(output)
 
     except typer.Exit:
         raise
@@ -587,6 +566,27 @@ def validate(
     except Exception as e:
         typer.secho(f"Validation error: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(1) from e
+
+
+def _open_in_default_viewer(path: Path) -> None:
+    """Open ``path`` in the OS's default viewer for that file type.
+
+    Best-effort and silent on failure — preview is a developer
+    convenience, not a guaranteed contract.
+    """
+    import subprocess
+    import sys
+
+    try:
+        if sys.platform == "darwin":
+            subprocess.run(["open", str(path)], check=False)
+        elif sys.platform.startswith("linux"):
+            subprocess.run(["xdg-open", str(path)], check=False)
+        elif sys.platform.startswith("win"):
+            import os
+            os.startfile(str(path))  # type: ignore[attr-defined]
+    except Exception as e:  # noqa: BLE001 — preview is best-effort
+        typer.secho(f"  (could not auto-open: {e})", fg=typer.colors.YELLOW, err=True)
 
 
 _SUPPORTED_FORMATS = ("pdf", "svg")
