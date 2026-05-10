@@ -85,6 +85,17 @@ class IRReportLabRenderer:
             # The canvas was opened with letter size already; reset state
             # for the new page (matches the legacy renderer's first page).
             canvas.setPageSize((cmd.width, cmd.height))
+            # Explicitly declare TrimBox / BleedBox / ArtBox / CropBox so
+            # downstream prepress and POD tools find them. Until the IR
+            # carries a bleed dimension (a separate, larger PR), all four
+            # equal MediaBox — but declaring them at all moves the file
+            # from "boxes are the implicit MediaBox default" to "boxes
+            # are explicit", which is what preflight tools check for.
+            page_box = (0, 0, cmd.width, cmd.height)
+            canvas.setTrimBox(page_box)
+            canvas.setBleedBox(page_box)
+            canvas.setArtBox(page_box)
+            canvas.setCropBox(page_box)
         elif isinstance(cmd, EndPage):
             canvas.showPage()
         elif isinstance(cmd, SetMetadata):

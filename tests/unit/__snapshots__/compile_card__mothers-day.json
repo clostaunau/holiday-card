@@ -223,11 +223,11 @@
     "cmd": "begin_group",
     "opacity": 1.0,
     "transform": {
-      "rotate_deg": 0.0,
+      "rotate_deg": 180.0,
       "scale_x": 1.0,
       "scale_y": 1.0,
-      "translate_x": 0.0,
-      "translate_y": 0.0
+      "translate_x": 153.0,
+      "translate_y": 594.0
     }
   },
   {
@@ -259,11 +259,11 @@
     "cmd": "begin_group",
     "opacity": 1.0,
     "transform": {
-      "rotate_deg": 0.0,
+      "rotate_deg": 180.0,
       "scale_x": 1.0,
       "scale_y": 1.0,
-      "translate_x": 0.0,
-      "translate_y": 0.0
+      "translate_x": 459.0,
+      "translate_y": 594.0
     }
   },
   {

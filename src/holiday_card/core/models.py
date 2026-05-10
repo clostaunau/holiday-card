@@ -143,6 +143,7 @@ class OccasionType(StrEnum):
     NEW_YEAR = "new_year"
     THANKSGIVING = "thanksgiving"
     VALENTINE = "valentine"
+    MOTHERS_DAY = "mothers_day"
 
 
 class PanelPosition(StrEnum):
@@ -547,7 +548,11 @@ class TextElement(BaseModel):
     """
 
     id: str = Field(default_factory=lambda: str(uuid4()))
-    content: str = Field(min_length=1, max_length=1000, description="Text content")
+    content: str = Field(
+        max_length=1000,
+        description="Text content. Use '\\n' for hard line breaks (poems, addresses, stanzas). "
+        "Empty string is allowed (for blank-inside cards).",
+    )
     x: float = Field(ge=0.0, description="X position in inches from panel left")
     y: float = Field(ge=0.0, description="Y position in inches from panel bottom")
     width: float | None = Field(default=None, ge=0.0, description="Max width for text wrapping")
