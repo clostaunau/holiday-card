@@ -35,9 +35,9 @@
     "fill": {
       "color": {
         "a": 1.0,
-        "b": 0.98,
-        "g": 0.9,
-        "r": 0.95
+        "b": 0.99,
+        "g": 0.96,
+        "r": 0.99
       },
       "kind": "solid"
     },
@@ -53,23 +53,739 @@
     "stroke": null
   },
   {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.7058823529411765,
+        "r": 0.9568627450980393
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 338.40000000000003,
+        "y": 356.40000000000003
+      },
+      "kind": "circle",
+      "radius": 4.32
+    },
+    "opacity": 0.7,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.21568627450980393,
+        "g": 0.26666666666666666,
+        "r": 0.8588235294117647
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 583.1999999999999,
+        "y": 349.2
+      },
+      "kind": "circle",
+      "radius": 3.6
+    },
+    "opacity": 0.7,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.34509803921568627,
+        "g": 0.615686274509804,
+        "r": 0.058823529411764705
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 352.8,
+        "y": 133.20000000000002
+      },
+      "kind": "circle",
+      "radius": 3.6
+    },
+    "opacity": 0.7,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.9568627450980393,
+        "g": 0.5215686274509804,
+        "r": 0.25882352941176473
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 572.4,
+        "y": 115.2
+      },
+      "kind": "circle",
+      "radius": 5.040000000000001
+    },
+    "opacity": 0.6,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.5725490196078431,
+        "g": 0.3843137254901961,
+        "r": 0.9411764705882353
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 334.8,
+        "y": 39.6
+      },
+      "kind": "circle",
+      "radius": 4.32
+    },
+    "opacity": 0.7,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.7607843137254902,
+        "g": 0.3411764705882353,
+        "r": 0.49411764705882355
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 561.6,
+        "y": 28.8
+      },
+      "kind": "circle",
+      "radius": 3.6
+    },
+    "opacity": 0.7,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.7058823529411765,
+        "r": 0.9568627450980393
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 12.959999999999999,
+      "kind": "rect",
+      "width": 3.6,
+      "x": 378.0,
+      "y": 43.199999999999996
+    },
+    "opacity": 0.6,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.34509803921568627,
+        "g": 0.615686274509804,
+        "r": 0.058823529411764705
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 12.959999999999999,
+      "kind": "rect",
+      "width": 3.6,
+      "x": 529.1999999999999,
+      "y": 50.4
+    },
+    "opacity": 0.6,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": null,
+    "geometry": {
+      "kind": "polyline",
+      "points": [
+        {
+          "x": 406.8,
+          "y": 223.20000000000002
+        },
+        {
+          "x": 459.0,
+          "y": 104.39999999999999
+        }
+      ]
+    },
+    "opacity": 1.0,
+    "stroke": {
+      "color": {
+        "a": 1.0,
+        "b": 0.6196078431372549,
+        "g": 0.6196078431372549,
+        "r": 0.6196078431372549
+      },
+      "dash": [],
+      "line_cap": "butt",
+      "width": 0.6
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": null,
+    "geometry": {
+      "kind": "polyline",
+      "points": [
+        {
+          "x": 459.0,
+          "y": 244.79999999999998
+        },
+        {
+          "x": 459.0,
+          "y": 104.39999999999999
+        }
+      ]
+    },
+    "opacity": 1.0,
+    "stroke": {
+      "color": {
+        "a": 1.0,
+        "b": 0.6196078431372549,
+        "g": 0.6196078431372549,
+        "r": 0.6196078431372549
+      },
+      "dash": [],
+      "line_cap": "butt",
+      "width": 0.6
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": null,
+    "geometry": {
+      "kind": "polyline",
+      "points": [
+        {
+          "x": 511.2,
+          "y": 223.20000000000002
+        },
+        {
+          "x": 459.0,
+          "y": 104.39999999999999
+        }
+      ]
+    },
+    "opacity": 1.0,
+    "stroke": {
+      "color": {
+        "a": 1.0,
+        "b": 0.6196078431372549,
+        "g": 0.6196078431372549,
+        "r": 0.6196078431372549
+      },
+      "dash": [],
+      "line_cap": "butt",
+      "width": 0.6
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": null,
+    "geometry": {
+      "kind": "polyline",
+      "points": [
+        {
+          "x": 428.40000000000003,
+          "y": 183.6
+        },
+        {
+          "x": 459.0,
+          "y": 104.39999999999999
+        }
+      ]
+    },
+    "opacity": 1.0,
+    "stroke": {
+      "color": {
+        "a": 1.0,
+        "b": 0.6196078431372549,
+        "g": 0.6196078431372549,
+        "r": 0.6196078431372549
+      },
+      "dash": [],
+      "line_cap": "butt",
+      "width": 0.6
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": null,
+    "geometry": {
+      "kind": "polyline",
+      "points": [
+        {
+          "x": 489.59999999999997,
+          "y": 183.6
+        },
+        {
+          "x": 459.0,
+          "y": 104.39999999999999
+        }
+      ]
+    },
+    "opacity": 1.0,
+    "stroke": {
+      "color": {
+        "a": 1.0,
+        "b": 0.6196078431372549,
+        "g": 0.6196078431372549,
+        "r": 0.6196078431372549
+      },
+      "dash": [],
+      "line_cap": "butt",
+      "width": 0.6
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.21568627450980393,
+        "g": 0.26666666666666666,
+        "r": 0.8588235294117647
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 406.8,
+        "y": 252.0
+      },
+      "kind": "circle",
+      "radius": 28.8
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.7058823529411765,
+        "r": 0.9568627450980393
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 459.0,
+        "y": 273.59999999999997
+      },
+      "kind": "circle",
+      "radius": 28.8
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.9568627450980393,
+        "g": 0.5215686274509804,
+        "r": 0.25882352941176473
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 511.2,
+        "y": 252.0
+      },
+      "kind": "circle",
+      "radius": 28.8
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.5725490196078431,
+        "g": 0.3843137254901961,
+        "r": 0.9411764705882353
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 428.40000000000003,
+        "y": 212.4
+      },
+      "kind": "circle",
+      "radius": 24.48
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.34509803921568627,
+        "g": 0.615686274509804,
+        "r": 0.058823529411764705
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 489.59999999999997,
+        "y": 212.4
+      },
+      "kind": "circle",
+      "radius": 24.48
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 1.0,
+        "g": 1.0,
+        "r": 1.0
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 397.43999999999994,
+        "y": 262.8
+      },
+      "kind": "circle",
+      "radius": 7.2
+    },
+    "opacity": 0.45,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 1.0,
+        "g": 1.0,
+        "r": 1.0
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 450.0,
+        "y": 284.40000000000003
+      },
+      "kind": "circle",
+      "radius": 7.2
+    },
+    "opacity": 0.45,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 1.0,
+        "g": 1.0,
+        "r": 1.0
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 501.84000000000003,
+        "y": 262.8
+      },
+      "kind": "circle",
+      "radius": 7.2
+    },
+    "opacity": 0.45,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 1.0,
+        "g": 1.0,
+        "r": 1.0
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 420.48,
+        "y": 221.04
+      },
+      "kind": "circle",
+      "radius": 6.12
+    },
+    "opacity": 0.45,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 1.0,
+        "g": 1.0,
+        "r": 1.0
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "center": {
+        "x": 481.67999999999995,
+        "y": 221.04
+      },
+      "kind": "circle",
+      "radius": 6.12
+    },
+    "opacity": 0.45,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.16470588235294117,
+        "g": 0.16470588235294117,
+        "r": 0.6470588235294118
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "kind": "polygon",
+      "points": [
+        {
+          "x": 403.92,
+          "y": 223.20000000000002
+        },
+        {
+          "x": 409.67999999999995,
+          "y": 223.20000000000002
+        },
+        {
+          "x": 406.8,
+          "y": 217.44
+        }
+      ]
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.043137254901960784,
+        "g": 0.5254901960784314,
+        "r": 0.7215686274509804
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "kind": "polygon",
+      "points": [
+        {
+          "x": 456.12,
+          "y": 244.79999999999998
+        },
+        {
+          "x": 461.88,
+          "y": 244.79999999999998
+        },
+        {
+          "x": 459.0,
+          "y": 239.04
+        }
+      ]
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.5411764705882353,
+        "g": 0.22745098039215686,
+        "r": 0.11764705882352941
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "kind": "polygon",
+      "points": [
+        {
+          "x": 508.32000000000005,
+          "y": 223.20000000000002
+        },
+        {
+          "x": 514.08,
+          "y": 223.20000000000002
+        },
+        {
+          "x": 511.2,
+          "y": 217.44
+        }
+      ]
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.3411764705882353,
+        "g": 0.0784313725490196,
+        "r": 0.6784313725490196
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "kind": "polygon",
+      "points": [
+        {
+          "x": 425.88,
+          "y": 187.92
+        },
+        {
+          "x": 430.92,
+          "y": 187.92
+        },
+        {
+          "x": 428.40000000000003,
+          "y": 182.88
+        }
+      ]
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.12549019607843137,
+        "g": 0.3686274509803922,
+        "r": 0.10588235294117647
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "kind": "polygon",
+      "points": [
+        {
+          "x": 487.08000000000004,
+          "y": 187.92
+        },
+        {
+          "x": 492.12,
+          "y": 187.92
+        },
+        {
+          "x": 489.59999999999997,
+          "y": 182.88
+        }
+      ]
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
     "cmd": "draw_text",
     "opacity": 1.0,
     "run": {
       "align": "center",
       "color": {
         "a": 1.0,
-        "b": 0.8,
-        "g": 0.2,
-        "r": 0.6
+        "b": 0.55,
+        "g": 0.15,
+        "r": 0.4
       },
       "font_id": "Helvetica",
       "origin": {
         "x": 459.0,
-        "y": 324.0
+        "y": 349.2
       },
       "size_pt": 32.0,
       "text": "Happy Birthday!"
+    }
+  },
+  {
+    "cmd": "draw_text",
+    "opacity": 1.0,
+    "run": {
+      "align": "center",
+      "color": {
+        "a": 1.0,
+        "b": 0.6,
+        "g": 0.3,
+        "r": 0.5
+      },
+      "font_id": "Times-Roman",
+      "origin": {
+        "x": 459.0,
+        "y": 324.0
+      },
+      "size_pt": 14.0,
+      "text": "make a wish"
     }
   },
   {
@@ -191,13 +907,13 @@
         "g": 0.3,
         "r": 0.3
       },
-      "font_id": "Helvetica",
+      "font_id": "Times-Roman",
       "origin": {
         "x": 342.0,
         "y": 612.0
       },
-      "size_pt": 14.0,
-      "text": "Wishing you a wonderful day filled"
+      "size_pt": 16.0,
+      "text": "Wishing you a day"
     }
   },
   {
@@ -211,13 +927,13 @@
         "g": 0.3,
         "r": 0.3
       },
-      "font_id": "Helvetica",
+      "font_id": "Times-Roman",
       "origin": {
         "x": 342.0,
-        "y": 595.2
+        "y": 592.8
       },
-      "size_pt": 14.0,
-      "text": "with joy!"
+      "size_pt": 16.0,
+      "text": "as wonderful as you are."
     }
   },
   {
