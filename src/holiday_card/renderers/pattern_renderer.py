@@ -250,8 +250,8 @@ class PatternRenderer:
             canvas.translate(x, y)
 
             # Draw the tiled pattern
-            for i in range(num_tiles_x):
-                for j in range(num_tiles_y):
+            for _i in range(num_tiles_x):
+                for _j in range(num_tiles_y):
                     canvas.doForm(form_name)
                     canvas.translate(0, tile_size)
                 canvas.translate(tile_size, -num_tiles_y * tile_size)

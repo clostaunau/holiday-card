@@ -169,7 +169,7 @@ def validate_fill_style(fill: FillStyle) -> tuple[bool, str | None]:
     Returns:
         Tuple of (is_valid, error_message)
     """
-    if isinstance(fill, LinearGradientFill) or isinstance(fill, RadialGradientFill):
+    if isinstance(fill, (LinearGradientFill, RadialGradientFill)):
         return validate_gradient_stops(fill.stops)
 
     elif isinstance(fill, PatternFill):

@@ -176,7 +176,7 @@ def create(
     output: Path | None = typer.Option(
         None, "--output", "-o", help="Output PDF file path"
     ),
-    name: str | None = typer.Option(
+    name: str | None = typer.Option(  # noqa: ARG001 (TODO: wire `name` into Card.name)
         None, "--name", "-n", help="Card name for identification"
     ),
     fold_type: str | None = typer.Option(

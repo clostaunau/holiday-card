@@ -10,8 +10,6 @@ from pathlib import Path
 
 import yaml
 
-logger = logging.getLogger(__name__)
-
 from holiday_card.core.models import (
     Circle,
     Color,
@@ -34,6 +32,8 @@ from holiday_card.core.models import (
     TextElement,
     Triangle,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class TemplateNotFoundError(Exception):

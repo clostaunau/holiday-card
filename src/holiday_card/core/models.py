@@ -68,7 +68,7 @@ __all__ = [
     "Theme",
     "Card",
 ]
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
 from uuid import uuid4
@@ -119,7 +119,7 @@ class Colors:
     SILVER = Color(r=0.75, g=0.75, b=0.75)
 
 
-class FoldType(str, Enum):
+class FoldType(StrEnum):
     """Card fold format types.
 
     Each fold type defines how the 8.5" x 11" paper is folded:
@@ -133,7 +133,7 @@ class FoldType(str, Enum):
     TRI_FOLD = "tri_fold"
 
 
-class OccasionType(str, Enum):
+class OccasionType(StrEnum):
     """Types of occasions for card templates and themes."""
 
     CHRISTMAS = "christmas"
@@ -145,7 +145,7 @@ class OccasionType(str, Enum):
     VALENTINE = "valentine"
 
 
-class PanelPosition(str, Enum):
+class PanelPosition(StrEnum):
     """Position identifiers for card panels.
 
     Different fold types use different panels:
@@ -161,7 +161,7 @@ class PanelPosition(str, Enum):
     CENTER = "center"  # For tri-fold
 
 
-class TextAlignment(str, Enum):
+class TextAlignment(StrEnum):
     """Text alignment options."""
 
     LEFT = "left"
@@ -169,7 +169,7 @@ class TextAlignment(str, Enum):
     RIGHT = "right"
 
 
-class FontStyle(str, Enum):
+class FontStyle(StrEnum):
     """Font style options."""
 
     NORMAL = "normal"
@@ -178,7 +178,7 @@ class FontStyle(str, Enum):
     BOLD_ITALIC = "bold_italic"
 
 
-class BorderStyle(str, Enum):
+class BorderStyle(StrEnum):
     """Border style options."""
 
     SOLID = "solid"
@@ -187,7 +187,7 @@ class BorderStyle(str, Enum):
     DECORATIVE = "decorative"
 
 
-class OverflowStrategy(str, Enum):
+class OverflowStrategy(StrEnum):
     """Strategy for handling text that exceeds designated boundaries.
 
     - AUTO: Automatically select best strategy based on text characteristics
@@ -202,7 +202,7 @@ class OverflowStrategy(str, Enum):
     TRUNCATE = "truncate"
 
 
-class ShapeType(str, Enum):
+class ShapeType(StrEnum):
     """Vector shape types for discriminated union.
 
     Used as the discriminator field for shape polymorphism in Pydantic.
@@ -217,7 +217,7 @@ class ShapeType(str, Enum):
     DECORATIVE_ELEMENT = "decorative_element"
 
 
-class PatternType(str, Enum):
+class PatternType(StrEnum):
     """Pattern fill types for repeating patterns.
 
     - STRIPES: Parallel lines with configurable width and angle
@@ -489,7 +489,7 @@ ClipMask = Annotated[
 ]
 
 
-class ImageEffectType(str, Enum):
+class ImageEffectType(StrEnum):
     """Types of image effects that can be applied."""
 
     GRAYSCALE = "grayscale"
@@ -507,7 +507,7 @@ class ImageEffects(BaseModel):
     blur: float = Field(default=0.0, ge=0.0, le=10.0, description="Gaussian blur radius in pixels")
 
 
-class PhotoFrameStyle(str, Enum):
+class PhotoFrameStyle(StrEnum):
     """Photo frame/border styles."""
 
     NONE = "none"

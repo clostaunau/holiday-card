@@ -73,9 +73,7 @@ def validate_within_page(x: float, y: float, width: float, height: float) -> boo
         return False
     if x + width > PAGE_WIDTH - SAFE_MARGIN:
         return False
-    if y + height > PAGE_HEIGHT - SAFE_MARGIN:
-        return False
-    return True
+    return not y + height > PAGE_HEIGHT - SAFE_MARGIN
 
 
 def validate_within_panel(
@@ -103,6 +101,4 @@ def validate_within_panel(
         return False
     if x + width > panel_width - SAFE_MARGIN:
         return False
-    if y + height > panel_height - SAFE_MARGIN:
-        return False
-    return True
+    return not y + height > panel_height - SAFE_MARGIN

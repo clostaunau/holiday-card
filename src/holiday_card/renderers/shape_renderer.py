@@ -409,7 +409,7 @@ class ShapeRenderer:
     def _apply_gradient_fill(self, canvas, fill_style, x: float, y: float, width: float, height: float,
                              panel_offset_x: float, panel_offset_y: float):
         """Apply gradient fill using GradientRenderer.
-        
+
         Args:
             canvas: ReportLab canvas
             fill_style: LinearGradientFill or RadialGradientFill
@@ -438,7 +438,7 @@ class ShapeRenderer:
                            x: float, y: float, width: float, height: float,
                            panel_offset_x: float, panel_offset_y: float):
         """Apply pattern fill using PatternRenderer.
-        
+
         Args:
             canvas: ReportLab canvas
             fill_style: PatternFill configuration
@@ -468,17 +468,17 @@ class ShapeRenderer:
     def _apply_fill(self, canvas, shape, x: float, y: float, width: float, height: float,
                     panel_offset_x: float, panel_offset_y: float) -> bool:
         """Apply fill (solid, gradient, or pattern) to a shape.
-        
+
         Args:
             canvas: ReportLab canvas
             shape: Shape with fill/fill_color attributes
             x: Shape X in inches
-            y: Shape Y in inches  
+            y: Shape Y in inches
             width: Shape width in inches
             height: Shape height in inches
             panel_offset_x: Panel offset X in inches
             panel_offset_y: Panel offset Y in inches
-            
+
         Returns:
             True if fill should be drawn, False otherwise
         """

@@ -234,10 +234,12 @@ class ReportLabRenderer(BaseRenderer):
 
                 from holiday_card.renderers.image_effects import apply_effects
                 pil_image = apply_effects(pil_image, image.effects)
-                # Save processed image to temp file for ReportLab
-                temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-                pil_image.save(temp_file.name, 'PNG')
-                render_path = temp_file.name
+                # Save processed image to temp file for ReportLab.
+                # The file outlives this `with` block (delete=False) because
+                # ReportLab reads it lazily; the OS cleans it up at process exit.
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_file:
+                    pil_image.save(temp_file.name, 'PNG')
+                    render_path = temp_file.name
 
             # Get DPI for size calculation (default to 72 if not available)
             dpi = pil_image.info.get("dpi", (72, 72))
@@ -512,7 +514,7 @@ class ReportLabRenderer(BaseRenderer):
         # Long text without height - shrink to single line
         return OverflowStrategy.SHRINK
 
-    def _apply_shrink_strategy(self, text: TextElement, panel: Panel) -> tuple[int, str]:
+    def _apply_shrink_strategy(self, text: TextElement, panel: Panel) -> tuple[int, str]:  # noqa: ARG002
         """Apply shrink strategy to fit text within width.
 
         Args:
@@ -639,7 +641,7 @@ class ReportLabRenderer(BaseRenderer):
 
         return (font_size, lines)
 
-    def _apply_truncate_strategy(self, text: TextElement, panel: Panel) -> tuple[int, str]:
+    def _apply_truncate_strategy(self, text: TextElement, panel: Panel) -> tuple[int, str]:  # noqa: ARG002
         """Apply truncate strategy (existing behavior).
 
         Args:
@@ -942,11 +944,13 @@ class ReportLabRenderer(BaseRenderer):
         # Second fold line
         self._canvas.line(third_x * 2, 0, third_x * 2, height)
 
-    def save(self, path: Path) -> None:
+    def save(self, path: Path) -> None:  # noqa: ARG002
         """Save the rendered PDF to a file.
 
         Args:
-            path: Output file path.
+            path: Output file path. Currently unused; the canvas was bound to
+                an output path in ``create_canvas``. Retained for interface
+                conformance with ``BaseRenderer.save``.
         """
         if self._canvas is None:
             raise RuntimeError("Canvas not initialized. Call create_canvas first.")
