@@ -197,6 +197,12 @@ def create(
     inside_message: str | None = typer.Option(
         None, "--inside-message", help="Message for the inside panel"
     ),
+    debug_emit_ir: bool = typer.Option(
+        False,
+        "--debug-emit-ir",
+        hidden=True,
+        help="(Wave 2 dev flag) Compile to RenderCommand IR and print as JSON; skip PDF output.",
+    ),
 ) -> None:
     """Create a new card from a template.
 
@@ -209,6 +215,10 @@ def create(
         holiday-card create birthday-balloons -m "Happy Birthday!" --image ./photo.jpg
     """
     try:
+        if debug_emit_ir:
+            _emit_ir_debug(template, message, theme, fold_type, inside_message)
+            return
+
         # Generate default output path if not specified
         if output is None:
             output_dir = Path("output")
@@ -567,6 +577,36 @@ def validate(
     except Exception as e:
         typer.secho(f"Validation error: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(1) from e
+
+
+def _emit_ir_debug(
+    template: str,
+    message: str | None,
+    theme: str | None,
+    fold_type: str | None,
+    inside_message: str | None,
+) -> None:
+    """Implementation of the hidden ``--debug-emit-ir`` flag.
+
+    Loads the template, builds a Card via CardGenerator (no PDF written),
+    runs the Wave 2 compiler, and prints the resulting RenderCommand list
+    as a JSON array to stdout. For developer use only — Wave 2 follow-up
+    PRs validate the output via snapshot tests.
+    """
+    from holiday_card.core.compiler import compile_card
+
+    fold_type_enum = FoldType(fold_type) if fold_type else None
+    generator = CardGenerator()
+    card = generator.create_card(
+        template_id=template,
+        message=message,
+        theme_id=theme,
+        fold_type=fold_type_enum,
+        inside_message=inside_message,
+    )
+    commands = compile_card(card)
+    payload = [json.loads(c.model_dump_json()) for c in commands]
+    typer.echo(json.dumps(payload, indent=2))
 
 
 if __name__ == "__main__":
