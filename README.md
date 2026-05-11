@@ -90,7 +90,7 @@ git clone https://github.com/clostaunau/holiday-card.git
 cd holiday-card
 pip install -e ".[dev]"
 
-pytest                         # 506 tests, runs in ~6s
+pytest                         # 555 tests, runs in ~6s
 ruff check src/ tests/         # lint (zero warnings)
 mypy src/                      # strict-mode type-check (zero errors)
 
@@ -129,13 +129,20 @@ DIY craft). Read `docs/industry-review/` for the consensus and per-
 critic breakdowns. Recent work targets the panel's "1-month" and
 "1-quarter" recommendations:
 
-* ✅ Bleed support + `Sheet/Trim/Bleed/Safe` abstraction
-* ✅ `--export-for` per-panel POD output
-* ✅ Sentiment library + `--voice`
-* ✅ Curated fonts shipped + every template migrated
-* ⏳ Salutation / signoff / signature / P.S. as first-class fields
-* ⏳ CMYK + ICC + PDF/X-1a (Leapfrog 1 polish)
-* ⏳ GitHub Action for CI-rendered cards (Leapfrog 4)
+* ✅ Bleed support + `Sheet/Trim/Bleed/Safe` abstraction (Agreement 2)
+* ✅ `--export-for` per-panel POD output (Leapfrog 1, slice 1)
+* ✅ Sentiment library + `--voice` (Leapfrog 2, slice 1)
+* ✅ Curated fonts shipped + every template migrated (Leapfrog 2, slices 2 + 3)
+* ✅ `--with-fold-marks` gate, README persona rewrite, etc. (panel cleanups)
+* ✅ Markdown mode for inside panel (`--inside-message-md`) (Leapfrog 4, slice 1)
+* ✅ GitHub Action: render-on-PR with sticky comment (Leapfrog 4, slice 2)
+* ⏳ Salutation / signoff / signature / P.S. as first-class fields (Leapfrog 2, slice 4)
+* ⏳ CMYK + ICC + PDF/X-1a (Leapfrog 1 prepress polish)
+* ⏳ Italic font variants (extends Markdown mode beyond bold)
+* ⏳ Multi-panel spill for long Markdown letters
+* ⏳ Father's Day + sympathy templates (calendar-driven SKU expansion)
+* ⏳ Template microsite generator (Leapfrog 5 — single-page form per template)
+* ❌ AI-native authoring (Leapfrog 3) — explicitly deferred per the AI-feature consensus doc until the curation moat is wider
 
 ## Architecture
 
