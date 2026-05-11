@@ -1,0 +1,145 @@
+name: Render cards
+
+# "Cards-as-code" identity: when a PR touches templates, sentiments,
+# fonts, or core source, this workflow renders PNG previews of the
+# affected templates and posts them as a sticky comment on the PR.
+# Reviewers see the actual visual output before merging.
+#
+# Trigger scope: only PRs to main, and only when the changed paths
+# could plausibly affect rendering. The paths-filter on the trigger
+# is the cheap first cut; scripts/render_changed_templates.py does
+# the precise affected-template detection inside the job.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "templates/**"
+      - "sentiments/**"
+      - "fonts/**"
+      - "themes/**"
+      - "src/**"
+      - ".github/workflows/render-cards.yml"
+      - "scripts/render_changed_templates.py"
+
+# Rendering posts on PR comments, so we need write access to PR
+# discussions. Read access to repo contents is needed for the
+# checkout. Nothing else.
+permissions:
+  pull-requests: write
+  contents: read
+
+# Re-run cancels the previous render for the same PR — no point
+# posting stale previews when the user has already pushed a new commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    name: Render affected templates + post PR comment
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out PR (full history for diff)
+        uses: actions/checkout@v4
+        with:
+          # We need the merge-base with main to compute the changed
+          # files, so fetch enough history. fetch-depth: 0 grabs
+          # everything; cheaper alternatives exist if this becomes a
+          # bottleneck.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install holiday-card
+        run: pip install -e .
+
+      - name: List files changed in this PR
+        id: diff
+        run: |
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          # Three-dot diff: changes on the PR branch since it diverged
+          # from base. Falls back to staged changes if the diff is
+          # empty (defensive — paths-filter already excluded that case).
+          CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          echo "$CHANGED" > changed.txt
+          echo "Changed files:"
+          cat changed.txt
+
+      - name: Render affected templates
+        id: render
+        run: |
+          mkdir -p card-previews
+          # The helper script writes one ``{template_id}\t{path}`` line
+          # per rendered preview to stdout. Capture for the comment.
+          python scripts/render_changed_templates.py \
+            --changed-files changed.txt \
+            --output-dir card-previews \
+            > rendered.tsv
+          echo "Rendered:"
+          cat rendered.tsv || echo "(none)"
+          # Make the count available to the next steps.
+          COUNT=$(wc -l < rendered.tsv | tr -d ' ')
+          echo "count=${COUNT}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload PNG previews as artifact
+        if: steps.render.outputs.count != '0'
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: card-previews-${{ github.run_number }}
+          path: card-previews/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Build PR comment body
+        if: steps.render.outputs.count != '0'
+        id: comment-body
+        run: |
+          {
+            echo "## 🎴 Card preview (auto-rendered)"
+            echo ""
+            COUNT="${{ steps.render.outputs.count }}"
+            if [ "$COUNT" = "1" ]; then
+              echo "1 template affected by this PR:"
+            else
+              echo "${COUNT} templates affected by this PR:"
+            fi
+            echo ""
+            # Each line of rendered.tsv: "{template_id}\t{png_path}"
+            cut -f1 rendered.tsv | sed 's|^|- `|; s|$|`|'
+            echo ""
+            echo "PNG previews are uploaded as the **\`card-previews-${{ github.run_number }}\`** artifact on [this workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+            echo ""
+            echo "<sub>Rendered at \`${{ github.event.pull_request.head.sha }}\`. Re-render by pushing a new commit.</sub>"
+          } > comment-body.md
+          cat comment-body.md
+
+      - name: Find existing sticky comment (if any)
+        if: steps.render.outputs.count != '0'
+        id: find-comment
+        uses: peter-evans/find-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          # ``body-includes`` filters for comments containing this
+          # marker, so a previous render's comment is detected and
+          # reused. Empty result → step output ``comment-id`` is empty
+          # → next step creates a new comment.
+          body-includes: "🎴 Card preview (auto-rendered)"
+
+      - name: Post (or update) sticky PR comment
+        if: steps.render.outputs.count != '0'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          # If find-comment returned an id, edit that comment in place.
+          # If it didn't, comment-id is empty and the action creates a
+          # new comment on the PR.
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body-path: comment-body.md
+          edit-mode: replace

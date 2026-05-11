@@ -101,6 +101,12 @@ CI runs all three gates on every push across Python 3.11/3.12/3.13 ×
 Ubuntu/macOS, plus a smoke job that renders one template per occasion.
 All gates are blocking.
 
+A second workflow (`.github/workflows/render-cards.yml`) renders PNG
+previews of templates affected by every PR and posts them as a sticky
+PR comment. Reviewers see what the change does to the actual cards
+before merging — the "cards-as-code" identity move from Leapfrog 4
+of the panel review.
+
 ## What this is not
 
 * **Not a Canva replacement.** If you want a visual editor with 600

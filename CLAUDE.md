@@ -21,7 +21,7 @@ pip install -e ".[dev]"            # one source of truth: pyproject.toml
 holiday-card create christmas-classic -m "Merry Christmas!"     # writes a PDF
 holiday-card create christmas-classic --format svg              # writes an SVG
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-pytest                              # all 539 tests, mypy-clean, ruff-clean
+pytest                              # all 555 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -231,6 +231,15 @@ template editing; a CMYK PDF wrapper for pro-press output; a JSON
 
 ## Recent changes
 
+- **2026-05-10 — GitHub Action: render-on-PR + sticky comment (Leapfrog 4, slice 2)**:
+  New `.github/workflows/render-cards.yml` triggers on PRs touching
+  templates/sentiments/fonts/themes/src. Detects affected templates
+  via `scripts/render_changed_templates.py` (direct template change →
+  just that template; indirect change → full shipping set), renders
+  PNG previews at 144 DPI, uploads as a workflow artifact, and posts
+  a sticky PR comment with the list and artifact link. Completes
+  Leapfrog 4 alongside the Markdown mode in PR #26 — together they
+  realize the panel's "cards-as-code identity" thesis.
 - **2026-05-10 — Markdown mode for inside panel (Leapfrog 4, slice 1)**:
   New `--inside-message-md path/to/letter.md` flag turns the inside
   panel into a "Christmas letter" surface — paragraphs, **bold** spans,
