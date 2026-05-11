@@ -43,9 +43,12 @@ from holiday_card.core.render_ir import (
     EndClip,
     EndGroup,
     EndPage,
+    LinearGradientPaint,
     PathGeom,
+    PatternPaint,
     PolygonGeom,
     PolylineGeom,
+    RadialGradientPaint,
     RectGeom,
     RenderCommand,
     SetMetadata,
@@ -214,6 +217,18 @@ class IRReportLabRenderer:
     # ------------------------------------------------------------------
 
     def _draw_shape(self, canvas: _canvas.Canvas, cmd: DrawShape) -> None:
+        # Gradient and pattern fills need a different drawing flow:
+        # clip to the shape, paint the gradient/pattern inside the clip,
+        # then draw the stroke separately on top. ReportLab's
+        # ``canvas.rect`` / ``circle`` / ``drawPath`` only accept a
+        # single solid fill.
+        if isinstance(
+            cmd.fill,
+            (LinearGradientPaint, RadialGradientPaint, PatternPaint),
+        ):
+            self._draw_shape_with_complex_fill(canvas, cmd)
+            return
+
         geom = cmd.geometry
         has_fill = self._apply_fill(canvas, cmd.fill)
         has_stroke = self._apply_stroke(canvas, cmd.stroke)
@@ -257,6 +272,203 @@ class IRReportLabRenderer:
         if cmd.opacity != 1.0:
             canvas.setFillAlpha(1.0)
             canvas.setStrokeAlpha(1.0)
+
+    def _draw_shape_with_complex_fill(
+        self,
+        canvas: _canvas.Canvas,
+        cmd: DrawShape,
+    ) -> None:
+        """Draw a shape whose fill is a gradient or pattern.
+
+        ReportLab's ``canvas.linearGradient`` and ``canvas.radialGradient``
+        paint inside the current clip region — so the flow is:
+        ``saveState → clipPath(shape) → emit gradient → restoreState``.
+        Patterns aren't a first-class ReportLab primitive; we tile the
+        chosen pattern's primitive (lines for stripes, circles for dots,
+        etc.) across the shape's bounding box inside the clip.
+
+        After the fill, the stroke is drawn separately in a second pass
+        so the outline lands on top of the fill. Opacity wraps the
+        whole operation.
+        """
+        from reportlab.lib import colors as _rl_colors
+
+        fill = cmd.fill
+        # Compute the bounding box for pattern tiling and gradient
+        # extent fallbacks.
+        bbox = self._shape_bbox(cmd.geometry)
+        if bbox is None:
+            raise NotImplementedError(
+                f"Complex fill on geometry {type(cmd.geometry).__name__} "
+                "requires a bounding box; not supported."
+            )
+
+        canvas.saveState()
+        if cmd.opacity != 1.0:
+            canvas.setFillAlpha(cmd.opacity)
+            canvas.setStrokeAlpha(cmd.opacity)
+
+        # Clip to the shape so the gradient/pattern only paints inside.
+        clip_path = self._geometry_to_path(canvas, cmd.geometry)
+        canvas.clipPath(clip_path, stroke=0, fill=0)
+
+        # Convert each RGB stop / color to a ReportLab color, honoring
+        # the renderer's color_space mode so CMYK PDFs emit CMYK gradients.
+        def to_rl_color(rgba: object) -> object:
+            r, g, b = rgba.r, rgba.g, rgba.b  # type: ignore[attr-defined]
+            a = rgba.a  # type: ignore[attr-defined]
+            if self.color_space == "cmyk":
+                from holiday_card.core.color_management import rgb_to_cmyk
+                c, m, y, k = rgb_to_cmyk(r, g, b)
+                return _rl_colors.CMYKColor(c, m, y, k, alpha=a)
+            return _rl_colors.Color(r, g, b, alpha=a)
+
+        if isinstance(fill, LinearGradientPaint):
+            canvas.linearGradient(
+                fill.start.x, fill.start.y,
+                fill.end.x, fill.end.y,
+                colors=[to_rl_color(s.color) for s in fill.stops],
+                positions=[s.position for s in fill.stops],
+                extend=True,
+            )
+        elif isinstance(fill, RadialGradientPaint):
+            canvas.radialGradient(
+                fill.center.x, fill.center.y, fill.radius,
+                colors=[to_rl_color(s.color) for s in fill.stops],
+                positions=[s.position for s in fill.stops],
+                extend=True,
+            )
+        elif isinstance(fill, PatternPaint):
+            self._draw_pattern_tile(canvas, fill, bbox)
+
+        canvas.restoreState()
+
+        # Stroke pass on top of the fill (if any).
+        if cmd.stroke is not None:
+            canvas.saveState()
+            if cmd.opacity != 1.0:
+                canvas.setStrokeAlpha(cmd.opacity)
+            self._apply_stroke(canvas, cmd.stroke)
+            stroke_path = self._geometry_to_path(canvas, cmd.geometry)
+            canvas.drawPath(stroke_path, stroke=1, fill=0)
+            canvas.restoreState()
+
+    def _draw_pattern_tile(
+        self,
+        canvas: _canvas.Canvas,
+        pattern: PatternPaint,
+        bbox: tuple[float, float, float, float],
+    ) -> None:
+        """Tile a pattern primitive across the bbox inside the active clip.
+
+        First lays down ``pattern.colors[0]`` as the background, then
+        repeats the pattern primitive (``stripes`` / ``dots`` / ``grid``
+        / ``checkerboard``) using ``pattern.colors[1]`` (or the same
+        color if only one is supplied). ``rotation_deg`` rotates the
+        entire pattern around the bbox center.
+        """
+        from reportlab.lib import colors as _rl_colors
+
+        x, y, w, h = bbox
+        spacing = pattern.spacing * pattern.scale
+        if spacing < 0.1:
+            spacing = 0.1
+        c0 = pattern.colors[0]
+        c1 = pattern.colors[1] if len(pattern.colors) > 1 else c0
+
+        def rl(rgba: object) -> object:
+            r, g, b = rgba.r, rgba.g, rgba.b  # type: ignore[attr-defined]
+            a = rgba.a  # type: ignore[attr-defined]
+            if self.color_space == "cmyk":
+                from holiday_card.core.color_management import rgb_to_cmyk
+                c, m, y_, k = rgb_to_cmyk(r, g, b)
+                return _rl_colors.CMYKColor(c, m, y_, k, alpha=a)
+            return _rl_colors.Color(r, g, b, alpha=a)
+
+        # Background fill (color 0).
+        canvas.setFillColor(rl(c0))
+        canvas.rect(x, y, w, h, stroke=0, fill=1)
+
+        # Rotate around bbox center if requested.
+        if pattern.rotation_deg:
+            canvas.saveState()
+            cx, cy = x + w / 2, y + h / 2
+            canvas.translate(cx, cy)
+            canvas.rotate(pattern.rotation_deg)
+            canvas.translate(-cx, -cy)
+
+        canvas.setFillColor(rl(c1))
+        canvas.setStrokeColor(rl(c1))
+
+        if pattern.pattern == "stripes":
+            # Horizontal stripes — alternate rows at half-spacing height.
+            half = spacing / 2
+            row_y = y - half
+            while row_y < y + h + spacing:
+                canvas.rect(x - spacing, row_y, w + 2 * spacing, half, stroke=0, fill=1)
+                row_y += spacing
+        elif pattern.pattern == "dots":
+            radius = spacing / 4
+            cy = y
+            while cy < y + h + spacing:
+                cx = x
+                while cx < x + w + spacing:
+                    canvas.circle(cx, cy, radius, stroke=0, fill=1)
+                    cx += spacing
+                cy += spacing
+        elif pattern.pattern == "grid":
+            # Vertical lines
+            line_x = x
+            while line_x < x + w + spacing:
+                canvas.setLineWidth(1.0)
+                canvas.line(line_x, y - spacing, line_x, y + h + spacing)
+                line_x += spacing
+            # Horizontal lines
+            line_y = y
+            while line_y < y + h + spacing:
+                canvas.line(x - spacing, line_y, x + w + spacing, line_y)
+                line_y += spacing
+        elif pattern.pattern == "checkerboard":
+            half = spacing
+            grid_y = y - half
+            row = 0
+            while grid_y < y + h + half:
+                offset = half if row % 2 else 0
+                gx = x - half + offset
+                while gx < x + w + half:
+                    canvas.rect(gx, grid_y, half, half, stroke=0, fill=1)
+                    gx += 2 * half
+                grid_y += half
+                row += 1
+
+        if pattern.rotation_deg:
+            canvas.restoreState()
+
+    def _shape_bbox(self, geom: object) -> tuple[float, float, float, float] | None:
+        """Bounding box of an IR geometry in page-points.
+
+        Returns ``(x, y, width, height)`` with bottom-left origin (the
+        IR convention). Used by pattern tiling and as a fallback when
+        a complex fill needs a target rect.
+        """
+        if isinstance(geom, RectGeom):
+            return (geom.x, geom.y, geom.width, geom.height)
+        if isinstance(geom, CircleGeom):
+            return (
+                geom.center.x - geom.radius,
+                geom.center.y - geom.radius,
+                2 * geom.radius, 2 * geom.radius,
+            )
+        if isinstance(geom, EllipseGeom):
+            return (
+                geom.center.x - geom.rx, geom.center.y - geom.ry,
+                2 * geom.rx, 2 * geom.ry,
+            )
+        if isinstance(geom, (PolygonGeom, PolylineGeom)):
+            xs = [p.x for p in geom.points]
+            ys = [p.y for p in geom.points]
+            return (min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+        return None
 
     def _geometry_to_path(self, canvas: _canvas.Canvas, geom: object) -> object:
         path = canvas.beginPath()

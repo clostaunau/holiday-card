@@ -72,10 +72,15 @@ from holiday_card.core.render_ir import (
     EndGroup,
     EndPage,
     GeomU,
+    GradientStop,
     ImageRef,
+    LinearGradientPaint,
+    PaintU,
+    PatternPaint,
     Point,
     PolygonGeom,
     PolylineGeom,
+    RadialGradientPaint,
     RectGeom,
     RenderCommand,
     SetMetadata,
@@ -427,7 +432,7 @@ def _compile_shape(shape: object, panel: Panel) -> list[RenderCommand]:
 
 
 def _compile_rectangle(shape: Rectangle, panel: Panel) -> RenderCommand:
-    fill, stroke = _resolve_paint_and_stroke(shape)
+    fill, stroke = _resolve_paint_and_stroke(shape, _shape_bbox_pts(shape, panel), panel=panel)
     return DrawShape(
         geometry=RectGeom(
             x=inches_to_points(panel.x + shape.x),
@@ -442,7 +447,7 @@ def _compile_rectangle(shape: Rectangle, panel: Panel) -> RenderCommand:
 
 
 def _compile_circle(shape: Circle, panel: Panel) -> RenderCommand:
-    fill, stroke = _resolve_paint_and_stroke(shape)
+    fill, stroke = _resolve_paint_and_stroke(shape, _shape_bbox_pts(shape, panel), panel=panel)
     return DrawShape(
         geometry=CircleGeom(
             center=Point(
@@ -458,7 +463,7 @@ def _compile_circle(shape: Circle, panel: Panel) -> RenderCommand:
 
 
 def _compile_triangle(shape: Triangle, panel: Panel) -> RenderCommand:
-    fill, stroke = _resolve_paint_and_stroke(shape)
+    fill, stroke = _resolve_paint_and_stroke(shape, _shape_bbox_pts(shape, panel), panel=panel)
     return DrawShape(
         geometry=PolygonGeom(
             points=(
@@ -494,7 +499,7 @@ def _compile_star(shape: Star, panel: Panel) -> RenderCommand:
         radius = outer_pt if i % 2 == 0 else inner_pt
         points.append(Point(x=cx_pt + radius * math.cos(angle), y=cy_pt + radius * math.sin(angle)))
 
-    fill, stroke = _resolve_paint_and_stroke(shape)
+    fill, stroke = _resolve_paint_and_stroke(shape, _shape_bbox_pts(shape, panel), panel=panel)
     return DrawShape(
         geometry=PolygonGeom(points=tuple(points)),
         fill=fill,
@@ -523,24 +528,51 @@ def _compile_line(shape: Line, panel: Panel) -> RenderCommand:
 
 def _resolve_paint_and_stroke(
     shape: object,
-) -> tuple[SolidPaint | None, Stroke | None]:
+    bbox_pts: tuple[float, float, float, float] | None = None,
+    panel: Panel | None = None,
+) -> tuple[PaintU | None, Stroke | None]:
     """Convert ``shape.fill`` / ``shape.fill_color`` / ``shape.stroke_*`` into
-    IR ``SolidPaint`` + ``Stroke`` (or ``None`` for no fill/stroke).
+    IR paint (``PaintU``) + ``Stroke`` (or ``None`` for no fill/stroke).
 
-    Only solid fills are supported in this PR. Gradient and pattern fills
-    raise ``UnsupportedFeatureError`` so the snapshot test surfaces them.
+    Solid, linear-gradient, radial-gradient, and pattern fills all
+    convert to their corresponding ``PaintU`` member. Gradients need
+    the shape's bounding box (in points, page-absolute) to resolve
+    relative gradient coordinates into absolute ones — callers that
+    intend to use a gradient/pattern fill must pass ``bbox_pts``.
+    Solid-only shapes (lines, things without a fill) can omit it.
     """
     fill_attr = getattr(shape, "fill", None)
     fill_color_attr = getattr(shape, "fill_color", None)
     stroke_color_attr = getattr(shape, "stroke_color", None)
     stroke_width_attr = getattr(shape, "stroke_width", 0.0)
 
+    fill: PaintU | None
     if fill_attr is not None:
-        # The discriminated FillStyle union — only SolidFill ports cleanly here.
-        from holiday_card.core.models import SolidFill  # local import to keep top tidy
+        from holiday_card.core.models import (  # local: keep top-of-file tidy
+            LinearGradientFill,
+            PatternFill,
+            RadialGradientFill,
+            SolidFill,
+        )
 
         if isinstance(fill_attr, SolidFill):
-            fill: SolidPaint | None = SolidPaint(color=_hex_to_rgba(fill_attr.color))
+            fill = SolidPaint(color=_hex_to_rgba(fill_attr.color))
+        elif isinstance(fill_attr, LinearGradientFill):
+            if bbox_pts is None:
+                raise UnsupportedFeatureError(
+                    "LinearGradientFill requires a bounding box from the caller "
+                    f"(shape {type(shape).__name__})"
+                )
+            fill = _linear_gradient_to_paint(fill_attr, bbox_pts)
+        elif isinstance(fill_attr, RadialGradientFill):
+            if panel is None:
+                raise UnsupportedFeatureError(
+                    "RadialGradientFill requires panel context from the caller "
+                    f"(shape {type(shape).__name__})"
+                )
+            fill = _radial_gradient_to_paint(fill_attr, panel)
+        elif isinstance(fill_attr, PatternFill):
+            fill = _pattern_to_paint(fill_attr)
         else:
             raise UnsupportedFeatureError(
                 f"Fill style {type(fill_attr).__name__} is not yet supported by the compiler."
@@ -557,6 +589,139 @@ def _resolve_paint_and_stroke(
         stroke = None
 
     return (fill, stroke)
+
+
+def _linear_gradient_to_paint(
+    fill: object,
+    bbox_pts: tuple[float, float, float, float],
+) -> LinearGradientPaint:
+    """Convert a ``LinearGradientFill`` (model) to ``LinearGradientPaint`` (IR).
+
+    The model carries an *angle in degrees* (0° = horizontal,
+    pointing right; 90° = vertical, pointing up). The IR carries
+    explicit ``start`` and ``end`` points in absolute page-points.
+    We resolve the angle against the shape's bounding box: the
+    gradient line crosses the center of the bbox at the given
+    angle, with the endpoints at the bbox edges along that axis.
+    """
+    import math
+
+    from holiday_card.core.models import LinearGradientFill
+    assert isinstance(fill, LinearGradientFill)
+    x, y, w, h = bbox_pts
+    cx = x + w / 2
+    cy = y + h / 2
+    # Half-diagonal projected onto the gradient axis — gives the
+    # endpoints as the points where the perpendicular to the
+    # gradient line tangent to the bbox would be.
+    rad = math.radians(fill.angle)
+    half_w = w / 2
+    half_h = h / 2
+    # Project the bbox half-extents onto the gradient direction.
+    dx = math.cos(rad)
+    dy = math.sin(rad)
+    extent = abs(dx) * half_w + abs(dy) * half_h
+    start = Point(x=cx - dx * extent, y=cy - dy * extent)
+    end = Point(x=cx + dx * extent, y=cy + dy * extent)
+    stops = tuple(
+        GradientStop(position=s.position, color=_hex_to_rgba(s.color))
+        for s in fill.stops
+    )
+    return LinearGradientPaint(start=start, end=end, stops=stops)
+
+
+def _radial_gradient_to_paint(
+    fill: object,
+    panel: Panel,
+) -> RadialGradientPaint:
+    """Convert a ``RadialGradientFill`` (model) to ``RadialGradientPaint`` (IR).
+
+    The model carries ``center_x`` / ``center_y`` / ``radius`` in
+    panel-relative inches (the convention shipped templates use).
+    The compiler translates to page-absolute points by adding the
+    panel offset and converting inches → points.
+    """
+    from holiday_card.core.models import RadialGradientFill
+    assert isinstance(fill, RadialGradientFill)
+    cx_pt = inches_to_points(panel.x + fill.center_x)
+    cy_pt = inches_to_points(panel.y + fill.center_y)
+    radius_pt = inches_to_points(fill.radius)
+    stops = tuple(
+        GradientStop(position=s.position, color=_hex_to_rgba(s.color))
+        for s in fill.stops
+    )
+    return RadialGradientPaint(
+        center=Point(x=cx_pt, y=cy_pt), radius=radius_pt, stops=stops
+    )
+
+
+def _pattern_to_paint(fill: object) -> PatternPaint:
+    """Convert a ``PatternFill`` (model, spacing in inches) to ``PatternPaint``
+    (IR, spacing in points)."""
+    from holiday_card.core.models import PatternFill
+    assert isinstance(fill, PatternFill)
+    return PatternPaint(
+        pattern=fill.pattern_type.value,
+        colors=tuple(_hex_to_rgba(c) for c in fill.colors),
+        spacing=inches_to_points(fill.spacing),
+        scale=fill.scale,
+        rotation_deg=fill.rotation,
+    )
+
+
+def _shape_bbox_pts(
+    shape: object, panel: Panel,
+) -> tuple[float, float, float, float]:
+    """Return the shape's bounding box in page-absolute points.
+
+    Used by gradient resolution so the compiler can compute absolute
+    gradient endpoints / radial centers without re-implementing each
+    shape's geometry in the paint converter.
+
+    Returns ``(x, y, width, height)`` where ``(x, y)`` is the
+    bottom-left corner.
+    """
+    if isinstance(shape, Rectangle):
+        return (
+            inches_to_points(panel.x + shape.x),
+            inches_to_points(panel.y + shape.y),
+            inches_to_points(shape.width),
+            inches_to_points(shape.height),
+        )
+    if isinstance(shape, Circle):
+        cx_pt = inches_to_points(panel.x + shape.center_x)
+        cy_pt = inches_to_points(panel.y + shape.center_y)
+        r_pt = inches_to_points(shape.radius)
+        return (cx_pt - r_pt, cy_pt - r_pt, 2 * r_pt, 2 * r_pt)
+    if isinstance(shape, Triangle):
+        xs = [
+            inches_to_points(panel.x + shape.x1),
+            inches_to_points(panel.x + shape.x2),
+            inches_to_points(panel.x + shape.x3),
+        ]
+        ys = [
+            inches_to_points(panel.y + shape.y1),
+            inches_to_points(panel.y + shape.y2),
+            inches_to_points(panel.y + shape.y3),
+        ]
+        return (min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+    if isinstance(shape, Star):
+        cx_pt = inches_to_points(panel.x + shape.center_x)
+        cy_pt = inches_to_points(panel.y + shape.center_y)
+        outer_pt = inches_to_points(shape.outer_radius)
+        return (cx_pt - outer_pt, cy_pt - outer_pt, 2 * outer_pt, 2 * outer_pt)
+    if isinstance(shape, Line):
+        x1 = inches_to_points(panel.x + shape.start_x)
+        x2 = inches_to_points(panel.x + shape.end_x)
+        y1 = inches_to_points(panel.y + shape.start_y)
+        y2 = inches_to_points(panel.y + shape.end_y)
+        return (
+            min(x1, x2), min(y1, y2),
+            max(abs(x2 - x1), 1.0), max(abs(y2 - y1), 1.0),
+        )
+    raise UnsupportedFeatureError(
+        f"_shape_bbox_pts: unknown shape type {type(shape).__name__}"
+    )
 
 
 # ---------------------------------------------------------------------------

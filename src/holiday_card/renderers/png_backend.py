@@ -52,9 +52,12 @@ from holiday_card.core.render_ir import (
     EndClip,
     EndGroup,
     EndPage,
+    LinearGradientPaint,
     PathGeom,
+    PatternPaint,
     PolygonGeom,
     PolylineGeom,
+    RadialGradientPaint,
     RectGeom,
     RenderCommand,
     SetMetadata,
@@ -66,6 +69,58 @@ from holiday_card.core.render_ir import (
 __all__ = ["PNGRenderer"]
 
 logger = logging.getLogger(__name__)
+
+
+def _interp_stops(
+    stops: list,
+    t: float,
+) -> tuple[int, int, int, int]:
+    """Interpolate between two adjacent gradient stops at parameter ``t``.
+
+    ``stops`` is a list of ``(position, RGBA)`` tuples in ascending
+    position order (validated at the model layer). Returns an 8-bit
+    RGBA tuple — alpha is sampled too so a gradient can fade in/out.
+    """
+    if t <= stops[0][0]:
+        c = stops[0][1]
+        return (
+            int(round(c.r * 255)),
+            int(round(c.g * 255)),
+            int(round(c.b * 255)),
+            int(round(c.a * 255)),
+        )
+    if t >= stops[-1][0]:
+        c = stops[-1][1]
+        return (
+            int(round(c.r * 255)),
+            int(round(c.g * 255)),
+            int(round(c.b * 255)),
+            int(round(c.a * 255)),
+        )
+    # Linear search is fine — gradients ship with 2–6 stops at most.
+    for i in range(1, len(stops)):
+        if t <= stops[i][0]:
+            p0, c0 = stops[i - 1]
+            p1, c1 = stops[i]
+            span = p1 - p0
+            local_t = (t - p0) / span if span > 0 else 0.0
+            r = c0.r + (c1.r - c0.r) * local_t
+            g = c0.g + (c1.g - c0.g) * local_t
+            b = c0.b + (c1.b - c0.b) * local_t
+            a = c0.a + (c1.a - c0.a) * local_t
+            return (
+                int(round(r * 255)),
+                int(round(g * 255)),
+                int(round(b * 255)),
+                int(round(a * 255)),
+            )
+    c = stops[-1][1]
+    return (
+        int(round(c.r * 255)),
+        int(round(c.g * 255)),
+        int(round(c.b * 255)),
+        int(round(c.a * 255)),
+    )
 
 # Cross-platform font fallback chain. Tried in order; Pillow's
 # truetype() does some name-based fuzzy matching on macOS, so the
@@ -307,6 +362,16 @@ class PNGRenderer:
 
     def _draw_shape(self, cmd: DrawShape) -> None:
         assert self._draw is not None
+        # Gradient and pattern fills need a separate rendering path —
+        # they paint a 2D field rather than a single color, so the
+        # ``ImageDraw.rectangle``/``ellipse`` calls below can't fill
+        # them in one step. Dispatch and return.
+        if isinstance(
+            cmd.fill,
+            (LinearGradientPaint, RadialGradientPaint, PatternPaint),
+        ):
+            self._draw_shape_with_complex_fill(cmd)
+            return
         fill_rgba = self._fill_to_rgba(cmd.fill, cmd.opacity)
         stroke_rgba = self._stroke_to_rgba(cmd.stroke, cmd.opacity)
         stroke_width = max(1, int(round(self._len(cmd.stroke.width)))) if cmd.stroke else 0
@@ -668,8 +733,306 @@ class PNGRenderer:
                 int(round(c.a * opacity * 255)),
             )
         raise NotImplementedError(
-            f"PNGRenderer does not yet handle paint type {type(fill).__name__}"
+            f"PNGRenderer does not yet handle paint type {type(fill).__name__} "
+            "via _fill_to_rgba (use _draw_shape_with_complex_fill)"
         )
+
+    # ------------------------------------------------------------------
+    # Complex fills (gradients + patterns)
+    # ------------------------------------------------------------------
+
+    def _draw_shape_with_complex_fill(self, cmd: DrawShape) -> None:
+        """Render a shape whose fill is a gradient or pattern.
+
+        Pillow's ``ImageDraw`` only fills with a single color, so we
+        build a small RGBA image sized to the shape's bounding box,
+        render the fill into it pixel by pixel, build a mask for the
+        shape's geometry in the same coord space, then composite.
+
+        Stroke renders separately on top via the existing path.
+
+        Performance: per-pixel Python iteration over the shape's bbox
+        in pixels (~20-80K pixels per typical shape) takes ~50ms each.
+        Acceptable for preview-quality PNG output; the PDF backend is
+        the production-quality path.
+        """
+        assert self._image is not None
+        from PIL import ImageChops
+
+        bbox = self._geom_bbox_px(cmd.geometry)
+        if bbox is None:
+            raise NotImplementedError(
+                f"PNGRenderer complex fill on geometry "
+                f"{type(cmd.geometry).__name__} requires a bounding box."
+            )
+        bx, by, bw, bh = bbox
+        # Clamp to canvas to avoid building enormous images for
+        # offscreen geometry.
+        canvas_w, canvas_h = self._image.size
+        bx = max(0, bx)
+        by = max(0, by)
+        bw = max(1, min(bw, canvas_w - bx))
+        bh = max(1, min(bh, canvas_h - by))
+
+        # Build the fill image at shape-bbox size.
+        fill_img = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
+        self._render_complex_fill_into(
+            fill_img, cmd.fill, cmd.opacity, bbox_origin=(bx, by),
+        )
+
+        # Build a mask matching the shape geometry, in shape-bbox coord
+        # space (subtract bx/by from each coord).
+        mask = Image.new("L", (bw, bh), 0)
+        mask_draw = ImageDraw.Draw(mask)
+        self._draw_geom_mask(mask_draw, cmd.geometry, offset=(bx, by))
+
+        # AND the fill alpha with the shape mask so pixels outside the
+        # shape stay transparent.
+        fa = fill_img.split()[3]
+        combined = ImageChops.multiply(fa, mask)
+        fill_img.putalpha(combined)
+
+        # Composite onto the main canvas at (bx, by).
+        self._image.paste(fill_img, (bx, by), fill_img)
+
+        # Stroke pass: draw the shape outline through the existing path.
+        # Construct a tiny shim cmd with fill=None so the regular path
+        # doesn't recurse back into complex-fill handling.
+        if cmd.stroke is not None:
+            stroke_cmd = cmd.model_copy(update={"fill": None})
+            self._draw_shape(stroke_cmd)
+
+    def _render_complex_fill_into(
+        self,
+        img: Image.Image,
+        fill: object,
+        opacity: float,
+        bbox_origin: tuple[int, int],
+    ) -> None:
+        """Render gradient/pattern paint into the supplied small RGBA image.
+
+        ``bbox_origin`` is the top-left of ``img`` in canvas pixels —
+        used to translate IR-space gradient endpoints into image-local
+        coords.
+        """
+        bx, by = bbox_origin
+        w, h = img.size
+        alpha_mult = max(0.0, min(1.0, opacity))
+
+        if isinstance(fill, LinearGradientPaint):
+            # Project each pixel onto the gradient axis and look up
+            # the interpolated stop color.
+            start_x_px = self._x(fill.start.x) - bx
+            start_y_px = self._y(fill.start.y) - by
+            end_x_px = self._x(fill.end.x) - bx
+            end_y_px = self._y(fill.end.y) - by
+            dx = end_x_px - start_x_px
+            dy = end_y_px - start_y_px
+            length_sq = dx * dx + dy * dy
+            if length_sq < 1e-6:
+                length_sq = 1.0
+            stops = [(s.position, s.color) for s in fill.stops]
+            data: list[tuple[int, int, int, int]] = []
+            for y in range(h):
+                for x in range(w):
+                    # Projection parameter t in [0, 1]
+                    t = ((x - start_x_px) * dx + (y - start_y_px) * dy) / length_sq
+                    if t < 0.0:
+                        t = 0.0
+                    elif t > 1.0:
+                        t = 1.0
+                    r, g, b, a = _interp_stops(stops, t)
+                    data.append((r, g, b, int(round(a * alpha_mult))))
+            img.putdata(data)
+        elif isinstance(fill, RadialGradientPaint):
+            cx_px = self._x(fill.center.x) - bx
+            cy_px = self._y(fill.center.y) - by
+            r_px = self._len(fill.radius)
+            if r_px < 1e-6:
+                r_px = 1.0
+            stops = [(s.position, s.color) for s in fill.stops]
+            data = []
+            for y in range(h):
+                for x in range(w):
+                    d = ((x - cx_px) ** 2 + (y - cy_px) ** 2) ** 0.5
+                    t = d / r_px
+                    if t > 1.0:
+                        t = 1.0
+                    elif t < 0.0:
+                        t = 0.0
+                    r, g, b, a = _interp_stops(stops, t)
+                    data.append((r, g, b, int(round(a * alpha_mult))))
+            img.putdata(data)
+        elif isinstance(fill, PatternPaint):
+            self._render_pattern_into(img, fill, opacity, bbox_origin)
+
+    def _render_pattern_into(
+        self,
+        img: Image.Image,
+        pattern: PatternPaint,
+        opacity: float,
+        bbox_origin: tuple[int, int],
+    ) -> None:
+        """Render a pattern into a small RGBA image via ImageDraw."""
+        bx, by = bbox_origin
+        w, h = img.size
+        spacing_px = max(2.0, self._len(pattern.spacing * pattern.scale))
+        c0 = pattern.colors[0]
+        c1 = pattern.colors[1] if len(pattern.colors) > 1 else c0
+        alpha = max(0.0, min(1.0, opacity))
+
+        def rgba(c: object) -> tuple[int, int, int, int]:
+            r = int(round(c.r * 255))  # type: ignore[attr-defined]
+            g = int(round(c.g * 255))  # type: ignore[attr-defined]
+            b = int(round(c.b * 255))  # type: ignore[attr-defined]
+            a = int(round(c.a * alpha * 255))  # type: ignore[attr-defined]
+            return (r, g, b, a)
+
+        rgba_c0 = rgba(c0)
+        rgba_c1 = rgba(c1)
+
+        # Fill background with color 0 (the negative-space color).
+        bg_layer = Image.new("RGBA", (w, h), rgba_c0)
+
+        draw = ImageDraw.Draw(bg_layer)
+        if pattern.pattern == "stripes":
+            half = spacing_px / 2
+            y = -half
+            while y < h + spacing_px:
+                draw.rectangle((-spacing_px, y, w + spacing_px, y + half), fill=rgba_c1)
+                y += spacing_px
+        elif pattern.pattern == "dots":
+            radius = spacing_px / 4
+            cy = 0.0
+            while cy < h + spacing_px:
+                cx = 0.0
+                while cx < w + spacing_px:
+                    draw.ellipse(
+                        (cx - radius, cy - radius, cx + radius, cy + radius),
+                        fill=rgba_c1,
+                    )
+                    cx += spacing_px
+                cy += spacing_px
+        elif pattern.pattern == "grid":
+            line_x = 0.0
+            while line_x < w + spacing_px:
+                draw.line((line_x, 0, line_x, h), fill=rgba_c1, width=1)
+                line_x += spacing_px
+            line_y = 0.0
+            while line_y < h + spacing_px:
+                draw.line((0, line_y, w, line_y), fill=rgba_c1, width=1)
+                line_y += spacing_px
+        elif pattern.pattern == "checkerboard":
+            half = spacing_px
+            gy = 0.0
+            row = 0
+            while gy < h + half:
+                offset = half if row % 2 else 0
+                gx = -half + offset
+                while gx < w + half:
+                    draw.rectangle((gx, gy, gx + half, gy + half), fill=rgba_c1)
+                    gx += 2 * half
+                gy += half
+                row += 1
+
+        # Apply rotation around center if requested.
+        if pattern.rotation_deg:
+            bg_layer = bg_layer.rotate(
+                pattern.rotation_deg,
+                resample=Image.Resampling.BILINEAR,
+                expand=False,
+            )
+
+        # Paste into the destination image.
+        img.paste(bg_layer, (0, 0))
+
+    def _geom_bbox_px(
+        self, geom: object,
+    ) -> tuple[int, int, int, int] | None:
+        """Return geometry's bounding box in canvas pixels (top-left origin).
+
+        Returns ``(x, y, width, height)`` where ``(x, y)`` is the
+        top-left corner.
+        """
+        if isinstance(geom, RectGeom):
+            x0 = self._x(geom.x)
+            x1 = self._x(geom.x + geom.width)
+            y0 = self._y(geom.y + geom.height)
+            y1 = self._y(geom.y)
+            return (
+                int(round(min(x0, x1))),
+                int(round(min(y0, y1))),
+                int(round(abs(x1 - x0))) + 1,
+                int(round(abs(y1 - y0))) + 1,
+            )
+        if isinstance(geom, CircleGeom):
+            cx = self._x(geom.center.x)
+            cy = self._y(geom.center.y)
+            r = self._len(geom.radius)
+            return (
+                int(round(cx - r)),
+                int(round(cy - r)),
+                int(round(2 * r)) + 1,
+                int(round(2 * r)) + 1,
+            )
+        if isinstance(geom, EllipseGeom):
+            cx = self._x(geom.center.x)
+            cy = self._y(geom.center.y)
+            rx = self._len(geom.rx)
+            ry = self._len(geom.ry)
+            return (
+                int(round(cx - rx)),
+                int(round(cy - ry)),
+                int(round(2 * rx)) + 1,
+                int(round(2 * ry)) + 1,
+            )
+        if isinstance(geom, (PolygonGeom, PolylineGeom)):
+            xs = [self._x(p.x) for p in geom.points]
+            ys = [self._y(p.y) for p in geom.points]
+            return (
+                int(round(min(xs))),
+                int(round(min(ys))),
+                int(round(max(xs) - min(xs))) + 1,
+                int(round(max(ys) - min(ys))) + 1,
+            )
+        return None
+
+    def _draw_geom_mask(
+        self,
+        draw: ImageDraw.ImageDraw,
+        geom: object,
+        offset: tuple[int, int],
+    ) -> None:
+        """Stamp ``geom`` onto the given mask draw context at white.
+
+        Coords are translated by ``-offset`` so the shape lands in the
+        small bbox-local coord system used by complex-fill rendering.
+        """
+        ox, oy = offset
+        if isinstance(geom, RectGeom):
+            x0 = self._x(geom.x) - ox
+            x1 = self._x(geom.x + geom.width) - ox
+            y0 = self._y(geom.y + geom.height) - oy
+            y1 = self._y(geom.y) - oy
+            draw.rectangle((min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)), fill=255)
+        elif isinstance(geom, CircleGeom):
+            cx = self._x(geom.center.x) - ox
+            cy = self._y(geom.center.y) - oy
+            r = self._len(geom.radius)
+            draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=255)
+        elif isinstance(geom, EllipseGeom):
+            cx = self._x(geom.center.x) - ox
+            cy = self._y(geom.center.y) - oy
+            rx = self._len(geom.rx)
+            ry = self._len(geom.ry)
+            draw.ellipse((cx - rx, cy - ry, cx + rx, cy + ry), fill=255)
+        elif isinstance(geom, (PolygonGeom, PolylineGeom)):
+            pts = [(self._x(p.x) - ox, self._y(p.y) - oy) for p in geom.points]
+            draw.polygon(pts, fill=255)
+        else:
+            raise NotImplementedError(
+                f"PNGRenderer complex fill mask: {type(geom).__name__} unsupported"
+            )
 
     def _stroke_to_rgba(
         self, stroke: Stroke | None, opacity: float

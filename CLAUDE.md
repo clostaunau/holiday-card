@@ -26,7 +26,7 @@ holiday-card create christmas-classic --inside-message-md letter.md   # Markdown
 holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," --signature "C" --ps "PS hi"   # structured letter
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-pytest                              # all 618 tests, mypy-clean, ruff-clean
+pytest                              # all 630 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -177,26 +177,31 @@ holiday-card create christmas-classic --debug-emit-ir   # print compiled IR as J
 ## Currently supported template subset
 
 The compiler supports backgrounds, borders, basic shapes (Rectangle,
-Circle, Triangle, Star, Line) with **solid fills only**, text with
-left/center/right alignment + Markdown rich text (paragraphs +
+Circle, Triangle, Star, Line) with **solid fills, linear gradients,
+radial gradients, and patterns (stripes / dots / grid / checkerboard)**,
+text with left/center/right alignment + Markdown rich text (paragraphs +
 **bold**) + structured letter parts (salutation / signoff / signature
 / P.S.), **photo images** with circle / rectangle / ellipse / star
 clip masks, fold lines, identity or rotation-only group transforms,
 and **bleed extension** on edges that touch the page trim (default
 0.125", set per Card via `card.bleed` or per Panel via `panel.bleed`).
-**9 of the 14 shipped templates currently compile cleanly:**
+**12 of the 14 shipped templates currently compile cleanly:**
 
 ```
 christmas-classic         christmas-geometric    christmas-modern
 christmas-artist          christmas-photo-ornament
+christmas-winter-sky      christmas-metallic-ornaments
+christmas-festive-stripes
 birthday-balloons         hanukkah-menorah
 generic-celebration       mothers-day
 ```
 
-Templates using gradients, patterns, decorative elements, SVG paths,
-or photo `effects` / `frame_style` raise `UnsupportedFeatureError`.
-Heart and SVG-path clip masks also raise. **Fail loud, not silent** is
-the convention — silent feature drop would let half-rendered PDFs ship.
+Remaining gaps: `christmas-holly-wreath` and
+`christmas-holiday-masterpiece` use SVG paths (need the parser wired
+to `PathGeom`). Templates using decorative elements or photo
+`effects` / `frame_style` still raise `UnsupportedFeatureError`.
+Heart and SVG-path clip masks also raise. **Fail loud, not silent**
+is the convention — silent feature drop would let half-rendered PDFs ship.
 
 To support a new feature: extend `core/compiler.py` to lower the
 relevant `Card` field into IR commands, then make sure each backend
@@ -268,6 +273,30 @@ work already shipped.
 
 ## Recent changes
 
+- **2026-05-11 — Gradient + pattern compiler support + 3 dead templates revived**:
+  Linear gradients, radial gradients, and patterns (stripes / dots /
+  grid / checkerboard) now render across all three backends. Compiler
+  conversions in `core/compiler.py`: `_linear_gradient_to_paint` uses
+  the shape bbox to resolve angle into absolute start/end points;
+  `_radial_gradient_to_paint` interprets center/radius as panel-relative
+  inches (matching the convention shipped templates actually use; the
+  previous "fraction of shape" semantic was contradicted by every
+  template). `RadialGradientFill` model validators loosened: center
+  and radius are now panel-relative inches with no upper bound.
+  SVG backend gained `_register_linear_gradient` / `_register_radial_gradient`
+  / `_register_pattern` that emit `<linearGradient>` / `<radialGradient>`
+  / `<pattern>` into `<defs>` and reference them via `url(#id)`. PDF
+  backend gained `_draw_shape_with_complex_fill` that uses ReportLab's
+  `canvas.linearGradient` / `radialGradient` inside a shape clip;
+  patterns tile manually as filled shapes. CMYK mode propagates to
+  gradient stops via `rgb_to_cmyk` so `--export-for moo-a6` produces
+  CMYK gradients. PNG backend renders gradients via per-pixel
+  interpolation into a shape-bbox-sized RGBA image, then composites
+  through a shape mask (Pillow `ImageChops.multiply`). Three previously
+  dead templates now compile: `christmas-winter-sky` (linear),
+  `christmas-metallic-ornaments` (radial), `christmas-festive-stripes`
+  (pattern). `christmas-holiday-masterpiece` still needs SVGPath
+  support; `christmas-holly-wreath` is SVGPath-only. 12 new tests.
 - **2026-05-11 — ImageElement compiler support + photo cards**:
   Photo cards render end-to-end through all three backends.
   `_compile_image` in `core/compiler.py` converts an `ImageElement`
