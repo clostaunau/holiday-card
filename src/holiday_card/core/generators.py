@@ -170,14 +170,16 @@ class CardGenerator:
                 if panel.text_elements:
                     panel.text_elements[0].content = message
                     return
-                # No text element, add one
+                # No text element, add one. "Lato" is a curated font
+                # shipped in fonts/curated/ — friendly geometric sans
+                # that works as a default cover greeting across voices.
                 panel.text_elements.append(
                     TextElement(
                         content=message,
                         x=panel.width / 2,
                         y=panel.height / 2,
                         width=panel.width - 0.5,  # Leave margins
-                        font_family="Helvetica",
+                        font_family="Lato",
                         font_size=24,
                     )
                 )
@@ -203,14 +205,16 @@ class CardGenerator:
                 if panel.text_elements:
                     panel.text_elements[0].content = message
                     return
-                # No text element, add one
+                # No text element, add one. "Lato" matches the cover
+                # auto-add default; together they're the safe fallback
+                # when a template doesn't already carry text slots.
                 panel.text_elements.append(
                     TextElement(
                         content=message,
                         x=0.5,
                         y=panel.height / 2,
                         width=panel.width - 1.0,  # Leave margins
-                        font_family="Helvetica",
+                        font_family="Lato",
                         font_size=14,
                     )
                 )
@@ -282,6 +286,8 @@ class CardGenerator:
         card: Card,
         output: Path,
         target: ExportTarget | str = "letter",
+        *,
+        emit_fold_lines: bool | None = None,
     ) -> list[Path]:
         """Render a card to one or more files based on the export target.
 
@@ -295,20 +301,34 @@ class CardGenerator:
           ``{position}.{ext}`` (e.g. ``front.pdf``,
           ``inside-left.pdf``).
 
+        ``emit_fold_lines`` overrides the target's default
+        (``letter``: True; per-panel: False). The CLI surfaces this
+        as ``--with-fold-marks`` / ``--no-fold-marks``. None means
+        "use the target default."
+
         Returns the list of written paths, in panel-iteration order.
         Single-file mode returns a one-element list for uniform handling
         by callers.
         """
         if isinstance(target, str):
             target = get_target(target)
+        fold_marks = (
+            emit_fold_lines
+            if emit_fold_lines is not None
+            else target.fold_marks_default
+        )
         if target.layout == "imposition":
-            return [self._generate_imposition(card, output, target)]
+            return [self._generate_imposition(card, output, target, fold_marks)]
         if target.layout == "per-panel":
-            return self._generate_per_panel(card, output, target)
+            return self._generate_per_panel(card, output, target, fold_marks)
         raise ValueError(f"unknown layout {target.layout!r} on target {target.name!r}")
 
     def _generate_imposition(
-        self, card: Card, output_path: Path, target: ExportTarget
+        self,
+        card: Card,
+        output_path: Path,
+        target: ExportTarget,
+        emit_fold_lines: bool,
     ) -> Path:
         from holiday_card.core.compiler import CompileContext  # local: avoid top-level cycle risk
 
@@ -317,13 +337,17 @@ class CardGenerator:
                 f"target {target.name!r} has layout='imposition' but no geometry"
             )
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        ctx = CompileContext(geometry=target.geometry)
+        ctx = CompileContext(geometry=target.geometry, emit_fold_lines=emit_fold_lines)
         commands = compile_card(card, ctx)
         self.renderer.render(commands, output_path)
         return output_path
 
     def _generate_per_panel(
-        self, card: Card, output_dir: Path, target: ExportTarget
+        self,
+        card: Card,
+        output_dir: Path,
+        target: ExportTarget,
+        emit_fold_lines: bool,
     ) -> list[Path]:
         output_dir.mkdir(parents=True, exist_ok=True)
         ext = self.renderer.file_extension  # ".pdf" / ".svg" / ".png"
@@ -331,6 +355,12 @@ class CardGenerator:
         for panel in card.panels:
             per_card = build_per_panel_card(card, panel, target)
             ctx = build_per_panel_context(panel, target)
+            # Per-panel mode: respect the override if the user explicitly
+            # passed --with-fold-marks. Otherwise build_per_panel_context's
+            # default (False) wins because there's no fold to mark.
+            if emit_fold_lines and not ctx.emit_fold_lines:
+                from dataclasses import replace
+                ctx = replace(ctx, emit_fold_lines=True)
             commands = compile_card(per_card, ctx)
             stem = _PER_PANEL_FILENAMES.get(panel.position.value, panel.position.value)
             out = output_dir / f"{stem}{ext}"

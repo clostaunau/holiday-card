@@ -214,11 +214,6 @@ template editing; a CMYK PDF wrapper for pro-press output; a JSON
 
 ## Known issues (good first tasks for a fresh session)
 
-- **Template id-mismatch bug:** Some YAML templates have `id` fields
-  that don't match their filename, so `discover_templates()` doesn't
-  find them by their expected names (e.g. `christmas-holly_wreath`,
-  `christmas-festive_stripes`). Look at `core/templates.py` discovery
-  logic.
 - **Dead Pydantic models in `models.py`:** `HeartClipMask`,
   `DecorativeElement`, gradient/pattern fill models, `SVGPath` shape
   exist but no production code imports them. They're referenced only
@@ -235,6 +230,15 @@ template editing; a CMYK PDF wrapper for pro-press output; a JSON
 
 ## Recent changes
 
+- **2026-05-10 — Panel-review cleanups bundle**: Four small items that
+  had been on the list since the panel review (PR #19). (1) Gated
+  `DrawFoldLine` behind `--with-fold-marks` / `--no-fold-marks` with
+  per-target defaults (`letter` ON, per-panel OFF). (2) Renamed the
+  six underscore-named christmas templates to use hyphens for
+  filename/id consistency (`holly_wreath.yaml` → `holly-wreath.yaml`
+  etc.). (3) Updated `_apply_front_message` and `_apply_inside_message`
+  auto-add fallback to use `Lato` instead of `Helvetica`. (4) Rewrote
+  the README around Tyler-the-engineer per Agreement 5.
 - **2026-05-10 — Migrate 7 templates to curated fonts (Leapfrog 2, slice 3)**:
   Every shipped template now uses curated fonts intentionally rather than
   Liberation defaults. Pairings: christmas-classic (Playfair + Cormorant),
