@@ -55,6 +55,14 @@ class ExportTarget:
     safe_margin_in: float = SAFE_MARGIN
     geometry: PageGeometry | None = None
     scale_panels_to_fit: bool = False
+    # Default fold-mark behavior for this target. Imposition targets
+    # (single sheet for home printer) default ON — the user folds the
+    # printed sheet by hand and the dashed grey guide helps align the
+    # crease. Per-panel targets default OFF — each output file is a
+    # finished card, never folded; the fold guide would print on the
+    # finished product. Overridable via the CLI's --with-fold-marks /
+    # --no-fold-marks flag.
+    fold_marks_default: bool = True
 
 
 REGISTRY: dict[str, ExportTarget] = {
@@ -76,6 +84,7 @@ REGISTRY: dict[str, ExportTarget] = {
         ),
         layout="per-panel",
         scale_panels_to_fit=False,
+        fold_marks_default=False,
     ),
     "moo-a6": ExportTarget(
         name="moo-a6",
@@ -88,6 +97,7 @@ REGISTRY: dict[str, ExportTarget] = {
         layout="per-panel",
         geometry=PageGeometry.moo_a6(),
         scale_panels_to_fit=True,
+        fold_marks_default=False,
     ),
 }
 

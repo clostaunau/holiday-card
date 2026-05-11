@@ -255,6 +255,17 @@ def create(
             "+ same voice → same picked line. Default is random."
         ),
     ),
+    with_fold_marks: bool | None = typer.Option(
+        None,
+        "--with-fold-marks/--no-fold-marks",
+        help=(
+            "Emit (or suppress) the dashed grey fold-line guide. "
+            "Default depends on --export-for: 'letter' emits the guide "
+            "(home printer needs it for accurate folding); per-panel "
+            "POD targets suppress it (each output is a finished card "
+            "and the guide would print on the product)."
+        ),
+    ),
 ) -> None:
     """Create a new card from a template.
 
@@ -415,7 +426,9 @@ def create(
             images=image_elements if image_elements else None,
             inside_message=effective_inside,
         )
-        written = generator.generate(card, output, target)
+        written = generator.generate(
+            card, output, target, emit_fold_lines=with_fold_marks,
+        )
 
         # Success output
         if target.layout == "per-panel":

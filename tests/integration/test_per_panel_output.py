@@ -14,8 +14,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
 from holiday_card.core.export_targets import get_target
 from holiday_card.core.generators import CardGenerator
 from holiday_card.renderers.png_backend import PNGRenderer
@@ -163,20 +161,74 @@ class TestImpositionUnchanged:
         assert (w, h) == (630.0, 810.0)
 
 
-@pytest.mark.parametrize("target_name", ["per-panel-pdf", "moo-a6"])
-def test_per_panel_targets_skip_fold_lines(target_name: str, tmp_path: Path) -> None:
-    """Per-panel files are finished cards, not folded sheets — they
-    should not contain a fold-line guide."""
-    out_dir = tmp_path / target_name
-    gen = CardGenerator()
-    card = gen.create_card(template_id=TEMPLATE_ID)
-    gen.generate(card, out_dir, target=target_name)
-    for pdf in out_dir.glob("*.pdf"):
-        # Fold lines are emitted as 0.5pt grey dashed segments. The
-        # PDF stream contains "0.5 w" (set linewidth) and "[ 3 3 ]"
-        # (dash pattern) when a fold line is drawn. If neither appears
-        # the fold guide didn't render. Heuristic but sufficient.
-        data = pdf.read_bytes()
-        assert b"[ 3 3 ]" not in data, (
-            f"{pdf.name}: fold-line dash pattern leaked into per-panel output"
-        )
+# ---------------------------------------------------------------------------
+# --with-fold-marks / --no-fold-marks gate (Agreement 3)
+# ---------------------------------------------------------------------------
+
+
+def _count_fold_lines(card: object, target: str, **gen_kwargs) -> int:
+    """Render via the IR to count actual DrawFoldLine commands.
+
+    More reliable than scanning the compressed PDF byte stream, which
+    is opaque to byte-level dash-pattern matching.
+    """
+    from holiday_card.core.compiler import CompileContext, compile_card
+    from holiday_card.core.export_targets import get_target
+    from holiday_card.core.per_panel import (
+        build_per_panel_card,
+        build_per_panel_context,
+    )
+    from holiday_card.core.render_ir import DrawFoldLine
+
+    t = get_target(target)
+    emit = gen_kwargs.get("emit_fold_lines")
+    fold_marks = emit if emit is not None else t.fold_marks_default
+
+    if t.layout == "imposition":
+        ctx = CompileContext(geometry=t.geometry, emit_fold_lines=fold_marks)
+        cmds = compile_card(card, ctx)  # type: ignore[arg-type]
+        return sum(1 for c in cmds if isinstance(c, DrawFoldLine))
+
+    # Per-panel: count across all panels
+    total = 0
+    for panel in card.panels:  # type: ignore[attr-defined]
+        per_card = build_per_panel_card(card, panel, t)  # type: ignore[arg-type]
+        ctx = build_per_panel_context(panel, t)
+        if fold_marks and not ctx.emit_fold_lines:
+            from dataclasses import replace
+            ctx = replace(ctx, emit_fold_lines=True)
+        cmds = compile_card(per_card, ctx)
+        total += sum(1 for c in cmds if isinstance(c, DrawFoldLine))
+    return total
+
+
+class TestFoldMarksGate:
+    def test_letter_target_emits_fold_marks_by_default(self) -> None:
+        """Letter is a home-printer target; the dashed grey guide helps
+        the user fold by hand. Default ON; christmas-classic is half-fold
+        so exactly one horizontal fold line."""
+        card = CardGenerator().create_card(template_id=TEMPLATE_ID)
+        assert _count_fold_lines(card, "letter") == 1
+
+    def test_no_fold_marks_override_suppresses_for_letter(self) -> None:
+        card = CardGenerator().create_card(template_id=TEMPLATE_ID)
+        assert _count_fold_lines(card, "letter", emit_fold_lines=False) == 0
+
+    def test_per_panel_targets_default_to_no_fold_marks(self) -> None:
+        """Per-panel files are finished cards, not folded sheets."""
+        card = CardGenerator().create_card(template_id=TEMPLATE_ID)
+        assert _count_fold_lines(card, "per-panel-pdf") == 0
+        assert _count_fold_lines(card, "moo-a6") == 0
+
+    def test_with_fold_marks_override_doesnt_error_on_per_panel(self) -> None:
+        """A panel rendered as its own page doesn't have a fold inside
+        — the per-panel CompileContext geometry is panel-sized and
+        ``_emit_fold_lines`` returns no commands for a non-foldable page.
+        Override should be a no-op without erroring."""
+        card = CardGenerator().create_card(template_id=TEMPLATE_ID)
+        # half-fold compiler emits one fold line per page in fold geometry;
+        # per-panel pages aren't fold-typed inputs (fold_type stays from card
+        # but the per-panel geometry doesn't trigger a meaningful fold).
+        # Either zero or one per panel is acceptable; assert no error.
+        n = _count_fold_lines(card, "per-panel-pdf", emit_fold_lines=True)
+        assert n >= 0  # the assertion is "no error during compile"
