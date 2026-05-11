@@ -235,6 +235,14 @@ template editing; a CMYK PDF wrapper for pro-press output; a JSON
 
 ## Recent changes
 
+- **2026-05-10 — Migrate 7 templates to curated fonts (Leapfrog 2, slice 3)**:
+  Every shipped template now uses curated fonts intentionally rather than
+  Liberation defaults. Pairings: christmas-classic (Playfair + Cormorant),
+  christmas-geometric/-modern (Inter), christmas-artist (Caveat + Cormorant),
+  birthday-balloons (Comfortaa + Caveat + Lato), hanukkah-menorah
+  (Lato + Cormorant), generic-celebration (Inter + Lato), mothers-day
+  (Playfair + Caveat + Lato). Zero Helvetica/Times-Roman references remain
+  in `templates/`. Snapshots regenerated.
 - **2026-05-10 — Curated font shipment (Leapfrog 2, slice 2)**: Six SIL OFL
   open-source fonts in `fonts/curated/` — Cormorant Garamond (editorial
   serif), Playfair Display (display serif), Lato (friendly sans, regular +

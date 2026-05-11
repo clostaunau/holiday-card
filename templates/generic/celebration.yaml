@@ -25,7 +25,7 @@ panels:
         content: "Congratulations!"
         x: 2.125
         y: 2.75
-        font_family: "Helvetica"
+        font_family: "Inter"  # modern sans display for the cover
         font_size: 30
         font_style: "bold"
         alignment: "center"
@@ -77,7 +77,7 @@ panels:
         x: 0.5
         y: 3.0
         width: 3.25
-        font_family: "Helvetica"
+        font_family: "Lato"  # friendly sans body, paired with Inter cover
         font_size: 14
         color:
           r: 0.3

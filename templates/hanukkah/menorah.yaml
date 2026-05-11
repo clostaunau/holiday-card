@@ -307,7 +307,7 @@ panels:
         x: 2.125
         y: 4.65
         width: 3.5
-        font_family: "Helvetica"
+        font_family: "Lato"  # friendly geometric sans, traditional but warm
         font_size: 28
         font_style: "bold"
         alignment: "center"
@@ -320,7 +320,7 @@ panels:
         x: 2.125
         y: 4.30
         width: 3.0
-        font_family: "Times-Roman"
+        font_family: "Cormorant"  # editorial serif for the Hebrew transliteration
         font_size: 14
         font_style: "italic"
         alignment: "center"
@@ -372,7 +372,7 @@ panels:
         x: 0.5
         y: 3.0
         width: 3.25
-        font_family: "Times-Roman"
+        font_family: "Cormorant"  # editorial serif body, paired with Lato cover
         font_size: 16
         font_style: "italic"
         alignment: "left"

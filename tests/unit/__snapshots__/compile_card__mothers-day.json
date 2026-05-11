@@ -153,12 +153,12 @@
         "g": 0.2,
         "r": 0.55
       },
-      "font_id": "Times-Roman",
+      "font_id": "PlayfairDisplay",
       "origin": {
         "x": 459.0,
         "y": 216.0
       },
-      "size_pt": 30.0,
+      "size_pt": 29.0,
       "text": "Happy Mother's Day"
     }
   },
@@ -173,7 +173,7 @@
         "g": 0.2,
         "r": 0.55
       },
-      "font_id": "Times-Roman",
+      "font_id": "Caveat",
       "origin": {
         "x": 459.0,
         "y": 154.79999999999998
@@ -301,7 +301,7 @@
         "g": 0.2,
         "r": 0.55
       },
-      "font_id": "Times-Roman",
+      "font_id": "Lato",
       "origin": {
         "x": 342.0,
         "y": 1044.0

@@ -58,7 +58,7 @@ panels:
         x: 2.125
         y: 3.0
         width: 3.75
-        font_family: "Times-Roman"
+        font_family: "PlayfairDisplay"  # editorial display serif fits the elegant rose palette
         font_size: 30
         font_style: "italic"
         alignment: "center"
@@ -72,7 +72,7 @@ panels:
         x: 2.125
         y: 2.15
         width: 3.5
-        font_family: "Times-Roman"
+        font_family: "Caveat"  # handwritten script for the personal "with love"
         font_size: 16
         font_style: "italic"
         alignment: "center"
@@ -124,7 +124,7 @@ panels:
         x: 0.5
         y: 9.0
         width: 3.25
-        font_family: "Times-Roman"
+        font_family: "Lato"  # warm geometric sans body
         font_size: 16
         font_style: "italic"
         alignment: "left"
