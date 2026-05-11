@@ -20,6 +20,11 @@ from holiday_card.core.export_targets import (
 )
 from holiday_card.core.generators import CardGenerator
 from holiday_card.core.models import FoldType, ImageElement
+from holiday_card.core.sentiments import (
+    VOICES,
+    SentimentNotFoundError,
+    pick_sentiment,
+)
 from holiday_card.core.templates import (
     TemplateLoadError,
     TemplateNotFoundError,
@@ -227,6 +232,29 @@ def create(
             "registry."
         ),
     ),
+    voice: str | None = typer.Option(
+        None,
+        "--voice",
+        help=(
+            "Pick a curated cover greeting and inside message in the "
+            "given voice. One of: warm, witty, spare, devotional, "
+            "irreverent. Explicit --message / --inside-message override "
+            "the picked sentiment."
+        ),
+    ),
+    blank_inside: bool = typer.Option(
+        False,
+        "--blank-inside",
+        help="Render the inside panel with no message text.",
+    ),
+    seed: int | None = typer.Option(
+        None,
+        "--seed",
+        help=(
+            "Reproducible sentiment selection: same seed + same template "
+            "+ same voice → same picked line. Default is random."
+        ),
+    ),
 ) -> None:
     """Create a new card from a template.
 
@@ -254,6 +282,18 @@ def create(
             for name in sorted(EXPORT_TARGET_REGISTRY):
                 typer.echo(f"  {name}: {EXPORT_TARGET_REGISTRY[name].description}", err=True)
             raise typer.Exit(2) from e
+
+        # Validate --voice up-front; bad value = early exit. The actual
+        # sentiment lookup happens after the template loads (we need
+        # the template's occasion to know which sentiment file to pick).
+        if voice is not None and voice not in VOICES:
+            typer.secho(
+                f"Error: Unknown --voice value {voice!r}. "
+                f"Available: {', '.join(VOICES)}",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(2)
 
         # Resolve output format and extension
         chosen_format = _resolve_output_format(output_format, output)
@@ -327,15 +367,53 @@ def create(
                     )
                 )
 
+        # Resolve --voice into picked sentiments, only filling slots the
+        # user didn't explicitly set. Explicit --message and --inside-message
+        # always win; --blank-inside trumps both.
+        effective_message = message
+        effective_inside = inside_message
+        picked_voice_message: str | None = None
+        picked_voice_inside: str | None = None
+        if voice is not None:
+            occasion_str = _template_occasion(template)
+            if effective_message is None:
+                try:
+                    picked_voice_message = pick_sentiment(
+                        occasion_str, voice, "cover", seed=seed,
+                    )
+                    effective_message = picked_voice_message
+                except SentimentNotFoundError as e:
+                    typer.secho(
+                        f"Warning: no cover sentiment for "
+                        f"({occasion_str}, {voice}); leaving template default. {e}",
+                        fg=typer.colors.YELLOW,
+                        err=True,
+                    )
+            if effective_inside is None and not blank_inside:
+                try:
+                    picked_voice_inside = pick_sentiment(
+                        occasion_str, voice, "inside", seed=seed,
+                    )
+                    effective_inside = picked_voice_inside
+                except SentimentNotFoundError as e:
+                    typer.secho(
+                        f"Warning: no inside sentiment for "
+                        f"({occasion_str}, {voice}); leaving template default. {e}",
+                        fg=typer.colors.YELLOW,
+                        err=True,
+                    )
+        if blank_inside:
+            effective_inside = ""
+
         # Generate the card
         card = generator.create_card(
             template_id=template,
-            message=message,
+            message=effective_message,
             output_path=output,
             theme_id=theme,
             fold_type=fold_type_enum,
             images=image_elements if image_elements else None,
-            inside_message=inside_message,
+            inside_message=effective_inside,
         )
         written = generator.generate(card, output, target)
 
@@ -349,9 +427,16 @@ def create(
         typer.echo(f"  Template: {template}")
         typer.echo(f"  Fold: {card.fold_type.value}")
         typer.echo(f"  Target: {target.name} ({target.layout})")
-        if message:
-            msg_preview = message[:50] + "..." if len(message) > 50 else message
-            typer.echo(f"  Message: {msg_preview}")
+        if voice:
+            typer.echo(f"  Voice: {voice}")
+            if picked_voice_message is not None:
+                typer.echo(f"  Picked cover: {_truncate(picked_voice_message, 60)}")
+            if picked_voice_inside is not None:
+                typer.echo(f"  Picked inside: {_truncate(picked_voice_inside, 60)}")
+        if blank_inside:
+            typer.echo("  Inside: (blank)")
+        if effective_message and not voice:
+            typer.echo(f"  Message: {_truncate(effective_message, 50)}")
 
     except typer.Exit:
         # Preserve intentional exit codes from inner validation
@@ -632,6 +717,24 @@ def _open_in_default_viewer(path: Path) -> None:
 
 
 _SUPPORTED_FORMATS = ("pdf", "svg")
+
+
+def _template_occasion(template_id: str) -> str:
+    """Look up a template's occasion string for sentiment selection.
+
+    Templates whose ID isn't found discover_templates() (e.g. a path
+    to a YAML file the user passed) fall back to ``"generic"``; the
+    sentiment library always has a generic fallback.
+    """
+    for entry in discover_templates():
+        if entry.get("id") == template_id:
+            occasion = entry.get("occasion") or "generic"
+            return occasion
+    return "generic"
+
+
+def _truncate(s: str, n: int) -> str:
+    return s if len(s) <= n else s[: n - 1] + "…"
 
 
 def _resolve_output_format(requested: str, output: Path | None) -> str:
