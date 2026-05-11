@@ -580,6 +580,9 @@ def _compile_text(
     """
     from holiday_card.core.text_utils import calculate_line_height  # local: small module
 
+    if text.letter_content is not None and not text.letter_content.is_empty():
+        return _compile_letter_content(text, panel, measurer)
+
     if text.rich_content is not None:
         return _compile_rich_text(text, panel, measurer)
 
@@ -779,6 +782,161 @@ def _wrap_styled_runs(
     if current_line:
         lines.append(current_line)
     return lines
+
+
+# ---------------------------------------------------------------------------
+# Letter compilation (structured salutation / body / signoff / signature / P.S.)
+# ---------------------------------------------------------------------------
+
+
+# Vertical-spacing conventions for the inside-letter layout. Each is
+# expressed as a multiple of the *body* line height so layout scales
+# with the TextElement's font_size without per-call constants leaking
+# out. The values match handwritten-letter visual rhythm:
+#
+# * Salutation → body: one blank line (paragraph break).
+# * Body → signoff: one and a half blank lines (signoff lands lower
+#   than a normal paragraph break to read as a closing).
+# * Signoff → signature: tight, like a real handwritten letter where
+#   "Love," and the name almost touch.
+# * Signature → P.S.: two blank lines (P.S. is its own visual block).
+#
+# P.S. renders at 85% of the body font size — the conventional
+# greeting-card "afterthought" feel.
+_LETTER_GAP_AFTER_SALUTATION = 1.0
+_LETTER_GAP_AFTER_BODY = 1.5
+_LETTER_GAP_AFTER_SIGNOFF = 0.4
+_LETTER_GAP_AFTER_SIGNATURE = 2.0
+_POSTSCRIPT_SIZE_RATIO = 0.85
+
+
+def _compile_letter_content(
+    text: TextElement,
+    panel: Panel,
+    measurer: _reportlab_canvas.Canvas,
+) -> list[RenderCommand]:
+    """Lay out a ``LetterContent`` instance into ``DrawText`` commands.
+
+    The five parts (salutation, body, signoff, signature, postscript)
+    are stacked top-to-bottom from the text element's origin with
+    conventional gaps (see the ``_LETTER_GAP_*`` constants above).
+    Every part respects ``text.width`` for greedy word-wrapping;
+    embedded newlines in ``body`` split into hard line breaks before
+    width-wrapping runs. Empty parts are skipped (no command emitted,
+    no vertical space consumed) so the layout naturally collapses
+    around whichever parts the user supplied.
+
+    Font handling: every part uses ``text.font_family`` and
+    ``text.font_size`` *except*:
+
+    * The signature line uses
+      ``letter.signature_font_family or text.font_family`` — the
+      override exists for the handwritten-feel convention
+      (``Caveat`` is the curated choice).
+    * The P.S. renders at ``font_size * 0.85`` (rounded) in
+      ``text.font_family``.
+    """
+    from holiday_card.core.text_utils import calculate_line_height, wrap_text
+
+    assert text.letter_content is not None
+    letter = text.letter_content
+    color = _color_to_rgba(text.color) if text.color else RGBA(r=0, g=0, b=0)
+    align = text.alignment.value
+    font_family = text.font_family or "Helvetica"
+    body_size = text.font_size
+    body_line_height = calculate_line_height(body_size)
+
+    abs_x = inches_to_points(panel.x + text.x)
+    abs_y = inches_to_points(panel.y + text.y)
+    max_width_pt = inches_to_points(text.width) if text.width else float("inf")
+
+    commands: list[RenderCommand] = []
+    cursor_y = abs_y
+    previous_emitted = False
+
+    def emit_block(
+        content: str,
+        *,
+        font_id: str,
+        size: int,
+        gap_before_lines: float,
+    ) -> None:
+        """Emit one logical letter part (possibly multi-line)."""
+        nonlocal cursor_y, previous_emitted
+        if not content:
+            return
+        if previous_emitted:
+            cursor_y -= body_line_height * gap_before_lines
+        line_height = calculate_line_height(size)
+        # Hard line breaks split first; width-wrap each segment.
+        hard_segments = content.split("\n")
+        rendered_lines: list[str] = []
+        for segment in hard_segments:
+            if not segment.strip():
+                rendered_lines.append("")
+                continue
+            if max_width_pt == float("inf"):
+                rendered_lines.append(segment)
+            else:
+                rendered_lines.extend(
+                    wrap_text(measurer, segment, font_id, size, max_width_pt)
+                )
+        for line in rendered_lines:
+            if line:
+                commands.append(
+                    DrawText(
+                        run=TextRun(
+                            text=line,
+                            origin=Point(x=abs_x, y=cursor_y),
+                            font_id=font_id,
+                            size_pt=float(size),
+                            color=color,
+                            align=align,  # type: ignore[arg-type]
+                        ),
+                    )
+                )
+            cursor_y -= line_height
+        previous_emitted = True
+
+    # Salutation
+    emit_block(
+        letter.salutation,
+        font_id=font_family,
+        size=body_size,
+        gap_before_lines=0.0,  # first block, no gap above
+    )
+    # Body
+    emit_block(
+        letter.body,
+        font_id=font_family,
+        size=body_size,
+        gap_before_lines=_LETTER_GAP_AFTER_SALUTATION,
+    )
+    # Signoff
+    emit_block(
+        letter.signoff,
+        font_id=font_family,
+        size=body_size,
+        gap_before_lines=_LETTER_GAP_AFTER_BODY,
+    )
+    # Signature — distinct font allowed
+    signature_font = letter.signature_font_family or font_family
+    emit_block(
+        letter.signature,
+        font_id=signature_font,
+        size=body_size,
+        gap_before_lines=_LETTER_GAP_AFTER_SIGNOFF,
+    )
+    # P.S. at 85% size
+    postscript_size = max(6, round(body_size * _POSTSCRIPT_SIZE_RATIO))
+    emit_block(
+        letter.postscript,
+        font_id=font_family,
+        size=postscript_size,
+        gap_before_lines=_LETTER_GAP_AFTER_SIGNATURE,
+    )
+
+    return commands
 
 
 # ---------------------------------------------------------------------------

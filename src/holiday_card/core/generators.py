@@ -11,6 +11,7 @@ from pathlib import Path
 
 from holiday_card.core.compiler import compile_card
 from holiday_card.core.export_targets import ExportTarget, get_target
+from holiday_card.core.letter import LetterContent
 from holiday_card.core.markdown import RichTextContent
 from holiday_card.core.models import (
     Card,
@@ -184,6 +185,47 @@ class CardGenerator:
                         font_size=24,
                     )
                 )
+                return
+
+    def apply_inside_letter(self, card: Card, letter: LetterContent) -> None:
+        """Apply a structured :class:`LetterContent` to the inside panel.
+
+        Mirrors ``apply_inside_rich_content`` but sets
+        ``letter_content`` (and clears ``content`` + ``rich_content``)
+        on the inside_left panel's "message" text element. Used by the
+        CLI's ``--salutation`` / ``--signoff`` / ``--signature`` /
+        ``--ps`` flag set.
+
+        An entirely empty ``LetterContent`` is a no-op (consistent
+        with ``is_empty()`` returning True).
+        """
+        if letter.is_empty():
+            return
+        for panel in card.panels:
+            if panel.position.value == "inside_left":
+                target: TextElement | None = None
+                for text in panel.text_elements:
+                    if text.id == "message":
+                        target = text
+                        break
+                if target is None and panel.text_elements:
+                    target = panel.text_elements[0]
+                if target is None:
+                    panel.text_elements.append(
+                        TextElement(
+                            content="",
+                            x=0.5,
+                            y=panel.height - 0.5,
+                            width=panel.width - 1.0,
+                            font_family="Lato",
+                            font_size=12,
+                            letter_content=letter,
+                        )
+                    )
+                    return
+                target.content = ""
+                target.rich_content = None
+                target.letter_content = letter
                 return
 
     def apply_inside_rich_content(self, card: Card, rich: RichTextContent) -> None:
