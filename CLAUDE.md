@@ -26,7 +26,7 @@ holiday-card create christmas-classic --inside-message-md letter.md   # Markdown
 holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," --signature "C" --ps "PS hi"   # structured letter
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-pytest                              # all 601 tests, mypy-clean, ruff-clean
+pytest                              # all 618 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -179,21 +179,24 @@ holiday-card create christmas-classic --debug-emit-ir   # print compiled IR as J
 The compiler supports backgrounds, borders, basic shapes (Rectangle,
 Circle, Triangle, Star, Line) with **solid fills only**, text with
 left/center/right alignment + Markdown rich text (paragraphs +
-**bold**), fold lines, identity or rotation-only group transforms,
+**bold**) + structured letter parts (salutation / signoff / signature
+/ P.S.), **photo images** with circle / rectangle / ellipse / star
+clip masks, fold lines, identity or rotation-only group transforms,
 and **bleed extension** on edges that touch the page trim (default
 0.125", set per Card via `card.bleed` or per Panel via `panel.bleed`).
-**8 of the 14 shipped templates currently compile cleanly:**
+**9 of the 14 shipped templates currently compile cleanly:**
 
 ```
-christmas-classic     christmas-geometric    christmas-modern
-christmas-artist      birthday-balloons      hanukkah-menorah
-generic-celebration   mothers-day
+christmas-classic         christmas-geometric    christmas-modern
+christmas-artist          christmas-photo-ornament
+birthday-balloons         hanukkah-menorah
+generic-celebration       mothers-day
 ```
 
-Templates using gradients, patterns, clip masks, decorative elements,
-SVG paths, or image elements raise `UnsupportedFeatureError`. **Fail
-loud, not silent** is the convention — silent feature drop would let
-half-rendered PDFs ship.
+Templates using gradients, patterns, decorative elements, SVG paths,
+or photo `effects` / `frame_style` raise `UnsupportedFeatureError`.
+Heart and SVG-path clip masks also raise. **Fail loud, not silent** is
+the convention — silent feature drop would let half-rendered PDFs ship.
 
 To support a new feature: extend `core/compiler.py` to lower the
 relevant `Card` field into IR commands, then make sure each backend
@@ -265,6 +268,29 @@ work already shipped.
 
 ## Recent changes
 
+- **2026-05-11 — ImageElement compiler support + photo cards**:
+  Photo cards render end-to-end through all three backends.
+  `_compile_image` in `core/compiler.py` converts an `ImageElement`
+  into an optional `BeginGroup` (for rotation, pivot-rotate around
+  image center), optional `BeginClip` (for `clip_mask`), `DrawImage`,
+  matching `EndClip` / `EndGroup`. Clip-mask types in scope:
+  Circle / Rectangle / Ellipse / Star (Star → `PolygonGeom` with the
+  same angular convention as `_compile_star`). Heart and SVGPath
+  clip masks raise `UnsupportedFeatureError`. `image.effects`,
+  `image.frame_style`, and auto-sizing (width/height = None) are
+  also deferred. Backends: SVG backend gained a real `_draw_image`
+  that base64-embeds the source image as a `data:image/*` URI; PNG
+  backend gained `_draw_image` + clip masking via `PIL.ImageChops`
+  multiplication; PDF backend already had drawImage. `templates.py`
+  now parses `image_elements` from YAML (was silently dropping
+  them — a latent bug that hid the photo-ornament template).
+  17 new tests covering compiler IR shape, all three backend renderers,
+  and pixel-correctness inside/outside the clip on PNG output.
+  `christmas-photo-ornament` left out of `SUPPORTED_SNAPSHOT_TEMPLATES`
+  because the snapshot would carry a machine-absolute resolved source
+  path; pixel-correctness integration test covers it instead.
+  Clears one of the L3 (AI imagery) prerequisites — the AI workflow's
+  baked PNGs now have a working IR pipeline to render through.
 - **2026-05-11 — Structured inside letter: salutation / signoff / signature / P.S. (Leapfrog 2, slice 4)**:
   Four new CLI flags (`--salutation`, `--signoff`, `--signature`, `--ps`)
   plus `--signature-font` for the handwritten-feel override. New

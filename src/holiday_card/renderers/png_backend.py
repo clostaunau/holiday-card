@@ -129,6 +129,11 @@ class PNGRenderer:
         self._group_stack: list[
             tuple[Image.Image, ImageDraw.ImageDraw, Transform] | None
         ] = []
+        # Active clip stack — geometries (in IR coords) for any open
+        # BeginClip / EndClip pairs. Today only ``_draw_image`` reads
+        # this; shapes and text inside a clip are not exercised by the
+        # compiler. Push on BeginClip, pop on EndClip.
+        self._clip_stack: list[object] = []
 
         for cmd in commands:
             self._dispatch(cmd)
@@ -189,23 +194,17 @@ class PNGRenderer:
         elif isinstance(cmd, EndGroup):
             self._end_group()
         elif isinstance(cmd, BeginClip):
-            raise NotImplementedError(
-                "PNGRenderer does not yet handle BeginClip "
-                "(compiler does not emit it; would require Pillow image masking)"
-            )
+            self._clip_stack.append(cmd.geometry)
         elif isinstance(cmd, EndClip):
-            raise NotImplementedError(
-                "PNGRenderer does not yet handle EndClip"
-            )
+            if not self._clip_stack:
+                raise RuntimeError("PNGRenderer: EndClip without matching BeginClip")
+            self._clip_stack.pop()
         elif isinstance(cmd, DrawShape):
             self._draw_shape(cmd)
         elif isinstance(cmd, DrawText):
             self._draw_text(cmd)
         elif isinstance(cmd, DrawImage):
-            raise NotImplementedError(
-                "PNGRenderer does not yet handle DrawImage "
-                "(compiler does not emit it)"
-            )
+            self._draw_image(cmd)
         elif isinstance(cmd, DrawFoldLine):
             self._draw_fold_line(cmd)
         else:
@@ -481,6 +480,136 @@ class PNGRenderer:
         fallback = ImageFont.load_default()
         self._font_cache[key] = fallback
         return fallback
+
+    # ------------------------------------------------------------------
+    # Images (with optional clip masking)
+    # ------------------------------------------------------------------
+
+    def _draw_image(self, cmd: DrawImage) -> None:
+        """Paste an image onto the canvas, optionally through a clip mask.
+
+        Steps:
+
+        1. Open source via Pillow; convert to RGBA so alpha compositing
+           works regardless of the source format.
+        2. Resize to the target rect's pixel dimensions. ``preserve_aspect``
+           uses :meth:`PIL.Image.Image.thumbnail` (fits inside the box);
+           otherwise stretches to fill.
+        3. Compute pixel position from the IR rect (bottom-left origin
+           → top-left origin; height inversion via ``_y``).
+        4. If a clip is active, build a mask matching the clip geometry
+           in pixel space and paste through it. Otherwise paste directly.
+        5. Honor ``cmd.opacity`` by pre-multiplying the source's alpha
+           channel.
+        """
+        assert self._image is not None
+        rect = cmd.image.rect
+        source_path = Path(cmd.image.source)
+        if not source_path.is_file():
+            raise FileNotFoundError(
+                f"PNGRenderer: image source not found: {source_path}"
+            )
+
+        # Open + convert to RGBA (gives us a uniform alpha channel for
+        # transparency-aware paste). Pillow auto-detects format.
+        src = Image.open(source_path).convert("RGBA")
+
+        target_w_px = max(1, int(round(self._len(rect.width))))
+        target_h_px = max(1, int(round(self._len(rect.height))))
+        if cmd.image.preserve_aspect:
+            # ``thumbnail`` resizes in place to fit *within* the target,
+            # preserving aspect ratio. The result's actual dimensions
+            # may be smaller than (target_w_px, target_h_px) on the
+            # off-axis; the centering below compensates so the image
+            # sits in the middle of the intended rect.
+            src.thumbnail((target_w_px, target_h_px), Image.Resampling.LANCZOS)
+        else:
+            src = src.resize((target_w_px, target_h_px), Image.Resampling.LANCZOS)
+
+        # Pre-multiply opacity into the alpha channel.
+        if cmd.opacity != 1.0:
+            alpha = src.split()[3]
+            alpha = alpha.point(lambda a: int(a * cmd.opacity))
+            src.putalpha(alpha)
+
+        # IR rect (x, y) is bottom-left; compute Pillow top-left.
+        # Center the (possibly aspect-preserved) image within the
+        # original target rect so off-axis letterboxing reads as
+        # margin rather than a corner-stuck image.
+        rect_left_px = int(round(self._x(rect.x)))
+        rect_top_px = int(round(self._y(rect.y + rect.height)))
+        offset_x = (target_w_px - src.width) // 2
+        offset_y = (target_h_px - src.height) // 2
+        paste_x = rect_left_px + offset_x
+        paste_y = rect_top_px + offset_y
+
+        if not self._clip_stack:
+            self._image.paste(src, (paste_x, paste_y), src)
+            return
+
+        # Active clip: build a mask matching the clip geometry in the
+        # main canvas's pixel space, then composite the image through it.
+        canvas_w, canvas_h = self._image.size
+        mask = Image.new("L", (canvas_w, canvas_h), 0)
+        mask_draw = ImageDraw.Draw(mask)
+        for geom in self._clip_stack:
+            self._stamp_clip_geom(mask_draw, geom)
+        # Build a composite image of the source positioned on a
+        # transparent layer at canvas size, then apply the mask as
+        # alpha. paste with mask=mask uses the mask's grayscale as the
+        # alpha of the source pixels.
+        positioned = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+        positioned.paste(src, (paste_x, paste_y), src)
+        # AND-combine the positioned image's alpha with the clip mask
+        # so pixels outside the clip become transparent. Pillow's
+        # ImageChops.multiply does per-pixel multiplication on
+        # grayscale channels — exactly what mask intersection wants.
+        from PIL import ImageChops
+        src_alpha = positioned.split()[3]
+        combined_alpha = ImageChops.multiply(src_alpha, mask)
+        positioned.putalpha(combined_alpha)
+        self._image.paste(positioned, (0, 0), positioned)
+
+    def _stamp_clip_geom(
+        self,
+        mask_draw: ImageDraw.ImageDraw,
+        geom: object,
+    ) -> None:
+        """Stamp ``geom`` (in IR coords) onto the mask at full white."""
+        if isinstance(geom, CircleGeom):
+            cx_px = self._x(geom.center.x)
+            cy_px = self._y(geom.center.y)
+            r_px = self._len(geom.radius)
+            mask_draw.ellipse(
+                (cx_px - r_px, cy_px - r_px, cx_px + r_px, cy_px + r_px),
+                fill=255,
+            )
+        elif isinstance(geom, RectGeom):
+            # IR rect: bottom-left origin. Pillow expects (left, top, right, bottom).
+            left = self._x(geom.x)
+            top = self._y(geom.y + geom.height)
+            right = self._x(geom.x + geom.width)
+            bottom = self._y(geom.y)
+            mask_draw.rectangle((left, top, right, bottom), fill=255)
+        elif isinstance(geom, EllipseGeom):
+            cx_px = self._x(geom.center.x)
+            cy_px = self._y(geom.center.y)
+            rx_px = self._len(geom.rx)
+            ry_px = self._len(geom.ry)
+            mask_draw.ellipse(
+                (cx_px - rx_px, cy_px - ry_px, cx_px + rx_px, cy_px + ry_px),
+                fill=255,
+            )
+        elif isinstance(geom, PolygonGeom):
+            mask_draw.polygon(
+                [(self._x(p.x), self._y(p.y)) for p in geom.points],
+                fill=255,
+            )
+        else:
+            raise NotImplementedError(
+                f"PNGRenderer: clip geometry {type(geom).__name__} not yet "
+                "supported for image masking."
+            )
 
     # ------------------------------------------------------------------
     # Fold lines
