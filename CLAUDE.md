@@ -23,9 +23,10 @@ holiday-card create christmas-classic -m "Merry Christmas!"     # writes a PDF
 holiday-card create christmas-classic --format svg              # writes an SVG
 holiday-card create christmas-classic --voice warm --seed 42    # picked-sentiment cover + inside
 holiday-card create christmas-classic --inside-message-md letter.md   # Markdown letter mode
+holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," --signature "C" --ps "PS hi"   # structured letter
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-pytest                              # all 568 tests, mypy-clean, ruff-clean
+pytest                              # all 601 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -79,6 +80,7 @@ src/holiday_card/
     per_panel.py        # Per-panel rendering helpers (POD layouts)
     sentiments.py       # Sentiment library loader for --voice
     markdown.py         # Tiny Markdown subset for --inside-message-md
+    letter.py           # LetterContent model for --salutation/--signoff/--signature/--ps
     color_management.py # sRGB→CMYK conversion + ICC profile path resolution
     validators.py       # Domain validation helpers
   renderers/
@@ -263,6 +265,24 @@ work already shipped.
 
 ## Recent changes
 
+- **2026-05-11 — Structured inside letter: salutation / signoff / signature / P.S. (Leapfrog 2, slice 4)**:
+  Four new CLI flags (`--salutation`, `--signoff`, `--signature`, `--ps`)
+  plus `--signature-font` for the handwritten-feel override. New
+  `LetterContent` Pydantic model (`core/letter.py`, frozen) carries
+  the five structured parts (salutation, body, signoff, signature,
+  postscript). `TextElement.letter_content` is the new authoring
+  surface; a model-level validator forbids it co-existing with
+  `rich_content` (Markdown) since they're two different layout passes.
+  Compiler emits per-part `DrawText` commands with conventional
+  vertical gaps (`_LETTER_GAP_*` constants in `compiler.py`); P.S.
+  renders at 85% of body size, signature accepts a font override.
+  Letter parts compose freely with `--voice` / `--inside-message` /
+  `--blank-inside` (those just supply the body); refuse the combo
+  with `--inside-message-md` since Markdown has its own structure.
+  Generator helper: `apply_inside_letter`. 33 new tests. Closes the
+  engineering side of the panel's "first-class fields" item in
+  `consensus-general.md:156`. Illustrator commission remains the
+  outstanding piece of Leapfrog 2.
 - **2026-05-10 — CMYK + ICC + PDF/X-1a:2003 (Leapfrog 1 complete)**:
   `--export-for moo-a6` now emits DeviceCMYK PDFs (k/K operators,
   no RGB), with the GRACoL2013_CRPC6 ICC profile embedded as the

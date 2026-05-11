@@ -139,7 +139,8 @@ critic breakdowns. Recent work targets the panel's "1-month" and
 * ✅ Markdown mode for inside panel (`--inside-message-md`) (Leapfrog 4, slice 1)
 * ✅ GitHub Action: render-on-PR with sticky comment (Leapfrog 4, slice 2)
 * ✅ CMYK + GRACoL2013 ICC + PDF/X-1a:2003 for `--export-for moo-a6` (Leapfrog 1 complete)
-* ⏳ Salutation / signoff / signature / P.S. as first-class fields (Leapfrog 2, slice 4)
+* ✅ Structured inside letter: `--salutation` / `--signoff` / `--signature` / `--ps` (Leapfrog 2, slice 4)
+* ⏳ Illustrator commission: ~30 hand-drawn SVG path assets (Leapfrog 2 final slice — needs a human)
 * ⏳ Italic font variants (extends Markdown mode beyond bold)
 * ⏳ Multi-panel spill for long Markdown letters
 * ⏳ Father's Day + sympathy templates (calendar-driven SKU expansion)

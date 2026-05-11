@@ -267,6 +267,47 @@ def create(
             "+ same voice → same picked line. Default is random."
         ),
     ),
+    salutation: str | None = typer.Option(
+        None,
+        "--salutation",
+        help=(
+            "Inside-letter salutation, e.g. 'Dear Aunt Margaret,'. "
+            "Renders as the top line of the inside panel."
+        ),
+    ),
+    signoff: str | None = typer.Option(
+        None,
+        "--signoff",
+        help=(
+            "Inside-letter signoff line, e.g. 'Love,' or 'Always,'. "
+            "Renders below the body with extra vertical breathing room."
+        ),
+    ),
+    signature: str | None = typer.Option(
+        None,
+        "--signature",
+        help=(
+            "Inside-letter signature (the writer's name). Pair with "
+            "--signature-font for the handwritten-feel convention."
+        ),
+    ),
+    ps: str | None = typer.Option(
+        None,
+        "--ps",
+        help=(
+            "Inside-letter P.S. line — renders at 85% of body size, "
+            "below the signature. Conventionally the most-read line."
+        ),
+    ),
+    signature_font: str | None = typer.Option(
+        None,
+        "--signature-font",
+        help=(
+            "Font family for the signature line. Defaults to the "
+            "template's inside font; 'Caveat' (curated handwritten) "
+            "is the conventional pick."
+        ),
+    ),
     with_fold_marks: bool | None = typer.Option(
         None,
         "--with-fold-marks/--no-fold-marks",
@@ -325,6 +366,27 @@ def create(
             typer.secho(
                 "Error: --inside-message and --inside-message-md are "
                 "mutually exclusive (pick one).",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(2)
+        # Letter-part flags (--salutation / --signoff / --signature /
+        # --ps) and --inside-message-md represent two different
+        # authoring surfaces for the inside panel and have separate
+        # compiler passes. Allowing both at once would force an
+        # ad-hoc precedence rule; refuse the combination so the user
+        # can pick the right tool. Letter parts compose freely with
+        # --inside-message and --voice (those just supply the body).
+        letter_flags_set = any(
+            v is not None for v in (salutation, signoff, signature, ps)
+        )
+        if letter_flags_set and inside_message_md is not None:
+            typer.secho(
+                "Error: --inside-message-md cannot be combined with "
+                "--salutation / --signoff / --signature / --ps "
+                "(letter parts use a separate authoring surface). "
+                "Either drop the Markdown file or move the letter "
+                "structure into the body of the Markdown.",
                 fg=typer.colors.RED,
                 err=True,
             )
@@ -461,8 +523,26 @@ def create(
         if blank_inside:
             effective_inside = ""
 
+        # Letter mode wins over both rich_content and plain inside_message
+        # when any letter-part flag is set. The body of the letter is the
+        # effective_inside string (so --inside-message / --voice / --blank-inside
+        # still flow through normally; they just become the body).
+        letter_content = None
+        if letter_flags_set:
+            from holiday_card.core.letter import LetterContent
+            letter_content = LetterContent(
+                salutation=salutation or "",
+                body=effective_inside or "",
+                signoff=signoff or "",
+                signature=signature or "",
+                postscript=ps or "",
+                signature_font_family=signature_font,
+            )
+
         # Generate the card. If --inside-message-md was used, skip the
         # plain inside_message path; the rich content is applied below.
+        # Letter mode also bypasses the plain inside_message path — the
+        # body is part of the letter_content payload.
         card = generator.create_card(
             template_id=template,
             message=effective_message,
@@ -470,10 +550,16 @@ def create(
             theme_id=theme,
             fold_type=fold_type_enum,
             images=image_elements if image_elements else None,
-            inside_message=None if rich_inside is not None else effective_inside,
+            inside_message=(
+                None
+                if (rich_inside is not None or letter_content is not None)
+                else effective_inside
+            ),
         )
         if rich_inside is not None:
             generator.apply_inside_rich_content(card, rich_inside)
+        if letter_content is not None:
+            generator.apply_inside_letter(card, letter_content)
         written = generator.generate(
             card, output, target, emit_fold_lines=with_fold_marks,
         )
@@ -499,6 +585,17 @@ def create(
         if rich_inside is not None:
             n_paragraphs = len(rich_inside.paragraphs)
             typer.echo(f"  Inside: Markdown ({n_paragraphs} paragraph{'s' if n_paragraphs != 1 else ''})")
+        if letter_content is not None:
+            parts = [
+                name for name, val in (
+                    ("salutation", letter_content.salutation),
+                    ("body", letter_content.body),
+                    ("signoff", letter_content.signoff),
+                    ("signature", letter_content.signature),
+                    ("P.S.", letter_content.postscript),
+                ) if val
+            ]
+            typer.echo(f"  Inside: letter ({', '.join(parts)})")
         if effective_message and not voice:
             typer.echo(f"  Message: {_truncate(effective_message, 50)}")
 

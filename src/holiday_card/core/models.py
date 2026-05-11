@@ -73,8 +73,9 @@ from pathlib import Path
 from typing import Annotated, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, PrivateAttr, ValidationInfo, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, ValidationInfo, field_validator, model_validator
 
+from holiday_card.core.letter import LetterContent
 from holiday_card.core.markdown import RichTextContent
 
 
@@ -548,12 +549,21 @@ class TextElement(BaseModel):
 
     Positions are relative to the panel, in inches.
 
-    For multi-paragraph rich text (the ``--inside-message-md`` /
-    "Christmas letter" use case), set ``rich_content`` instead of
-    ``content``. When both are present, ``rich_content`` wins and
-    ``content`` is ignored. The compiler routes rich content through
-    a dedicated paragraph-and-style-aware layout pass that respects
-    bold runs, hard line breaks, and paragraph spacing.
+    The element supports three authoring surfaces, picked in this
+    priority order at compile time:
+
+    1. **letter_content** — structured five-part inside letter
+       (salutation / body / signoff / signature / P.S.). The
+       ``--salutation`` / ``--signoff`` / ``--signature`` / ``--ps``
+       CLI flags route through here.
+    2. **rich_content** — paragraphs of styled runs from the
+       ``--inside-message-md`` / Christmas-letter Markdown mode.
+    3. **content** — plain text with ``\\n`` for hard line breaks.
+
+    ``letter_content`` and ``rich_content`` are mutually exclusive
+    (the two represent different authoring surfaces and have
+    different compiler layout passes). A model-level validator
+    enforces this.
     """
 
     id: str = Field(default_factory=lambda: str(uuid4()))
@@ -567,6 +577,15 @@ class TextElement(BaseModel):
         description=(
             "Optional rich-text override. When set, takes priority over `content`. "
             "Used by the Markdown / 'Christmas letter' inside-panel mode."
+        ),
+    )
+    letter_content: LetterContent | None = Field(
+        default=None,
+        description=(
+            "Optional structured letter content (salutation / body / "
+            "signoff / signature / P.S.). When set, takes priority over "
+            "`rich_content` and `content`. Mutually exclusive with "
+            "`rich_content`."
         ),
     )
     paragraph_spacing: float = Field(
@@ -612,6 +631,19 @@ class TextElement(BaseModel):
 
     # Private field for adjustment tracking (not serialized to YAML)
     _adjustment_applied: AdjustmentResult | None = PrivateAttr(default=None)
+
+    @model_validator(mode="after")
+    def _no_letter_plus_rich(self) -> "TextElement":
+        # ``letter_content`` and ``rich_content`` represent two
+        # different authoring surfaces with two different compiler
+        # passes. Allowing both would force a non-obvious precedence
+        # rule on every reader. Fail loud at construction.
+        if self.letter_content is not None and self.rich_content is not None:
+            raise ValueError(
+                "TextElement.letter_content and rich_content are mutually exclusive; "
+                "pick one authoring surface."
+            )
+        return self
 
     def get_adjustment_result(self) -> AdjustmentResult | None:
         """Get the overflow adjustment that was applied during rendering.
