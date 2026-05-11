@@ -569,11 +569,19 @@ def _compile_text(
     constraint. Empty content emits no commands (supports blank-inside
     cards).
 
+    When ``text.rich_content`` is set, dispatch to the dedicated rich-
+    text layout pass (``--inside-message-md`` / Christmas-letter mode).
+    Rich content takes priority over ``text.content`` per the model's
+    docstring contract.
+
     Uses ``Helvetica`` as the font_id when no custom font is registered,
     matching the legacy renderer's default. Backends are responsible for
     resolving the font_id to a real font.
     """
     from holiday_card.core.text_utils import calculate_line_height  # local: small module
+
+    if text.rich_content is not None:
+        return _compile_rich_text(text, panel, measurer)
 
     if not text.content:
         return []  # blank-inside
@@ -628,6 +636,149 @@ def _compile_text(
             )
         )
     return commands
+
+
+# ---------------------------------------------------------------------------
+# Rich-text compilation (Markdown / Christmas-letter mode)
+# ---------------------------------------------------------------------------
+
+
+def _compile_rich_text(
+    text: TextElement,
+    panel: Panel,
+    measurer: _reportlab_canvas.Canvas,
+) -> list[RenderCommand]:
+    """Lay out a ``RichTextContent`` block into ``DrawText`` commands.
+
+    Walks paragraphs → hard lines → wrapped lines → styled segments,
+    emitting one ``DrawText`` per styled segment with an x-offset
+    that places it after the previous segment on the same wrapped
+    line. Bold runs use the bold font_id (``font_id_for_run``).
+
+    Wrapping is greedy by word against ``text.width``. Hard line
+    breaks (single newlines in the source) split inside paragraphs;
+    blank lines in the source separate paragraphs and add
+    ``text.paragraph_spacing * line_height`` of vertical space.
+    """
+    from holiday_card.core.markdown import font_id_for_run
+    from holiday_card.core.text_utils import calculate_line_height
+
+    assert text.rich_content is not None
+    color = _color_to_rgba(text.color) if text.color else RGBA(r=0, g=0, b=0)
+    align = text.alignment.value
+    font_family = text.font_family or "Helvetica"
+    font_size = text.font_size
+    line_height = calculate_line_height(font_size)
+    paragraph_gap = line_height * text.paragraph_spacing
+
+    abs_x = inches_to_points(panel.x + text.x)
+    abs_y = inches_to_points(panel.y + text.y)
+    max_width_pt = (
+        inches_to_points(text.width) if text.width else float("inf")
+    )
+
+    commands: list[RenderCommand] = []
+    cursor_y = abs_y
+    for p_index, paragraph in enumerate(text.rich_content.paragraphs):
+        if p_index > 0:
+            cursor_y -= paragraph_gap
+        for hard_line in paragraph.hard_lines:
+            wrapped_lines = _wrap_styled_runs(
+                hard_line, max_width_pt, font_family, font_size, measurer,
+            )
+            for wrapped in wrapped_lines:
+                # Emit one DrawText per styled segment on this line,
+                # x-offset by the cumulative width of preceding segments.
+                offset = 0.0
+                for run in wrapped:
+                    font_id = font_id_for_run(font_family, bold=run.bold)
+                    seg_width = measurer.stringWidth(
+                        run.text, font_id, font_size,
+                    )
+                    commands.append(
+                        DrawText(
+                            run=TextRun(
+                                text=run.text,
+                                origin=Point(x=abs_x + offset, y=cursor_y),
+                                font_id=font_id,
+                                size_pt=float(font_size),
+                                color=color,
+                                align=align,  # type: ignore[arg-type]
+                            ),
+                        )
+                    )
+                    offset += seg_width
+                cursor_y -= line_height
+    return commands
+
+
+def _wrap_styled_runs(
+    runs: list,
+    max_width_pt: float,
+    font_family: str,
+    font_size: int,
+    measurer: _reportlab_canvas.Canvas,
+) -> list[list]:
+    """Greedy word-wrap a sequence of styled runs into lines.
+
+    Each input run carries its own ``bold`` flag; the wrapping
+    measures each word in its own font (regular vs bold) so the
+    wrap point is correct even when a long bold span shoves text
+    onto the next line.
+
+    Output is a list of lines; each line is a list of styled runs
+    (the input runs may be split further if a single word starts a
+    new line). Empty lines are filtered.
+    """
+    from holiday_card.core.markdown import StyledRun, font_id_for_run
+
+    if max_width_pt == float("inf"):
+        return [runs]  # unconstrained — emit as one line
+
+    lines: list[list] = []
+    current_line: list = []
+    current_width = 0.0
+
+    for run in runs:
+        font_id = font_id_for_run(font_family, bold=run.bold)
+        # Split on whitespace but keep visible spacing — reassemble
+        # with a space between words.
+        words = run.text.split(" ")
+        # Track whether we're at a "word boundary" inside the run
+        # (the first word doesn't need a leading space; subsequent
+        # words do, IF there's already content on the current line).
+        for i, word in enumerate(words):
+            if word == "":
+                continue  # collapsed multi-space; skip
+            # Build the candidate text including the inter-word space
+            # if this isn't the very first thing on the line.
+            needs_leading_space = bool(current_line) or i > 0
+            candidate = (" " + word) if needs_leading_space else word
+            candidate_width = measurer.stringWidth(candidate, font_id, font_size)
+
+            if current_width + candidate_width > max_width_pt and current_line:
+                # Wrap: flush the current line and start a new one
+                # with this word at column 0.
+                lines.append(current_line)
+                current_line = []
+                current_width = 0.0
+                candidate = word
+                candidate_width = measurer.stringWidth(candidate, font_id, font_size)
+
+            # Append: merge with the previous run if same style, else
+            # start a new styled segment on this line.
+            if current_line and current_line[-1].bold == run.bold:
+                merged = StyledRun(
+                    text=current_line[-1].text + candidate, bold=run.bold,
+                )
+                current_line[-1] = merged
+            else:
+                current_line.append(StyledRun(text=candidate, bold=run.bold))
+            current_width += candidate_width
+
+    if current_line:
+        lines.append(current_line)
+    return lines
 
 
 # ---------------------------------------------------------------------------

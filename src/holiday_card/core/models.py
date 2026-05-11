@@ -75,6 +75,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field, PrivateAttr, ValidationInfo, field_validator
 
+from holiday_card.core.markdown import RichTextContent
+
 
 class Color(BaseModel):
     """RGB color value object with validation.
@@ -545,6 +547,13 @@ class TextElement(BaseModel):
     """Text content with positioning and styling.
 
     Positions are relative to the panel, in inches.
+
+    For multi-paragraph rich text (the ``--inside-message-md`` /
+    "Christmas letter" use case), set ``rich_content`` instead of
+    ``content``. When both are present, ``rich_content`` wins and
+    ``content`` is ignored. The compiler routes rich content through
+    a dedicated paragraph-and-style-aware layout pass that respects
+    bold runs, hard line breaks, and paragraph spacing.
     """
 
     id: str = Field(default_factory=lambda: str(uuid4()))
@@ -552,6 +561,22 @@ class TextElement(BaseModel):
         max_length=1000,
         description="Text content. Use '\\n' for hard line breaks (poems, addresses, stanzas). "
         "Empty string is allowed (for blank-inside cards).",
+    )
+    rich_content: RichTextContent | None = Field(
+        default=None,
+        description=(
+            "Optional rich-text override. When set, takes priority over `content`. "
+            "Used by the Markdown / 'Christmas letter' inside-panel mode."
+        ),
+    )
+    paragraph_spacing: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=3.0,
+        description=(
+            "Vertical space between paragraphs as a multiple of the line "
+            "height. Only meaningful when rich_content is set."
+        ),
     )
     x: float = Field(ge=0.0, description="X position in inches from panel left")
     y: float = Field(ge=0.0, description="Y position in inches from panel bottom")

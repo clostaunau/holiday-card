@@ -21,7 +21,7 @@ pip install -e ".[dev]"            # one source of truth: pyproject.toml
 holiday-card create christmas-classic -m "Merry Christmas!"     # writes a PDF
 holiday-card create christmas-classic --format svg              # writes an SVG
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-pytest                              # all 506 tests, mypy-clean, ruff-clean
+pytest                              # all 539 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -73,6 +73,7 @@ src/holiday_card/
     export_targets.py   # Named print targets for --export-for
     per_panel.py        # Per-panel rendering helpers (POD layouts)
     sentiments.py       # Sentiment library loader for --voice
+    markdown.py         # Tiny Markdown subset for --inside-message-md
     validators.py       # Domain validation helpers
   renderers/
     reportlab_backend.py  # IR → PDF (default)
@@ -230,6 +231,16 @@ template editing; a CMYK PDF wrapper for pro-press output; a JSON
 
 ## Recent changes
 
+- **2026-05-10 — Markdown mode for inside panel (Leapfrog 4, slice 1)**:
+  New `--inside-message-md path/to/letter.md` flag turns the inside
+  panel into a "Christmas letter" surface — paragraphs, **bold** spans,
+  and hard line breaks render with proper paragraph spacing and
+  bold-aware font fallback. Adds `core/markdown.py` (tiny parser, no
+  new deps), `RichTextContent` field on `TextElement`, `_compile_rich_text`
+  pass in the compiler, and `apply_inside_rich_content` on
+  `CardGenerator`. Bold spans use the registered Bold variant (Lato-Bold
+  today; other curated families are variable fonts and fall back to
+  regular until additional weights are registered).
 - **2026-05-10 — Panel-review cleanups bundle**: Four small items that
   had been on the list since the panel review (PR #19). (1) Gated
   `DrawFoldLine` behind `--with-fold-marks` / `--no-fold-marks` with

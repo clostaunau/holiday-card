@@ -64,6 +64,12 @@ holiday-card preview christmas-classic --voice spare
 
 # 5. Render a card from a template you wrote yourself
 holiday-card create ./my-template.yaml -o my-card.pdf
+
+# 6. Christmas-letter mode: write the inside as Markdown
+holiday-card create birthday-balloons --inside-message-md letter.md
+# Where letter.md contains paragraphs with **bold** spans and hard
+# line breaks. Renders into the inside panel with proper paragraph
+# spacing.
 ```
 
 ## What ships in the box
