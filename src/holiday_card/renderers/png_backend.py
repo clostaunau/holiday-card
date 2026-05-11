@@ -426,6 +426,13 @@ class PNGRenderer:
             # to lines via the points and draw best-effort.
             self._draw_path(geom, fill_rgba, stroke_rgba, stroke_width)
 
+    # Number of polyline samples per Bezier curve segment. 16 is a
+    # sweet spot for the holly-wreath style organic curves we see in
+    # shipped templates — visually smooth at 144 DPI and cheap to
+    # generate. Bumping to 32 produces no perceptual difference at
+    # preview resolution; dropping to 8 starts to show faceting.
+    _BEZIER_SAMPLES: int = 16
+
     def _draw_path(
         self,
         geom: PathGeom,
@@ -433,46 +440,101 @@ class PNGRenderer:
         stroke_rgba: tuple[int, int, int, int] | None,
         stroke_width: int,
     ) -> None:
-        """Best-effort path rendering: flatten cubic/quadratic curves into
-        polylines for Pillow, which has no native bezier API. Currently
-        the compiler emits no PathGeom commands, so this is defensive
-        only.
+        """Flatten a PathGeom into one-or-more filled polygons + outlines.
+
+        Cubic and quadratic Bezier curves are sampled into polyline
+        segments (Pillow has no native bezier API). The sample count
+        is fixed at :attr:`_BEZIER_SAMPLES` per segment; for the curves
+        used in shipped templates (holly-wreath leaves, ornament
+        outlines) this produces visually smooth output at preview DPI.
         """
         assert self._draw is not None
         # Walk ops, collect subpaths
-        current = (0.0, 0.0)
+        current_path = (0.0, 0.0)  # in IR coordinates
         subpath: list[tuple[float, float]] = []
         subpaths: list[list[tuple[float, float]]] = []
+
+        def emit_px(x: float, y: float) -> None:
+            subpath.append((self._x(x), self._y(y)))
+
         for op in geom.ops:
             if op.op == "move":
                 if subpath:
                     subpaths.append(subpath)
+                    subpath = []
                 p = op.points[0]
-                current = (self._x(p.x), self._y(p.y))
-                subpath = [current]
+                current_path = (p.x, p.y)
+                emit_px(p.x, p.y)
             elif op.op == "line":
                 p = op.points[0]
-                current = (self._x(p.x), self._y(p.y))
-                subpath.append(current)
-            elif op.op in ("cubic", "quadratic"):
-                # Sample 8 points along the curve. Pillow has no native
-                # bezier, so this is best-effort. Real bezier sampling
-                # is left for a follow-up if/when needed.
-                target = op.points[-1]
-                current = (self._x(target.x), self._y(target.y))
-                subpath.append(current)
+                emit_px(p.x, p.y)
+                current_path = (p.x, p.y)
+            elif op.op == "cubic":
+                cp1, cp2, end = op.points
+                self._sample_cubic_into(
+                    subpath, current_path, (cp1.x, cp1.y),
+                    (cp2.x, cp2.y), (end.x, end.y),
+                )
+                current_path = (end.x, end.y)
+            elif op.op == "quadratic":
+                cp, end = op.points
+                self._sample_quadratic_into(
+                    subpath, current_path, (cp.x, cp.y), (end.x, end.y),
+                )
+                current_path = (end.x, end.y)
             elif op.op == "close":
                 if subpath:
                     subpath.append(subpath[0])
+
         if subpath:
             subpaths.append(subpath)
         for sp in subpaths:
             if len(sp) >= 2:
-                if fill_rgba is not None and sp[0] == sp[-1]:
-                    self._draw.polygon(sp, fill=fill_rgba, outline=stroke_rgba, width=stroke_width)
-                else:
-                    self._draw.line(sp, fill=stroke_rgba or (0, 0, 0, 255),
-                                     width=max(1, stroke_width))
+                # Closed subpath with fill → polygon; else stroke only.
+                is_closed = sp[0] == sp[-1]
+                if fill_rgba is not None and is_closed:
+                    self._draw.polygon(
+                        sp, fill=fill_rgba,
+                        outline=stroke_rgba, width=stroke_width,
+                    )
+                elif stroke_rgba is not None:
+                    self._draw.line(
+                        sp, fill=stroke_rgba,
+                        width=max(1, stroke_width), joint="curve",
+                    )
+
+    def _sample_cubic_into(
+        self,
+        subpath: list[tuple[float, float]],
+        p0: tuple[float, float],
+        p1: tuple[float, float],
+        p2: tuple[float, float],
+        p3: tuple[float, float],
+    ) -> None:
+        """Append ``_BEZIER_SAMPLES`` sampled pixels of a cubic Bezier."""
+        for k in range(1, self._BEZIER_SAMPLES + 1):
+            t = k / self._BEZIER_SAMPLES
+            u = 1.0 - t
+            x = (u * u * u * p0[0] + 3 * u * u * t * p1[0]
+                 + 3 * u * t * t * p2[0] + t * t * t * p3[0])
+            y = (u * u * u * p0[1] + 3 * u * u * t * p1[1]
+                 + 3 * u * t * t * p2[1] + t * t * t * p3[1])
+            subpath.append((self._x(x), self._y(y)))
+
+    def _sample_quadratic_into(
+        self,
+        subpath: list[tuple[float, float]],
+        p0: tuple[float, float],
+        p1: tuple[float, float],
+        p2: tuple[float, float],
+    ) -> None:
+        """Append ``_BEZIER_SAMPLES`` sampled pixels of a quadratic Bezier."""
+        for k in range(1, self._BEZIER_SAMPLES + 1):
+            t = k / self._BEZIER_SAMPLES
+            u = 1.0 - t
+            x = u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0]
+            y = u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1]
+            subpath.append((self._x(x), self._y(y)))
 
     # ------------------------------------------------------------------
     # Text

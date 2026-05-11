@@ -26,7 +26,7 @@ holiday-card create christmas-classic --inside-message-md letter.md   # Markdown
 holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," --signature "C" --ps "PS hi"   # structured letter
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-pytest                              # all 630 tests, mypy-clean, ruff-clean
+pytest                              # all 643 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -177,31 +177,31 @@ holiday-card create christmas-classic --debug-emit-ir   # print compiled IR as J
 ## Currently supported template subset
 
 The compiler supports backgrounds, borders, basic shapes (Rectangle,
-Circle, Triangle, Star, Line) with **solid fills, linear gradients,
-radial gradients, and patterns (stripes / dots / grid / checkerboard)**,
-text with left/center/right alignment + Markdown rich text (paragraphs +
-**bold**) + structured letter parts (salutation / signoff / signature
-/ P.S.), **photo images** with circle / rectangle / ellipse / star
-clip masks, fold lines, identity or rotation-only group transforms,
-and **bleed extension** on edges that touch the page trim (default
-0.125", set per Card via `card.bleed` or per Panel via `panel.bleed`).
-**12 of the 14 shipped templates currently compile cleanly:**
+Circle, Triangle, Star, Line, **SVGPath**) with **solid fills, linear
+gradients, radial gradients, and patterns (stripes / dots / grid /
+checkerboard)**, text with left/center/right alignment + Markdown
+rich text (paragraphs + **bold**) + structured letter parts
+(salutation / signoff / signature / P.S.), **photo images** with
+circle / rectangle / ellipse / star clip masks, fold lines, identity
+or rotation-only group transforms, and **bleed extension** on edges
+that touch the page trim (default 0.125", set per Card via
+`card.bleed` or per Panel via `panel.bleed`). **All 14 shipped
+templates currently compile cleanly:**
 
 ```
-christmas-classic         christmas-geometric    christmas-modern
-christmas-artist          christmas-photo-ornament
+christmas-classic         christmas-geometric        christmas-modern
+christmas-artist          christmas-photo-ornament   christmas-holly-wreath
 christmas-winter-sky      christmas-metallic-ornaments
-christmas-festive-stripes
+christmas-festive-stripes christmas-holiday-masterpiece
 birthday-balloons         hanukkah-menorah
 generic-celebration       mothers-day
 ```
 
-Remaining gaps: `christmas-holly-wreath` and
-`christmas-holiday-masterpiece` use SVG paths (need the parser wired
-to `PathGeom`). Templates using decorative elements or photo
-`effects` / `frame_style` still raise `UnsupportedFeatureError`.
-Heart and SVG-path clip masks also raise. **Fail loud, not silent**
-is the convention — silent feature drop would let half-rendered PDFs ship.
+Remaining gaps (out-of-scope features, each raises
+`UnsupportedFeatureError` rather than silently dropping content):
+SVG path **arc** commands (`A`/`a` — no shipped template uses arcs),
+decorative-element expansion, photo `effects` / `frame_style`, Heart
+and SVG-path clip masks. **Fail loud, not silent** is the convention.
 
 To support a new feature: extend `core/compiler.py` to lower the
 relevant `Card` field into IR commands, then make sure each backend
@@ -273,6 +273,25 @@ work already shipped.
 
 ## Recent changes
 
+- **2026-05-11 — SVGPath compiler support + 14/14 templates compile**:
+  Closes the last two dead christmas templates (holly-wreath,
+  holiday-masterpiece). `_compile_svg_path` parses the path's `d`
+  string via `utils/svg_parser.SVGPathParser`, then converts each
+  `PathCommand` to one or more `PathOp` entries via a new helper
+  `_path_commands_to_ops` that resolves relative coords against the
+  running cursor, reflects control points for `S` and `T`, applies
+  `H`/`V` shortcuts, and re-emits `move` on `Z` close. `SVGPath` model
+  gained `x` and `y` fields (panel-relative inches) — shipped
+  templates were authoring them all along but the model was silently
+  dropping the values. Arc commands (`A`/`a`) raise
+  `UnsupportedFeatureError` (no shipped template uses arcs). PNG
+  backend's `_draw_path` upgraded from "endpoints only" to proper
+  cubic + quadratic Bezier sampling (16 samples per segment;
+  `_sample_cubic_into` / `_sample_quadratic_into` helpers). 13 new
+  tests covering path-op conversion (move/line/H/V/cubic/quadratic/
+  smooth-reflection/close), `_compile_svg_path` (scale + offset +
+  rotation wrap), arc rejection, and end-to-end compilation of both
+  revived templates.
 - **2026-05-11 — Gradient + pattern compiler support + 3 dead templates revived**:
   Linear gradients, radial gradients, and patterns (stripes / dots /
   grid / checkerboard) now render across all three backends. Compiler
