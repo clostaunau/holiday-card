@@ -16,6 +16,7 @@ from holiday_card.core.models import (
     ColorStop,
     DecorativeElement,
     FoldType,
+    ImageElement,
     Line,
     LinearGradientFill,
     OccasionType,
@@ -235,6 +236,14 @@ def _parse_panel(data: dict) -> Panel:
         if shape:
             shape_elements.append(shape)
 
+    # Image elements: Pydantic validates the YAML dict directly. The
+    # clip_mask discriminated union (type: circle / rectangle / star /
+    # ellipse / svg_path / heart) resolves automatically via the
+    # ``type`` field tag.
+    image_elements = []
+    for image_data in data.get("image_elements", []):
+        image_elements.append(ImageElement.model_validate(image_data))
+
     background_color = None
     if "background_color" in data:
         bg = data["background_color"]
@@ -253,6 +262,7 @@ def _parse_panel(data: dict) -> Panel:
         background_image=data.get("background_image"),
         text_elements=text_elements,
         shape_elements=shape_elements,
+        image_elements=image_elements,
     )
 
 

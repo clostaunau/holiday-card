@@ -41,26 +41,38 @@ from holiday_card.core.models import (
     BorderStyle,
     Card,
     Circle,
+    CircleClipMask,
     Color,
+    EllipseClipMask,
     FoldType,
+    HeartClipMask,
     ImageElement,
     Line,
     Panel,
     Rectangle,
+    RectangleClipMask,
     Star,
+    StarClipMask,
+    SVGPathClipMask,
     TextElement,
     Triangle,
 )
 from holiday_card.core.render_ir import (
     RGBA,
+    BeginClip,
     BeginGroup,
     BeginPage,
     CircleGeom,
     DrawFoldLine,
+    DrawImage,
     DrawShape,
     DrawText,
+    EllipseGeom,
+    EndClip,
     EndGroup,
     EndPage,
+    GeomU,
+    ImageRef,
     Point,
     PolygonGeom,
     PolylineGeom,
@@ -214,11 +226,7 @@ def _compile_panel(
             out.extend(_compile_text(element, panel, measurer))
         elif kind == "image":
             assert isinstance(element, ImageElement)  # narrowed via _flatten_and_sort
-            raise UnsupportedFeatureError(
-                f"ImageElement is not yet supported by the compiler "
-                f"(panel {panel.position.value!r}, element id {element.id!r}). "
-                f"Track: Wave 2 follow-up PR."
-            )
+            out.extend(_compile_image(element, panel))
 
     out.append(EndGroup())
     return out
@@ -937,6 +945,172 @@ def _compile_letter_content(
     )
 
     return commands
+
+
+# ---------------------------------------------------------------------------
+# Image compilation (ImageElement → DrawImage with optional clip + rotation)
+# ---------------------------------------------------------------------------
+
+
+def _compile_image(image: ImageElement, panel: Panel) -> list[RenderCommand]:
+    """Convert an ``ImageElement`` to IR commands.
+
+    Layout sequence (outer → inner):
+
+    * If ``image.rotation`` is non-zero, wrap everything in a
+      ``BeginGroup`` / ``EndGroup`` carrying a pivot-rotate transform
+      around the image center (same idiom as panel rotation; see the
+      ``Transform`` semantics in ``render_ir.py``).
+    * If ``image.clip_mask`` is set, wrap the ``DrawImage`` in
+      ``BeginClip`` / ``EndClip`` with the geometry resolved from
+      the ClipMask type. Clip-mask coords are panel-relative inches
+      (matching the convention real templates ship — see
+      ``templates/christmas/photo-ornament.yaml``).
+    * Emit the ``DrawImage`` carrying an ``ImageRef`` with the
+      resolved absolute file path and the rectangle in page-points.
+
+    Deferred for v1 (raise ``UnsupportedFeatureError`` if encountered):
+
+    * ``image.effects`` — Pillow image effects (sepia / grayscale /
+      vignette / blur). Need a pre-rendering pass on the source bytes.
+    * ``image.frame_style`` != ``PhotoFrameStyle.NONE`` — frame
+      treatments need an outline pass.
+    * ``image.width`` or ``image.height`` is ``None`` — auto-sizing
+      from the source image's natural dimensions needs a Pillow probe.
+    * Clip mask types ``heart`` and ``svg_path`` — Heart needs synthesis
+      to a path; SVGPath needs the parser wired to ``PathGeom``.
+    """
+    from holiday_card.core.models import PhotoFrameStyle  # local: enum only used here
+
+    if image.effects is not None:
+        raise UnsupportedFeatureError(
+            f"ImageElement.effects (sepia/grayscale/vignette/blur) not yet "
+            f"supported by the compiler (element id {image.id!r}). "
+            f"Track: Wave 2 follow-up PR (image effects)."
+        )
+    if image.frame_style != PhotoFrameStyle.NONE:
+        raise UnsupportedFeatureError(
+            f"ImageElement.frame_style={image.frame_style.value!r} not yet "
+            f"supported by the compiler (element id {image.id!r}). "
+            f"Track: Wave 2 follow-up PR (image frames)."
+        )
+    if image.width is None or image.height is None:
+        raise UnsupportedFeatureError(
+            f"ImageElement requires explicit width and height in v1 "
+            f"(element id {image.id!r}). "
+            f"Auto-sizing from natural image dimensions is a follow-up."
+        )
+
+    # Resolve relative paths against CWD so the IR carries an absolute
+    # path the backends can pass to drawImage/embed unchanged.
+    from pathlib import Path as _Path
+    source_abs = str(_Path(image.source_path).resolve())
+
+    # Image rect in page-points (panel-relative inches → absolute points).
+    x_pt = inches_to_points(panel.x + image.x)
+    y_pt = inches_to_points(panel.y + image.y)
+    width_pt = inches_to_points(image.width)
+    height_pt = inches_to_points(image.height)
+
+    image_ref = ImageRef(
+        source=source_abs,
+        rect=RectGeom(x=x_pt, y=y_pt, width=width_pt, height=height_pt),
+        preserve_aspect=image.preserve_aspect,
+    )
+    draw = DrawImage(image=image_ref, opacity=image.opacity)
+
+    # Inner layer: optional clip wrapping the DrawImage.
+    inner: list[RenderCommand] = []
+    if image.clip_mask is not None:
+        inner.append(BeginClip(geometry=_clip_mask_to_geom(image.clip_mask, panel)))
+    inner.append(draw)
+    if image.clip_mask is not None:
+        inner.append(EndClip())
+
+    # Outer layer: optional rotation group around the image center.
+    if image.rotation != 0:
+        cx_pt = x_pt + width_pt / 2
+        cy_pt = y_pt + height_pt / 2
+        transform = Transform(
+            translate_x=cx_pt,
+            translate_y=cy_pt,
+            rotate_deg=image.rotation,
+        )
+        return [BeginGroup(transform=transform), *inner, EndGroup()]
+    return inner
+
+
+def _clip_mask_to_geom(
+    clip: CircleClipMask | RectangleClipMask | EllipseClipMask | StarClipMask
+    | HeartClipMask | SVGPathClipMask,
+    panel: Panel,
+) -> GeomU:
+    """Convert a :class:`ClipMask` discriminated-union member to IR geometry.
+
+    Coordinate convention: shipped templates put clip-mask coords in
+    panel-relative inches (verified against
+    ``templates/christmas/photo-ornament.yaml`` and
+    ``holiday-masterpiece.yaml``). The model's docstring says "relative
+    to image" but no shipped template uses it that way; following the
+    template behavior is the load-bearing constraint.
+
+    Returns one of ``CircleGeom`` / ``RectGeom`` / ``EllipseGeom`` /
+    ``PolygonGeom``. Heart and SVGPath clip-mask types raise
+    ``UnsupportedFeatureError`` in v1.
+    """
+    import math
+
+    if isinstance(clip, CircleClipMask):
+        return CircleGeom(
+            center=Point(
+                x=inches_to_points(panel.x + clip.center_x),
+                y=inches_to_points(panel.y + clip.center_y),
+            ),
+            radius=inches_to_points(clip.radius),
+        )
+    if isinstance(clip, RectangleClipMask):
+        return RectGeom(
+            x=inches_to_points(panel.x + clip.x),
+            y=inches_to_points(panel.y + clip.y),
+            width=inches_to_points(clip.width),
+            height=inches_to_points(clip.height),
+        )
+    if isinstance(clip, EllipseClipMask):
+        return EllipseGeom(
+            center=Point(
+                x=inches_to_points(panel.x + clip.center_x),
+                y=inches_to_points(panel.y + clip.center_y),
+            ),
+            rx=inches_to_points(clip.radius_x),
+            ry=inches_to_points(clip.radius_y),
+        )
+    if isinstance(clip, StarClipMask):
+        cx_pt = inches_to_points(panel.x + clip.center_x)
+        cy_pt = inches_to_points(panel.y + clip.center_y)
+        outer_pt = inches_to_points(clip.outer_radius)
+        inner_pt = inches_to_points(clip.inner_radius)
+        n = clip.points
+        # Match ``_compile_star``'s angular convention (π/2 + i*π/n)
+        # so a clip-mask star and a Star shape with the same params
+        # render in the same orientation.
+        points: list[Point] = []
+        for i in range(n * 2):
+            angle = math.pi / 2 + i * math.pi / n
+            radius = outer_pt if i % 2 == 0 else inner_pt
+            points.append(Point(
+                x=cx_pt + radius * math.cos(angle),
+                y=cy_pt + radius * math.sin(angle),
+            ))
+        return PolygonGeom(points=tuple(points))
+    if isinstance(clip, (HeartClipMask, SVGPathClipMask)):
+        raise UnsupportedFeatureError(
+            f"ClipMask type {type(clip).__name__} not yet supported by the "
+            f"compiler. Heart needs synthesis to a Path; SVGPath needs the "
+            f"SVG path parser wired to PathGeom. Track: Wave 2 follow-up PR."
+        )
+    raise UnsupportedFeatureError(
+        f"Unknown ClipMask type {type(clip).__name__}."
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -407,13 +407,51 @@ class SVGRenderer:
     # ------------------------------------------------------------------
 
     def _draw_image(self, cmd: DrawImage) -> None:
-        # Image support requires either base64-embedding the image data or
-        # writing a side-by-side image and href-ing it. Neither path is
-        # currently exercised by the compiler (ImageElement raises
-        # UnsupportedFeatureError). Until that lands, fail loud.
-        raise NotImplementedError(
-            "SVGRenderer does not yet handle DrawImage (compiler does not emit it)"
-        )
+        # Embed the image as a base64 data URI so the resulting SVG is
+        # self-contained (no relative-path fragility when sharing the
+        # file). PNG and JPEG are the two formats users actually drop
+        # in; anything else is sniffed and labelled image/*.
+        import base64
+        from pathlib import Path
+
+        rect = cmd.image.rect
+        source_path = Path(cmd.image.source)
+        if not source_path.is_file():
+            raise FileNotFoundError(
+                f"SVGRenderer: image source not found: {source_path}"
+            )
+        suffix = source_path.suffix.lower()
+        mime = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+        }.get(suffix, "application/octet-stream")
+        encoded = base64.b64encode(source_path.read_bytes()).decode("ascii")
+        href = f"data:{mime};base64,{encoded}"
+
+        # IR y-coordinate is bottom-up; SVG y-coordinate is top-down.
+        # The rect's (x, y) is the bottom-left; SVG <image>'s y is the
+        # top edge — so we flip and subtract the height.
+        svg_y = self._page_height - rect.y - rect.height
+        attrib = {
+            "x": _fmt(rect.x),
+            "y": _fmt(svg_y),
+            "width": _fmt(rect.width),
+            "height": _fmt(rect.height),
+            "href": href,
+            "preserveAspectRatio": (
+                "xMidYMid meet" if cmd.image.preserve_aspect else "none"
+            ),
+        }
+        if cmd.opacity != 1.0:
+            attrib["opacity"] = _fmt(cmd.opacity)
+        image_elem = ET.Element("image", attrib=attrib)
+        # Honor an in-progress clipPath (the SVG backend already tracks
+        # this via a stack; clip wrapping happens at the parent group
+        # level so we just append).
+        self._stack[-1].append(image_elem)
 
     # ------------------------------------------------------------------
     # Fold lines
