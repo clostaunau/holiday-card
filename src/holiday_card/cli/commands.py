@@ -211,6 +211,18 @@ def create(
     inside_message: str | None = typer.Option(
         None, "--inside-message", help="Message for the inside panel"
     ),
+    inside_message_md: Path | None = typer.Option(
+        None,
+        "--inside-message-md",
+        help=(
+            "Path to a Markdown file for the inside panel ('Christmas "
+            "letter' mode). Supports paragraphs, **bold**, and hard line "
+            "breaks. Mutually exclusive with --inside-message and "
+            "overrides --voice's inside pick. For best bold rendering, "
+            "use a template whose inside font is 'Lato' (the only "
+            "curated font with a registered Bold variant today)."
+        ),
+    ),
     debug_emit_ir: bool = typer.Option(
         False,
         "--debug-emit-ir",
@@ -305,6 +317,39 @@ def create(
                 err=True,
             )
             raise typer.Exit(2)
+
+        # --inside-message and --inside-message-md are mutually
+        # exclusive (the user picked one or the other; doing both is
+        # almost certainly a mistake worth surfacing).
+        if inside_message is not None and inside_message_md is not None:
+            typer.secho(
+                "Error: --inside-message and --inside-message-md are "
+                "mutually exclusive (pick one).",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(2)
+        # Read the Markdown file up-front so a missing/unreadable file
+        # fails fast before we render anything.
+        rich_inside = None
+        if inside_message_md is not None:
+            from holiday_card.core.markdown import parse_markdown
+            if not inside_message_md.exists():
+                typer.secho(
+                    f"Error: --inside-message-md file not found: {inside_message_md}",
+                    fg=typer.colors.RED,
+                    err=True,
+                )
+                raise typer.Exit(2)
+            try:
+                rich_inside = parse_markdown(inside_message_md.read_text())
+            except (OSError, ValueError) as e:
+                typer.secho(
+                    f"Error reading {inside_message_md}: {e}",
+                    fg=typer.colors.RED,
+                    err=True,
+                )
+                raise typer.Exit(2) from e
 
         # Resolve output format and extension
         chosen_format = _resolve_output_format(output_format, output)
@@ -416,7 +461,8 @@ def create(
         if blank_inside:
             effective_inside = ""
 
-        # Generate the card
+        # Generate the card. If --inside-message-md was used, skip the
+        # plain inside_message path; the rich content is applied below.
         card = generator.create_card(
             template_id=template,
             message=effective_message,
@@ -424,8 +470,10 @@ def create(
             theme_id=theme,
             fold_type=fold_type_enum,
             images=image_elements if image_elements else None,
-            inside_message=effective_inside,
+            inside_message=None if rich_inside is not None else effective_inside,
         )
+        if rich_inside is not None:
+            generator.apply_inside_rich_content(card, rich_inside)
         written = generator.generate(
             card, output, target, emit_fold_lines=with_fold_marks,
         )
@@ -448,6 +496,9 @@ def create(
                 typer.echo(f"  Picked inside: {_truncate(picked_voice_inside, 60)}")
         if blank_inside:
             typer.echo("  Inside: (blank)")
+        if rich_inside is not None:
+            n_paragraphs = len(rich_inside.paragraphs)
+            typer.echo(f"  Inside: Markdown ({n_paragraphs} paragraph{'s' if n_paragraphs != 1 else ''})")
         if effective_message and not voice:
             typer.echo(f"  Message: {_truncate(effective_message, 50)}")
 

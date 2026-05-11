@@ -11,6 +11,7 @@ from pathlib import Path
 
 from holiday_card.core.compiler import compile_card
 from holiday_card.core.export_targets import ExportTarget, get_target
+from holiday_card.core.markdown import RichTextContent
 from holiday_card.core.models import (
     Card,
     FoldType,
@@ -183,6 +184,41 @@ class CardGenerator:
                         font_size=24,
                     )
                 )
+                return
+
+    def apply_inside_rich_content(self, card: Card, rich: RichTextContent) -> None:
+        """Apply Markdown-derived ``RichTextContent`` to the inside panel.
+
+        Mirrors ``_apply_inside_message`` but sets ``rich_content`` (and
+        clears ``content``) on the inside_left panel's "message" text
+        element (or first available, or auto-added one if absent).
+
+        Used by the CLI's ``--inside-message-md`` flag.
+        """
+        for panel in card.panels:
+            if panel.position.value == "inside_left":
+                target: TextElement | None = None
+                for text in panel.text_elements:
+                    if text.id == "message":
+                        target = text
+                        break
+                if target is None and panel.text_elements:
+                    target = panel.text_elements[0]
+                if target is None:
+                    panel.text_elements.append(
+                        TextElement(
+                            content="",
+                            x=0.5,
+                            y=panel.height - 0.5,
+                            width=panel.width - 1.0,
+                            font_family="Lato",
+                            font_size=12,
+                            rich_content=rich,
+                        )
+                    )
+                    return
+                target.content = ""
+                target.rich_content = rich
                 return
 
     def _apply_inside_message(self, card: Card, message: str) -> None:
