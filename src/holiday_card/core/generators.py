@@ -111,13 +111,19 @@ class CardGenerator:
             output_path=output_path,
         )
 
-        # Apply front message (front_message takes precedence over message)
-        effective_front_message = front_message or message
-        if effective_front_message:
-            self._apply_front_message(card, effective_front_message)
+        # Apply front message (front_message takes precedence over message).
+        # Empty string is a valid intentional value (e.g. --voice with no
+        # cover sentiment found, or a blank-cover deliberate choice), so
+        # we distinguish None ("not provided") from "" ("intentionally empty").
+        if front_message is not None:
+            self._apply_front_message(card, front_message)
+        elif message is not None:
+            self._apply_front_message(card, message)
 
-        # Apply inside message
-        if inside_message:
+        # Apply inside message — same None-vs-empty distinction. ""
+        # actively clears the template's default inside text (used by
+        # --blank-inside).
+        if inside_message is not None:
             self._apply_inside_message(card, inside_message)
 
         # Apply images if provided

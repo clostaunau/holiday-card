@@ -21,7 +21,7 @@ pip install -e ".[dev]"            # one source of truth: pyproject.toml
 holiday-card create christmas-classic -m "Merry Christmas!"     # writes a PDF
 holiday-card create christmas-classic --format svg              # writes an SVG
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-pytest                              # all 409 tests, mypy-clean, ruff-clean
+pytest                              # all 482 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -70,6 +70,9 @@ src/holiday_card/
     text_fitting.py     # Overflow strategies (extracted Wave 2 Step 2a)
     render_ir.py        # The 11-command IR (Wave 2 Step 1)
     compiler.py         # Card → list[RenderCommand] (Wave 2 Step 2b)
+    export_targets.py   # Named print targets for --export-for
+    per_panel.py        # Per-panel rendering helpers (POD layouts)
+    sentiments.py       # Sentiment library loader for --voice
     validators.py       # Domain validation helpers
   renderers/
     reportlab_backend.py  # IR → PDF (default)
@@ -95,6 +98,7 @@ templates/              # YAML card templates
   christmas/            # 11 christmas templates (some have id-mismatch bugs — see "Known issues")
   birthday/, hanukkah/, generic/
 themes/                 # Color theme YAML
+sentiments/             # Curated greeting copy: {occasion}/{voice}/{role}.yaml
 fonts/                  # Custom TTF/OTF fonts
 specs/                  # Historical spec-kit feature plans (001-004; some describe deleted features)
 ```
@@ -127,6 +131,15 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/moo-card/
 # → out/moo-card/{front,back,inside-left,inside-right}.pdf at A6 trim + bleed
 holiday-card create christmas-classic --export-for per-panel-pdf -o out/files/
 # → out/files/{front,back,inside-left,inside-right}.pdf at panel-native trim + bleed
+
+# Sentiment library: --voice picks a curated cover + inside in that register
+holiday-card create christmas-classic --voice warm        # heartfelt
+holiday-card create christmas-classic --voice witty       # playful
+holiday-card create christmas-classic --voice spare       # minimal
+holiday-card create christmas-classic --voice devotional  # religious
+holiday-card create christmas-classic --voice irreverent  # dry / anti-saccharine
+holiday-card create christmas-classic --voice warm --seed 42  # reproducible pick
+holiday-card create christmas-classic --voice warm --blank-inside  # cover only
 ```
 
 ### Hidden / dev flags
@@ -221,6 +234,14 @@ template editing; a CMYK PDF wrapper for pro-press output; a JSON
 
 ## Recent changes
 
+- **2026-05-10 — Sentiment library + `--voice` flag (Leapfrog 2, slice 1)**:
+  Curated greeting copy organized as `sentiments/{occasion}/{voice}/{role}.yaml`
+  for the five panel-recommended voices (warm, witty, spare, devotional,
+  irreverent). New CLI flags `--voice`, `--blank-inside`, `--seed` resolve
+  occasion + voice + role into a picked sentiment that fills front
+  greeting and inside message slots not already set explicitly. Ships
+  with a v0 starter content set (50 files, ~250 lines); intended to be
+  replaced with hand-curated copy by an actual copywriter.
 - **2026-05-10 — `--export-for` CLI flag + per-panel POD output**:
   Three named export targets — `letter` (default, today's behavior),
   `per-panel-pdf` (each panel as its own file at native trim + bleed),
