@@ -353,11 +353,45 @@ class CardGenerator:
             if emit_fold_lines is not None
             else target.fold_marks_default
         )
+        renderer = self._renderer_for(target)
         if target.layout == "imposition":
-            return [self._generate_imposition(card, output, target, fold_marks)]
+            return [self._generate_imposition(card, output, target, fold_marks, renderer)]
         if target.layout == "per-panel":
-            return self._generate_per_panel(card, output, target, fold_marks)
+            return self._generate_per_panel(card, output, target, fold_marks, renderer)
         raise ValueError(f"unknown layout {target.layout!r} on target {target.name!r}")
+
+    def _renderer_for(self, target: ExportTarget) -> Renderer:
+        """Return the renderer to use for ``target``.
+
+        Color-space and PDF/X policies on the target only apply to PDF
+        output. For an SVG / PNG renderer the configured instance is
+        returned unchanged — those backends ignore ``target.color_space``
+        and ``target.pdfx`` because there's no analogous concept. For
+        the PDF backend, when ``target.color_space`` is ``"cmyk"`` and
+        the configured renderer is still in sRGB mode, swap in a fresh
+        CMYK-mode renderer so the same generator instance can serve
+        both sRGB (``letter``) and CMYK (``moo-a6``) targets without
+        the caller having to track it.
+        """
+        if (
+            isinstance(self.renderer, IRReportLabRenderer)
+            and target.color_space == "cmyk"
+            and self.renderer.color_space != "cmyk"
+        ):
+            return IRReportLabRenderer(color_space="cmyk")
+        return self.renderer
+
+    def _maybe_apply_pdfx(self, path: Path, target: ExportTarget) -> None:
+        """Post-process ``path`` to PDF/X-1a if the target requires it.
+
+        No-op for non-PDF outputs and for targets without ``pdfx``.
+        Imports the post-processor lazily so the pikepdf dependency is
+        only loaded when actually needed.
+        """
+        if target.pdfx is None or path.suffix.lower() != ".pdf":
+            return
+        from holiday_card.renderers.pdfx_postprocess import apply_pdfx1a
+        apply_pdfx1a(path, pdfx_version=target.pdfx)
 
     def _generate_imposition(
         self,
@@ -365,6 +399,7 @@ class CardGenerator:
         output_path: Path,
         target: ExportTarget,
         emit_fold_lines: bool,
+        renderer: Renderer,
     ) -> Path:
         from holiday_card.core.compiler import CompileContext  # local: avoid top-level cycle risk
 
@@ -375,7 +410,8 @@ class CardGenerator:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         ctx = CompileContext(geometry=target.geometry, emit_fold_lines=emit_fold_lines)
         commands = compile_card(card, ctx)
-        self.renderer.render(commands, output_path)
+        renderer.render(commands, output_path)
+        self._maybe_apply_pdfx(output_path, target)
         return output_path
 
     def _generate_per_panel(
@@ -384,9 +420,10 @@ class CardGenerator:
         output_dir: Path,
         target: ExportTarget,
         emit_fold_lines: bool,
+        renderer: Renderer,
     ) -> list[Path]:
         output_dir.mkdir(parents=True, exist_ok=True)
-        ext = self.renderer.file_extension  # ".pdf" / ".svg" / ".png"
+        ext = renderer.file_extension  # ".pdf" / ".svg" / ".png"
         written: list[Path] = []
         for panel in card.panels:
             per_card = build_per_panel_card(card, panel, target)
@@ -400,7 +437,8 @@ class CardGenerator:
             commands = compile_card(per_card, ctx)
             stem = _PER_PANEL_FILENAMES.get(panel.position.value, panel.position.value)
             out = output_dir / f"{stem}{ext}"
-            self.renderer.render(commands, out)
+            renderer.render(commands, out)
+            self._maybe_apply_pdfx(out, target)
             written.append(out)
         return written
 

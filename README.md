@@ -31,6 +31,9 @@ This project is the third option:
 * **Bleed and trim are first-class** — the output PDF declares
   distinct `/MediaBox`, `/TrimBox`, `/BleedBox`, `/ArtBox`; passes
   POD preflight on first upload
+* **PDF/X-1a:2003 CMYK on demand** — `--export-for moo-a6` emits
+  DeviceCMYK PDFs with embedded GRACoL2013 ICC profile, XMP metadata,
+  and PDF/X-1a:2003 conformance; ready to drop into MOO's ingester
 * **Curated typography ships with the project** — six SIL OFL fonts
   (Cormorant, Playfair, Lato, Inter, Caveat, Comfortaa), embedded in
   every PDF
@@ -114,10 +117,9 @@ of the panel review.
   what it does. This project is for people who want to commit
   `templates/christmas/family-2026.yaml`, push to GitHub, and have CI
   render the same card every time.
-* **Not a print-broker tool yet.** PDFs are RGB; a CMYK / ICC / PDF/X-1a
-  pipeline is on the roadmap (Leapfrog 1, slice 2). Today's output
-  passes home-printer use and POD first-preflight (e.g. MOO accepts
-  RGB PDFs and converts internally).
+* **Not a Canva-style preview tool.** Output is print artifacts (PDF /
+  SVG / PNG previews), not an interactive editor. The browser-openable
+  SVG and the `preview` command's PNG are the inspection surfaces.
 * **Not finished.** The architecture is solid; the artifact catches
   up template by template, voice by voice, font by font.
 
@@ -136,8 +138,8 @@ critic breakdowns. Recent work targets the panel's "1-month" and
 * ✅ `--with-fold-marks` gate, README persona rewrite, etc. (panel cleanups)
 * ✅ Markdown mode for inside panel (`--inside-message-md`) (Leapfrog 4, slice 1)
 * ✅ GitHub Action: render-on-PR with sticky comment (Leapfrog 4, slice 2)
+* ✅ CMYK + GRACoL2013 ICC + PDF/X-1a:2003 for `--export-for moo-a6` (Leapfrog 1 complete)
 * ⏳ Salutation / signoff / signature / P.S. as first-class fields (Leapfrog 2, slice 4)
-* ⏳ CMYK + ICC + PDF/X-1a (Leapfrog 1 prepress polish)
 * ⏳ Italic font variants (extends Markdown mode beyond bold)
 * ⏳ Multi-panel spill for long Markdown letters
 * ⏳ Father's Day + sympathy templates (calendar-driven SKU expansion)
