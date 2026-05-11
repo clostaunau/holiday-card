@@ -765,12 +765,18 @@ class SVGPath(BaseShape):
     """SVG path shape for complex vector graphics.
 
     Supports SVG path data containing move, line, curve, arc, and close commands.
-    Path data uses inches for coordinates.
+    Path data uses inches for coordinates after applying ``scale``; the
+    final shape lands at panel-relative ``(x, y)``. Path-internal
+    coordinates can be in any unit (templates typically use 0–100
+    SVG-style coords with a small ``scale`` like 0.018 to fit a 1.8"
+    leaf inside a 100-unit drawing).
     """
 
     type: Literal[ShapeType.SVG_PATH] = ShapeType.SVG_PATH
     path_data: str = Field(min_length=1, description="SVG path data string (M, L, C, Q, A, Z commands)")
-    scale: float = Field(default=1.0, gt=0.0, le=10.0, description="Path scale multiplier")
+    scale: float = Field(default=1.0, gt=0.0, le=10.0, description="Scale multiplier from path units to inches")
+    x: float = Field(default=0.0, ge=0.0, description="X position of path origin in panel-relative inches")
+    y: float = Field(default=0.0, ge=0.0, description="Y position of path origin in panel-relative inches")
 
     @field_validator("path_data")
     @classmethod

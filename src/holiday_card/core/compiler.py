@@ -53,6 +53,7 @@ from holiday_card.core.models import (
     RectangleClipMask,
     Star,
     StarClipMask,
+    SVGPath,
     SVGPathClipMask,
     TextElement,
     Triangle,
@@ -76,6 +77,8 @@ from holiday_card.core.render_ir import (
     ImageRef,
     LinearGradientPaint,
     PaintU,
+    PathGeom,
+    PathOp,
     PatternPaint,
     Point,
     PolygonGeom,
@@ -425,9 +428,11 @@ def _compile_shape(shape: object, panel: Panel) -> list[RenderCommand]:
         return [_compile_star(shape, panel)]
     if isinstance(shape, Line):
         return [_compile_line(shape, panel)]
+    if isinstance(shape, SVGPath):
+        return _compile_svg_path(shape, panel)
     raise UnsupportedFeatureError(
         f"Shape type {type(shape).__name__} is not yet supported by the compiler. "
-        f"Track: Wave 2 follow-up PR (gradients, patterns, SVGPath, decorative elements)."
+        f"Track: Wave 2 follow-up PR (decorative elements remain)."
     )
 
 
@@ -524,6 +529,264 @@ def _compile_line(shape: Line, panel: Panel) -> RenderCommand:
         stroke=stroke,
         opacity=shape.opacity,
     )
+
+
+def _compile_svg_path(shape: SVGPath, panel: Panel) -> list[RenderCommand]:
+    """Convert an ``SVGPath`` shape to IR commands.
+
+    Pipeline:
+
+    1. Parse the path's ``d`` string via :class:`SVGPathParser` into a
+       flat list of :class:`PathCommand`.
+    2. Translate each command into one or more :class:`PathOp` entries
+       on the IR side — resolving relative coordinates against the
+       running cursor, reflecting control points for ``S`` and ``T``,
+       and re-emitting move-to-subpath-start on ``Z``.
+    3. Apply ``shape.scale`` (path units → inches) and translate by
+       ``shape.x + panel.x``, ``shape.y + panel.y`` (panel-relative
+       inches), then convert to page-absolute points.
+    4. If ``shape.rotation`` is non-zero, wrap the ``DrawShape`` in a
+       ``BeginGroup`` carrying a pivot-rotate transform around the
+       path's bounding-box center (matching the idiom used for image
+       rotation in ``_compile_image``).
+
+    Arcs (``A`` / ``a``) are not yet supported and raise
+    :class:`UnsupportedFeatureError`. Real templates ship cubic +
+    quadratic Beziers only; arc support is a follow-up.
+    """
+    from holiday_card.utils.svg_parser import SVGCommand, SVGPathParser
+
+    parser = SVGPathParser()
+    raw_commands = parser.parse(shape.path_data)
+
+    ops_local, bbox_local = _path_commands_to_ops(raw_commands)
+    if not ops_local:
+        return []
+
+    # Apply scale + translate + inches → points to each emitted point.
+    offset_x_in = panel.x + shape.x
+    offset_y_in = panel.y + shape.y
+    scale = shape.scale
+
+    def transform(px: float, py: float) -> Point:
+        x_in = offset_x_in + px * scale
+        y_in = offset_y_in + py * scale
+        return Point(x=inches_to_points(x_in), y=inches_to_points(y_in))
+
+    transformed_ops: list[PathOp] = []
+    for op in ops_local:
+        if op.op == "close":
+            transformed_ops.append(op)
+            continue
+        new_points = tuple(transform(p.x, p.y) for p in op.points)
+        transformed_ops.append(PathOp(op=op.op, points=new_points))
+
+    fill, stroke = _resolve_paint_and_stroke(shape)
+    draw = DrawShape(
+        geometry=PathGeom(ops=tuple(transformed_ops)),
+        fill=fill,
+        stroke=stroke,
+        opacity=shape.opacity,
+    )
+
+    if shape.rotation != 0:
+        # Pivot at the bbox center, in absolute page-points.
+        x_min, y_min, x_max, y_max = bbox_local
+        cx_in = offset_x_in + (x_min + x_max) / 2 * scale
+        cy_in = offset_y_in + (y_min + y_max) / 2 * scale
+        transform_ir = Transform(
+            translate_x=inches_to_points(cx_in),
+            translate_y=inches_to_points(cy_in),
+            rotate_deg=shape.rotation,
+        )
+        return [BeginGroup(transform=transform_ir), draw, EndGroup()]
+    # Silence unused import if SVGCommand isn't referenced elsewhere.
+    _ = SVGCommand
+    return [draw]
+
+
+def _path_commands_to_ops(
+    raw: list,
+) -> tuple[list[PathOp], tuple[float, float, float, float]]:
+    """Convert parsed ``PathCommand`` list into IR ``PathOp`` list.
+
+    Resolves relative commands, ``H``/``V`` shortcuts, ``S``/``T``
+    smooth-curve control-point reflection, and ``Z`` close-with-implicit-
+    move. Returns the ops plus a bounding box ``(x_min, y_min, x_max,
+    y_max)`` in path-internal coords (useful for computing a rotation
+    pivot before scale/translate are applied).
+    """
+    from holiday_card.utils.svg_parser import SVGCommand
+
+    cx, cy = 0.0, 0.0  # current cursor
+    sx, sy = 0.0, 0.0  # subpath start (for Z close)
+    last_cubic_control: tuple[float, float] | None = None
+    last_quad_control: tuple[float, float] | None = None
+    ops: list[PathOp] = []
+    seen_xs: list[float] = []
+    seen_ys: list[float] = []
+
+    def add_point(x: float, y: float) -> Point:
+        seen_xs.append(x)
+        seen_ys.append(y)
+        return Point(x=x, y=y)
+
+    for cmd in raw:
+        c = cmd.command
+        params = cmd.params
+
+        if c in (SVGCommand.MOVE, SVGCommand.MOVE_REL):
+            # M/m takes pairs: first pair is move, subsequent are line-tos.
+            rel = c == SVGCommand.MOVE_REL
+            for i in range(0, len(params), 2):
+                x, y = params[i], params[i + 1]
+                if rel:
+                    x += cx
+                    y += cy
+                if i == 0:
+                    ops.append(PathOp(op="move", points=(add_point(x, y),)))
+                    sx, sy = x, y
+                else:
+                    ops.append(PathOp(op="line", points=(add_point(x, y),)))
+                cx, cy = x, y
+            last_cubic_control = None
+            last_quad_control = None
+
+        elif c in (SVGCommand.LINE, SVGCommand.LINE_REL):
+            rel = c == SVGCommand.LINE_REL
+            for i in range(0, len(params), 2):
+                x, y = params[i], params[i + 1]
+                if rel:
+                    x += cx
+                    y += cy
+                ops.append(PathOp(op="line", points=(add_point(x, y),)))
+                cx, cy = x, y
+            last_cubic_control = None
+            last_quad_control = None
+
+        elif c in (SVGCommand.HORIZONTAL, SVGCommand.HORIZONTAL_REL):
+            rel = c == SVGCommand.HORIZONTAL_REL
+            for x in params:
+                if rel:
+                    x = cx + x
+                ops.append(PathOp(op="line", points=(add_point(x, cy),)))
+                cx = x
+            last_cubic_control = None
+            last_quad_control = None
+
+        elif c in (SVGCommand.VERTICAL, SVGCommand.VERTICAL_REL):
+            rel = c == SVGCommand.VERTICAL_REL
+            for y in params:
+                if rel:
+                    y = cy + y
+                ops.append(PathOp(op="line", points=(add_point(cx, y),)))
+                cy = y
+            last_cubic_control = None
+            last_quad_control = None
+
+        elif c in (SVGCommand.CUBIC_BEZIER, SVGCommand.CUBIC_BEZIER_REL):
+            rel = c == SVGCommand.CUBIC_BEZIER_REL
+            for i in range(0, len(params), 6):
+                x1, y1, x2, y2, x, y = params[i:i + 6]
+                if rel:
+                    x1 += cx
+                    y1 += cy
+                    x2 += cx
+                    y2 += cy
+                    x += cx
+                    y += cy
+                ops.append(PathOp(op="cubic", points=(
+                    add_point(x1, y1),
+                    add_point(x2, y2),
+                    add_point(x, y),
+                )))
+                cx, cy = x, y
+                last_cubic_control = (x2, y2)
+            last_quad_control = None
+
+        elif c in (SVGCommand.CUBIC_BEZIER_SMOOTH, SVGCommand.CUBIC_BEZIER_SMOOTH_REL):
+            rel = c == SVGCommand.CUBIC_BEZIER_SMOOTH_REL
+            for i in range(0, len(params), 4):
+                x2, y2, x, y = params[i:i + 4]
+                if rel:
+                    x2 += cx
+                    y2 += cy
+                    x += cx
+                    y += cy
+                # First control point: reflection of previous cubic's
+                # second control point through the current point (per
+                # SVG spec). If previous wasn't a cubic, reuse current.
+                if last_cubic_control is None:
+                    x1, y1 = cx, cy
+                else:
+                    x1 = 2 * cx - last_cubic_control[0]
+                    y1 = 2 * cy - last_cubic_control[1]
+                ops.append(PathOp(op="cubic", points=(
+                    add_point(x1, y1),
+                    add_point(x2, y2),
+                    add_point(x, y),
+                )))
+                cx, cy = x, y
+                last_cubic_control = (x2, y2)
+            last_quad_control = None
+
+        elif c in (SVGCommand.QUADRATIC_BEZIER, SVGCommand.QUADRATIC_BEZIER_REL):
+            rel = c == SVGCommand.QUADRATIC_BEZIER_REL
+            for i in range(0, len(params), 4):
+                x1, y1, x, y = params[i:i + 4]
+                if rel:
+                    x1 += cx
+                    y1 += cy
+                    x += cx
+                    y += cy
+                ops.append(PathOp(op="quadratic", points=(
+                    add_point(x1, y1),
+                    add_point(x, y),
+                )))
+                cx, cy = x, y
+                last_quad_control = (x1, y1)
+            last_cubic_control = None
+
+        elif c in (SVGCommand.QUADRATIC_BEZIER_SMOOTH, SVGCommand.QUADRATIC_BEZIER_SMOOTH_REL):
+            rel = c == SVGCommand.QUADRATIC_BEZIER_SMOOTH_REL
+            for i in range(0, len(params), 2):
+                x, y = params[i:i + 2]
+                if rel:
+                    x += cx
+                    y += cy
+                if last_quad_control is None:
+                    x1, y1 = cx, cy
+                else:
+                    x1 = 2 * cx - last_quad_control[0]
+                    y1 = 2 * cy - last_quad_control[1]
+                ops.append(PathOp(op="quadratic", points=(
+                    add_point(x1, y1),
+                    add_point(x, y),
+                )))
+                cx, cy = x, y
+                last_quad_control = (x1, y1)
+            last_cubic_control = None
+
+        elif c in (SVGCommand.ARC, SVGCommand.ARC_REL):
+            raise UnsupportedFeatureError(
+                "SVG path arc commands (A/a) are not yet supported by the "
+                "compiler. No shipped template uses arcs; raising rather "
+                "than silently dropping. Track: follow-up PR."
+            )
+
+        elif c in (SVGCommand.CLOSE, SVGCommand.CLOSE_REL):
+            ops.append(PathOp(op="close"))
+            cx, cy = sx, sy
+            last_cubic_control = None
+            last_quad_control = None
+
+    bbox = (
+        min(seen_xs) if seen_xs else 0.0,
+        min(seen_ys) if seen_ys else 0.0,
+        max(seen_xs) if seen_xs else 0.0,
+        max(seen_ys) if seen_ys else 0.0,
+    )
+    return ops, bbox
 
 
 def _resolve_paint_and_stroke(
