@@ -143,6 +143,7 @@ critic breakdowns. Recent work targets the panel's "1-month" and
 * ✅ Photo cards: ImageElement compiler support + clip masks (Circle / Rectangle / Ellipse / Star) — unblocks photo-ornament
 * ✅ Gradient + pattern fills (linear / radial / stripes / dots / grid / checkerboard) — unblocks 3 more christmas templates
 * ✅ SVG path support — unblocks the last 2 christmas demos (holly-wreath, holiday-masterpiece). **All 14 shipped templates now compile.**
+* ✅ Template-gallery microsite (Leapfrog 5) — static page per template with a copy-paste CLI command builder; deployed to GitHub Pages
 * ⏳ Illustrator commission: ~30 hand-drawn SVG path assets (Leapfrog 2 final slice — needs a human)
 * ⏳ Italic font variants (extends Markdown mode beyond bold)
 * ⏳ Multi-panel spill for long Markdown letters
