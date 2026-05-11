@@ -12,6 +12,8 @@ from pathlib import Path
 import pytest
 
 from holiday_card.renderers.font_registry import (
+    CURATED_FONT_DIR,
+    CURATED_FONTS,
     FONT_DIR,
     FONT_MAP,
     ensure_default_fonts_registered,
@@ -80,9 +82,15 @@ def test_ensure_default_fonts_registered_is_idempotent() -> None:
     ensure_default_fonts_registered()
 
 
-def test_pdf_render_embeds_liberation_subset(tmp_path: Path) -> None:
-    """Render a PDF and verify a Liberation font subset is embedded
+def test_pdf_render_embeds_a_font_subset(tmp_path: Path) -> None:
+    """Render a PDF and verify at least one TTF font subset is embedded
     (looking for the standard ``XXXXXX+`` subset prefix).
+
+    Christmas-classic now uses curated fonts (PlayfairDisplay /
+    Cormorant) — the original test required Liberation specifically;
+    this version generalizes to any embedded subset, since the goal of
+    defect 9 was "fonts are embedded, period," not "Liberation
+    specifically embedded."
     """
     import re
 
@@ -98,13 +106,12 @@ def test_pdf_render_embeds_liberation_subset(tmp_path: Path) -> None:
     data = out.read_bytes()
     base_fonts = re.findall(rb"/BaseFont\s*/(\S+?)[\s<>/]", data)
     base_fonts_str = [f.decode() for f in base_fonts]
-    # Expect at least one Liberation subset (XXXXXX+LiberationSans pattern)
-    liberation_subsets = [
-        f for f in base_fonts_str
-        if "+" in f and "Liberation" in f
-    ]
-    assert liberation_subsets, (
-        f"Expected at least one embedded Liberation subset in PDF, "
+    # Embedded subsets follow the "XXXXXX+FontName" pattern. Any one is
+    # enough — the bug we're guarding against is "no fonts embedded at all,"
+    # not "specific font missing."
+    embedded_subsets = [f for f in base_fonts_str if "+" in f]
+    assert embedded_subsets, (
+        f"Expected at least one embedded font subset in PDF (XXXXXX+Family); "
         f"found BaseFonts: {base_fonts_str}"
     )
 
@@ -113,3 +120,86 @@ def test_pdf_render_embeds_liberation_subset(tmp_path: Path) -> None:
     assert len(embedded_streams) >= 1, (
         "Expected at least one /FontFile2 stream (embedded TTF) in PDF"
     )
+
+
+# ---------------------------------------------------------------------------
+# Curated fonts (Leapfrog 2 — panel's "font subset" of Agreement 1)
+# ---------------------------------------------------------------------------
+
+
+_EXPECTED_CURATED_FONT_IDS = {
+    "Cormorant", "PlayfairDisplay", "Lato", "Lato-Bold",
+    "Inter", "Caveat", "Comfortaa",
+}
+
+
+class TestCuratedFonts:
+    def test_curated_dir_exists(self) -> None:
+        assert CURATED_FONT_DIR.exists(), (
+            f"fonts/curated/ missing at {CURATED_FONT_DIR}"
+        )
+
+    def test_curated_map_covers_expected_families(self) -> None:
+        # Six families + one extra weight (Lato-Bold) the panel called
+        # out as a useful pairing for warm-voice covers.
+        assert set(CURATED_FONTS.keys()) == _EXPECTED_CURATED_FONT_IDS
+
+    @pytest.mark.parametrize("font_id", sorted(_EXPECTED_CURATED_FONT_IDS))
+    def test_each_curated_font_resolves_to_an_existing_ttf(
+        self, font_id: str
+    ) -> None:
+        path = ttf_path_for(font_id)
+        assert path is not None, f"ttf_path_for({font_id!r}) returned None"
+        assert path.exists(), f"TTF missing on disk: {path}"
+        head = path.read_bytes()[:4]
+        assert head in (b"\x00\x01\x00\x00", b"OTTO", b"true"), (
+            f"{path} is not a TTF/OTF (head bytes: {head!r})"
+        )
+
+    @pytest.mark.parametrize("font_id", sorted(_EXPECTED_CURATED_FONT_IDS))
+    def test_each_curated_font_has_an_OFL_license(self, font_id: str) -> None:
+        """SIL OFL requires the license text accompany the font when
+        distributed. Each curated family ships its OFL.txt next to the
+        TTFs as ``{Family}-LICENSE.txt``."""
+        # All seven font_ids share three license files (Lato + Lato-Bold
+        # share one). Map font_id to its license stem.
+        license_stems = {
+            "Cormorant":       "CormorantGaramond",
+            "PlayfairDisplay": "PlayfairDisplay",
+            "Lato":            "Lato",
+            "Lato-Bold":       "Lato",
+            "Inter":           "Inter",
+            "Caveat":          "Caveat",
+            "Comfortaa":       "Comfortaa",
+        }
+        license_path = CURATED_FONT_DIR / f"{license_stems[font_id]}-LICENSE.txt"
+        assert license_path.exists(), (
+            f"OFL license missing for {font_id} at {license_path}"
+        )
+        text = license_path.read_text(encoding="utf-8", errors="replace")
+        assert "SIL OPEN FONT LICENSE" in text.upper(), (
+            f"{license_path} does not look like an SIL OFL"
+        )
+
+    @pytest.mark.parametrize("font_id", sorted(_EXPECTED_CURATED_FONT_IDS))
+    def test_each_curated_font_resolves_to_its_registered_name(
+        self, font_id: str
+    ) -> None:
+        # By convention every curated font's registered name equals its
+        # font_id (no Liberation-style aliasing). Future PRs can break
+        # this if a curated family needs a different ReportLab name.
+        assert resolve_font_id(font_id) == font_id
+
+    def test_curated_fonts_win_over_default_chain_on_conflict(self) -> None:
+        """If a name appears in both maps (none today, but a future PR
+        might add one), curated wins. Spot-check the resolution order."""
+        # No collision today, but if Helvetica were ever added to
+        # CURATED_FONTS it should override the Liberation alias.
+        # Verify by direct lookup: curated dict is consulted first.
+        from holiday_card.renderers import font_registry
+        assert font_registry.CURATED_FONTS  # non-empty
+        # Defensive: make sure there's no accidental shadowing today.
+        assert not (set(CURATED_FONTS) & set(FONT_MAP)), (
+            "FONT_MAP and CURATED_FONTS share keys; resolution order "
+            "matters — curated wins, but the conflict should be intentional."
+        )

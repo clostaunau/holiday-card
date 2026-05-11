@@ -674,9 +674,18 @@ def _hex_to_rgba(hex_color: str) -> RGBA:
 def _make_measurer() -> _reportlab_canvas.Canvas:
     """Return a throwaway in-memory ReportLab canvas for text measurement.
 
-    The text-fitting code calls ``canvas.stringWidth`` to size lines; it
-    does not draw or write the output. Reusing this single canvas across
-    one ``compile_card`` call is safe because the canvas is stateless w.r.t.
-    measurement.
+    Registers the embedded default + curated font chains so
+    ``canvas.stringWidth`` works on any font_id those chains expose
+    (Helvetica/Times/Courier for backwards-compat, plus the curated
+    PlayfairDisplay/Cormorant/Lato/Inter/Caveat/Comfortaa). The text-
+    fitting code calls ``stringWidth`` to size lines; without
+    registration, ReportLab raises ``KeyError`` on any unrecognized
+    font name.
+
+    Reusing this single canvas across one ``compile_card`` call is
+    safe because the canvas is stateless w.r.t. measurement, and font
+    registration is process-global and idempotent.
     """
+    from holiday_card.renderers.font_registry import ensure_default_fonts_registered
+    ensure_default_fonts_registered()
     return _reportlab_canvas.Canvas(io.BytesIO(), pagesize=letter)

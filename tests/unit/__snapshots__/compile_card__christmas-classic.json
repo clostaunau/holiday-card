@@ -65,12 +65,12 @@
         "g": 1.0,
         "r": 1.0
       },
-      "font_id": "Helvetica",
+      "font_id": "PlayfairDisplay",
       "origin": {
         "x": 459.0,
         "y": 198.0
       },
-      "size_pt": 35.0,
+      "size_pt": 34.0,
       "text": "Merry Christmas!"
     }
   },
@@ -193,7 +193,7 @@
         "g": 0.2,
         "r": 0.2
       },
-      "font_id": "Helvetica",
+      "font_id": "Cormorant",
       "origin": {
         "x": 342.0,
         "y": 612.0
@@ -213,7 +213,7 @@
         "g": 0.2,
         "r": 0.2
       },
-      "font_id": "Helvetica",
+      "font_id": "Cormorant",
       "origin": {
         "x": 342.0,
         "y": 595.2
