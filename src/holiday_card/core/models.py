@@ -350,12 +350,20 @@ class RadialGradientFill(BaseModel):
     """Radial gradient fill with color stops.
 
     Gradient radiates from a center point outward through the color stops.
+
+    Coordinate convention: ``center_x`` / ``center_y`` / ``radius`` are
+    in **panel-relative inches** (matching how clip_mask coordinates
+    and shape positions work — see the discussion in
+    ``templates/christmas/metallic-ornaments.yaml``). Earlier revisions
+    of this model expected fractional 0-1 values, but every shipped
+    template uses absolute inches and the compiler interprets them
+    that way.
     """
 
     type: Literal["radial_gradient"] = "radial_gradient"
-    center_x: float = Field(default=0.5, ge=0.0, le=1.0, description="Center X position (0.0-1.0 relative to shape)")
-    center_y: float = Field(default=0.5, ge=0.0, le=1.0, description="Center Y position (0.0-1.0 relative to shape)")
-    radius: float = Field(default=0.5, gt=0.0, le=1.0, description="Gradient radius (relative to shape size)")
+    center_x: float = Field(default=0.0, ge=0.0, description="Center X position in inches (panel-relative)")
+    center_y: float = Field(default=0.0, ge=0.0, description="Center Y position in inches (panel-relative)")
+    radius: float = Field(default=0.5, gt=0.0, description="Gradient radius in inches")
     stops: list[ColorStop] = Field(min_length=2, max_length=20, description="Color stops (minimum 2)")
 
     @field_validator("stops")

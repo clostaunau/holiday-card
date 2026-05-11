@@ -217,7 +217,13 @@ class TestRadialGradientFill:
         assert gradient.radius == 0.5
 
     def test_radial_gradient_default_center(self):
-        """Test radial gradient with default center."""
+        """Test radial gradient with default center.
+
+        Defaults reflect the panel-relative-inches convention used by
+        shipped templates: ``(0, 0)`` is the panel's bottom-left corner.
+        Earlier revisions used 0.5/0.5 (fraction-of-shape semantics);
+        the new convention is panel-relative inches with no upper bound.
+        """
         gradient = RadialGradientFill(
             stops=[
                 ColorStop(position=0.0, color="#FF0000"),
@@ -225,8 +231,8 @@ class TestRadialGradientFill:
             ]
         )
 
-        assert gradient.center_x == 0.5
-        assert gradient.center_y == 0.5
+        assert gradient.center_x == 0.0
+        assert gradient.center_y == 0.0
         assert gradient.radius == 0.5
 
     def test_radial_gradient_center_range(self):
@@ -266,18 +272,26 @@ class TestRadialGradientFill:
                 ]
             )
 
-    def test_radial_gradient_center_above_one_fails(self):
-        """Test that center > 1.0 raises ValidationError."""
-        with pytest.raises(ValidationError):
-            RadialGradientFill(
-                center_x=0.5,
-                center_y=1.1,
-                radius=0.5,
-                stops=[
-                    ColorStop(position=0.0, color="#FF0000"),
-                    ColorStop(position=1.0, color="#0000FF")
-                ]
-            )
+    def test_radial_gradient_center_above_one_now_allowed(self):
+        """Center > 1.0 is allowed under the panel-relative-inches convention.
+
+        Earlier revisions of this model treated center_x / center_y as
+        fractions of the shape bbox and rejected values > 1.0. Real
+        templates were authored with absolute panel-relative inches
+        (e.g. center_x=2.125 to land on a 4.25"-wide panel's centerline),
+        so the validator was loosened. This test pins the new behavior.
+        """
+        gradient = RadialGradientFill(
+            center_x=2.125,
+            center_y=3.5,
+            radius=0.5,
+            stops=[
+                ColorStop(position=0.0, color="#FF0000"),
+                ColorStop(position=1.0, color="#0000FF")
+            ]
+        )
+        assert gradient.center_x == 2.125
+        assert gradient.center_y == 3.5
 
     def test_radial_gradient_radius_zero_fails(self):
         """Test that radius = 0 raises ValidationError."""
@@ -292,18 +306,23 @@ class TestRadialGradientFill:
                 ]
             )
 
-    def test_radial_gradient_radius_above_one_fails(self):
-        """Test that radius > 1.0 raises ValidationError."""
-        with pytest.raises(ValidationError):
-            RadialGradientFill(
-                center_x=0.5,
-                center_y=0.5,
-                radius=1.1,
-                stops=[
-                    ColorStop(position=0.0, color="#FF0000"),
-                    ColorStop(position=1.0, color="#0000FF")
-                ]
-            )
+    def test_radial_gradient_radius_above_one_now_allowed(self):
+        """Radius > 1.0 is allowed under the panel-relative-inches convention.
+
+        Same rationale as ``test_radial_gradient_center_above_one_now_allowed``:
+        radius is in inches now, not a fraction of the shape size, so
+        any positive value is legal.
+        """
+        gradient = RadialGradientFill(
+            center_x=0.5,
+            center_y=0.5,
+            radius=2.5,
+            stops=[
+                ColorStop(position=0.0, color="#FF0000"),
+                ColorStop(position=1.0, color="#0000FF")
+            ]
+        )
+        assert gradient.radius == 2.5
 
     def test_radial_gradient_stops_ascending_order(self):
         """Test that stops must be in ascending position order."""
