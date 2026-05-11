@@ -17,11 +17,14 @@ Three renderers consume the same IR: `IRReportLabRenderer` (PDF, default),
 `SVGRenderer`, `PNGRenderer`. Adding a fourth backend is the same pattern.
 
 ```bash
-pip install -e ".[dev]"            # one source of truth: pyproject.toml
+pipx install holiday-card           # canonical user install (or `pip install -e ".[dev]"` for hacking)
 holiday-card create christmas-classic -m "Merry Christmas!"     # writes a PDF
 holiday-card create christmas-classic --format svg              # writes an SVG
+holiday-card create christmas-classic --voice warm --seed 42    # picked-sentiment cover + inside
+holiday-card create christmas-classic --inside-message-md letter.md   # Markdown letter mode
+holiday-card create christmas-classic --export-for moo-a6 -o out/     # per-panel POD output
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-pytest                              # all 539 tests, mypy-clean, ruff-clean
+pytest                              # all 555 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -87,22 +90,34 @@ src/holiday_card/
     svg_parser.py       # SVG path parser (preserved for future IR support)
     validators.py       # Input validation (image format, etc.)
 tests/
-  unit/                 # test_render_ir, test_compiler, test_cli, test_text_fitting,
+  unit/                 # Wave 2 core: test_render_ir, test_compiler, test_cli, test_text_fitting,
                         #   test_text_utils, test_models, test_clipping_masks,
                         #   test_gradient_models, test_pattern_models,
                         #   test_svg_models, test_svg_parser, test_validators,
-                        #   test_measurements
-    __snapshots__/      # JSON snapshots of compile_card() output per template
-  integration/          # test_full_generation, test_svg_backend, test_png_backend
+                        #   test_measurements, test_font_registry
+                        # Curation/POD/markdown additions: test_sentiments, test_export_targets,
+                        #   test_per_panel, test_markdown, test_render_changed
+    __snapshots__/      # JSON snapshots of compile_card() output per template (8 files)
+  integration/          # test_full_generation, test_svg_backend, test_png_backend,
+                        #   test_per_panel_output, test_voice_flag, test_md_inside
   visual/               # Reserved for future visual regression (no tests yet)
 templates/              # YAML card templates
-  christmas/            # 11 christmas templates (some have id-mismatch bugs — see "Known issues")
-  birthday/, hanukkah/, generic/
+  christmas/            # 10 templates: 4 compile (classic, geometric, modern, artist);
+                        #   6 demos still need gradient/pattern/SVGPath compiler support
+                        #   (festive-stripes, holiday-masterpiece, holly-wreath,
+                        #    metallic-ornaments, photo-ornament, winter-sky)
+  birthday/, hanukkah/, generic/, mothers_day/   # 1 template each, all compile cleanly
 themes/                 # Color theme YAML
-sentiments/             # Curated greeting copy: {occasion}/{voice}/{role}.yaml
+sentiments/             # Curated greeting copy: {occasion}/{voice}/{role}.yaml — 50 files
+                        #   covering 5 occasions × 5 voices × 2 roles, ~250 lines total
 fonts/                  # Liberation default font chain (PDF base-14 substitutes)
   curated/              # 6 curated open-source fonts (Cormorant, Playfair, Lato, Inter, Caveat, Comfortaa)
+scripts/                # Stand-alone helpers used by CI/Actions
+                        #   render_changed_templates.py — powers .github/workflows/render-cards.yml
+.github/workflows/      # CI: ci.yml (lint/type/test/smoke/build matrix)
+                        #     render-cards.yml (PR-comment card previews)
 specs/                  # Historical spec-kit feature plans (001-004; some describe deleted features)
+docs/industry-review/   # Six critic personas + consensus docs that drive the roadmap
 ```
 
 ## Commands
@@ -110,9 +125,9 @@ specs/                  # Historical spec-kit feature plans (001-004; some descr
 ### Quality gates (run all of these — they're the CI blocking gates too)
 
 ```bash
-ruff check src/ tests/      # Lint — must be clean
-mypy src/                   # Type-check — must be clean (strict mode)
-pytest                      # All 324 tests pass
+ruff check src/ tests/ scripts/   # Lint — must be clean
+mypy src/                         # Type-check — must be clean (strict mode)
+pytest                            # All 555 tests pass
 ```
 
 ### Card generation
@@ -155,16 +170,16 @@ holiday-card create christmas-classic --debug-emit-ir   # print compiled IR as J
 
 The compiler supports backgrounds, borders, basic shapes (Rectangle,
 Circle, Triangle, Star, Line) with **solid fills only**, text with
-left/center/right alignment, fold lines, identity or rotation-only
-group transforms, and **bleed extension** on edges that touch the
-page trim (default 0.125", set per Card via `card.bleed` or per
-Panel via `panel.bleed`). **7 of the 11 templates currently compile
-cleanly:**
+left/center/right alignment + Markdown rich text (paragraphs +
+**bold**), fold lines, identity or rotation-only group transforms,
+and **bleed extension** on edges that touch the page trim (default
+0.125", set per Card via `card.bleed` or per Panel via `panel.bleed`).
+**8 of the 14 shipped templates currently compile cleanly:**
 
 ```
 christmas-classic     christmas-geometric    christmas-modern
 christmas-artist      birthday-balloons      hanukkah-menorah
-generic-celebration
+generic-celebration   mothers-day
 ```
 
 Templates using gradients, patterns, clip masks, decorative elements,
@@ -198,9 +213,13 @@ The pattern that worked three times in PRs #7, #11, #12:
    `holiday-card create`, or via a new top-level command (like
    `preview` does for PNG).
 
-Wave 4 ideas: HTML/Canvas renderer streaming over a websocket for live
-template editing; a CMYK PDF wrapper for pro-press output; a JSON
-"render plan" backend for downstream tooling.
+Beyond the panel's roadmap, speculative future backends:
+HTML/Canvas streaming over a websocket for live template editing; a
+JSON "render plan" backend for downstream tooling. A pro-press
+CMYK output (CMYK color space + GRACoL ICC profile + PDF/X-1a
+metadata) is **not** a speculative idea — it's the next planned
+slice of Leapfrog 1, sitting on top of the bleed and `--export-for`
+work already shipped.
 
 ## Code style
 
@@ -231,6 +250,15 @@ template editing; a CMYK PDF wrapper for pro-press output; a JSON
 
 ## Recent changes
 
+- **2026-05-10 — GitHub Action: render-on-PR + sticky comment (Leapfrog 4, slice 2)**:
+  New `.github/workflows/render-cards.yml` triggers on PRs touching
+  templates/sentiments/fonts/themes/src. Detects affected templates
+  via `scripts/render_changed_templates.py` (direct template change →
+  just that template; indirect change → full shipping set), renders
+  PNG previews at 144 DPI, uploads as a workflow artifact, and posts
+  a sticky PR comment with the list and artifact link. Completes
+  Leapfrog 4 alongside the Markdown mode in PR #26 — together they
+  realize the panel's "cards-as-code identity" thesis.
 - **2026-05-10 — Markdown mode for inside panel (Leapfrog 4, slice 1)**:
   New `--inside-message-md path/to/letter.md` flag turns the inside
   panel into a "Christmas letter" surface — paragraphs, **bold** spans,
