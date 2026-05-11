@@ -1,7 +1,8 @@
 # holiday-card — Development Guidelines
 
 Last updated: 2026-05-10. Wave 2 architecture refactor is **complete**;
-the codebase is at v1.1.0 with all CI quality gates blocking.
+Leapfrog 1 (POD prepress) is **complete**; the codebase is at v1.1.0
+with all CI quality gates blocking.
 
 ## TL;DR for a fresh session
 
@@ -22,9 +23,9 @@ holiday-card create christmas-classic -m "Merry Christmas!"     # writes a PDF
 holiday-card create christmas-classic --format svg              # writes an SVG
 holiday-card create christmas-classic --voice warm --seed 42    # picked-sentiment cover + inside
 holiday-card create christmas-classic --inside-message-md letter.md   # Markdown letter mode
-holiday-card create christmas-classic --export-for moo-a6 -o out/     # per-panel POD output
+holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-pytest                              # all 555 tests, mypy-clean, ruff-clean
+pytest                              # all 568 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -59,6 +60,7 @@ coord system per element.
 - Pydantic 2.0+ (domain models + IR)
 - Typer 0.9+ (CLI)
 - PyYAML 6.0+ (template loading)
+- pikepdf 8.0+ (PDF/X-1a post-processing for `--export-for moo-a6`)
 
 ## Project layout
 
@@ -77,12 +79,16 @@ src/holiday_card/
     per_panel.py        # Per-panel rendering helpers (POD layouts)
     sentiments.py       # Sentiment library loader for --voice
     markdown.py         # Tiny Markdown subset for --inside-message-md
+    color_management.py # sRGB→CMYK conversion + ICC profile path resolution
     validators.py       # Domain validation helpers
   renderers/
-    reportlab_backend.py  # IR → PDF (default)
+    reportlab_backend.py  # IR → PDF (default; sRGB or CMYK mode)
     svg_backend.py        # IR → SVG (browser-openable)
     png_backend.py        # IR → PNG (powers `preview` command)
+    pdfx_postprocess.py   # pikepdf-based PDF/X-1a:2003 upgrade
     image_effects.py      # Pillow effects (sepia/grayscale/vignette/blur)
+assets/icc/             # Bundled ICC profiles
+  GRACoL2013_CRPC6.icc  # 3.4MB; OutputIntent for --export-for moo-a6
   cli/
     commands.py         # Typer CLI: create, preview, templates, themes, validate
   utils/
@@ -234,15 +240,22 @@ work already shipped.
 
 ## Known issues (good first tasks for a fresh session)
 
-- **Dead Pydantic models in `models.py`:** `HeartClipMask`,
-  `DecorativeElement`, gradient/pattern fill models, `SVGPath` shape
-  exist but no production code imports them. They're referenced only
-  by `tests/unit/test_clipping_masks.py`, `test_gradient_models.py`,
-  `test_pattern_models.py`, `test_svg_models.py`. Pruning is a focused
-  PR.
+- **Pending-compiler-support models in `models.py`:**
+  `LinearGradientFill`, `RadialGradientFill`, `PatternFill`,
+  `SVGPath`, `DecorativeElement`, and the clip-mask types are
+  imported by `core/templates.py` + `core/validators.py` and back
+  six shipped christmas demo YAMLs (`festive-stripes`,
+  `holiday-masterpiece`, `holly-wreath`, `metallic-ornaments`,
+  `photo-ornament`, `winter-sky`) plus the `clip_mask` field on
+  `ImageElement`. The compiler refuses them at render time
+  (`UnsupportedFeatureError`), so they look "dead" from a
+  user-visible perspective — but the data layer is load-bearing
+  groundwork. The right next step is wiring compiler support, not
+  pruning.
 - **Compiler feature gaps:** Adding `ImageElement` support would
-  re-enable photo cards. Adding gradient + pattern fills would unlock
-  the 4 christmas templates that currently fail.
+  re-enable photo cards (and is the prerequisite for Leapfrog 3 AI
+  imagery). Adding gradient + pattern fills would unlock the six
+  demo templates above.
 - **`tests/visual/` is empty:** A perceptual SSIM gate against a
   committed baseline PNG per template would catch layout regressions
   the structural tests miss. The PNG backend produces deterministic
@@ -250,6 +263,25 @@ work already shipped.
 
 ## Recent changes
 
+- **2026-05-10 — CMYK + ICC + PDF/X-1a:2003 (Leapfrog 1 complete)**:
+  `--export-for moo-a6` now emits DeviceCMYK PDFs (k/K operators,
+  no RGB), with the GRACoL2013_CRPC6 ICC profile embedded as the
+  OutputIntent's `/DestOutputProfile`, an XMP metadata stream
+  declaring `GTS_PDFXVersion="PDF/X-1:2001"` /
+  `GTS_PDFXConformance="PDF/X-1a:2003"`, `/Info /Trapped` set to
+  `/False`, and the PDF header forced to 1.4. Implementation:
+  `core/color_management.py` (naive sRGB→CMYK conversion + ICC
+  path resolution), `renderers/pdfx_postprocess.py` (pikepdf-based
+  OutputIntent + XMP injection), `IRReportLabRenderer(color_space=
+  "cmyk")` for the CMYK emission path. `ExportTarget` gained
+  `color_space` + `pdfx` fields; the generator dispatches a
+  CMYK-mode renderer and the post-processor when the target asks.
+  New dependency: `pikepdf>=8.0`. Bundled asset:
+  `assets/icc/GRACoL2013_CRPC6.icc` (3.4MB, ICC CGATS21 reference,
+  freely redistributable). Color accuracy is deferred to the
+  printer's RIP via the embedded OutputIntent — standard PDF/X-1a
+  practice. 13 new tests in `tests/integration/test_pdfx_moo_a6.py`.
+  Clears the prerequisite for AI-imagery Leapfrog 3.
 - **2026-05-10 — GitHub Action: render-on-PR + sticky comment (Leapfrog 4, slice 2)**:
   New `.github/workflows/render-cards.yml` triggers on PRs touching
   templates/sentiments/fonts/themes/src. Detects affected templates

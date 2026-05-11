@@ -24,10 +24,12 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Literal
 
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas as _canvas
 
+from holiday_card.core.color_management import rgb_to_cmyk
 from holiday_card.core.render_ir import (
     BeginClip,
     BeginGroup,
@@ -61,12 +63,24 @@ __all__ = ["IRReportLabRenderer"]
 class IRReportLabRenderer:
     """Renderer that visits a ``RenderCommand`` stream and writes a PDF.
 
-    Public surface is a single method, ``render``. Construction is
-    deliberately argument-free — there's no per-instance state to set.
+    Public surface is a single method, ``render``. The renderer's color
+    space is fixed at construction:
+
+    * ``color_space="srgb"`` (default) — today's behavior; emits RGB
+      color operators (rg/RG) suitable for home-printer / browser
+      / on-screen consumption.
+    * ``color_space="cmyk"`` — emits DeviceCMYK operators (k/K) using a
+      naive sRGB→CMYK conversion at the boundary. Intended to be paired
+      with a PDF/X-1a post-processor that attaches the destination
+      OutputIntent ICC profile; the colorimetric work happens on the
+      printer's RIP. See ``core/color_management.py``.
     """
 
     name: str = "reportlab"
     file_extension: str = ".pdf"
+
+    def __init__(self, color_space: Literal["srgb", "cmyk"] = "srgb") -> None:
+        self.color_space: Literal["srgb", "cmyk"] = color_space
 
     def render(self, commands: Iterable[RenderCommand], output: Path) -> None:
         """Consume ``commands`` and write a PDF at ``output``."""
@@ -81,6 +95,24 @@ class IRReportLabRenderer:
                 self._dispatch(canvas, cmd)
         finally:
             canvas.save()
+
+    # ------------------------------------------------------------------
+    # Color emission helpers (color-space-aware)
+    # ------------------------------------------------------------------
+
+    def _set_fill(self, canvas: _canvas.Canvas, r: float, g: float, b: float) -> None:
+        if self.color_space == "cmyk":
+            c, m, y, k = rgb_to_cmyk(r, g, b)
+            canvas.setFillColorCMYK(c, m, y, k)
+        else:
+            canvas.setFillColorRGB(r, g, b)
+
+    def _set_stroke(self, canvas: _canvas.Canvas, r: float, g: float, b: float) -> None:
+        if self.color_space == "cmyk":
+            c, m, y, k = rgb_to_cmyk(r, g, b)
+            canvas.setStrokeColorCMYK(c, m, y, k)
+        else:
+            canvas.setStrokeColorRGB(r, g, b)
 
     # ------------------------------------------------------------------
     # Dispatch
@@ -287,7 +319,7 @@ class IRReportLabRenderer:
             return False
         if isinstance(fill, SolidPaint):
             c = fill.color
-            canvas.setFillColorRGB(c.r, c.g, c.b)
+            self._set_fill(canvas, c.r, c.g, c.b)
             if c.a != 1.0:
                 canvas.setFillAlpha(c.a)
             return True
@@ -301,7 +333,7 @@ class IRReportLabRenderer:
         if stroke is None:
             return False
         c = stroke.color
-        canvas.setStrokeColorRGB(c.r, c.g, c.b)
+        self._set_stroke(canvas, c.r, c.g, c.b)
         canvas.setLineWidth(stroke.width)
         if stroke.dash:
             canvas.setDash(*stroke.dash)
@@ -318,7 +350,7 @@ class IRReportLabRenderer:
         # font_id is canonicalized (e.g. "Helvetica" → "LiberationSans")
         # so the default base-14 names map to the embedded TTFs.
         canvas.setFont(resolve_font_id(run.font_id), run.size_pt)
-        canvas.setFillColorRGB(run.color.r, run.color.g, run.color.b)
+        self._set_fill(canvas, run.color.r, run.color.g, run.color.b)
         if cmd.opacity != 1.0:
             canvas.setFillAlpha(cmd.opacity)
         if run.align == "center":
@@ -350,7 +382,7 @@ class IRReportLabRenderer:
 
     def _draw_fold_line(self, canvas: _canvas.Canvas, cmd: DrawFoldLine) -> None:
         canvas.saveState()
-        canvas.setStrokeColorRGB(0.7, 0.7, 0.7)  # matches legacy fold-line grey
+        self._set_stroke(canvas, 0.7, 0.7, 0.7)  # matches legacy fold-line grey
         canvas.setLineWidth(0.5)
         if cmd.style == "dashed":
             canvas.setDash(3, 3)

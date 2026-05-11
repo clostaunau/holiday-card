@@ -63,6 +63,21 @@ class ExportTarget:
     # finished product. Overridable via the CLI's --with-fold-marks /
     # --no-fold-marks flag.
     fold_marks_default: bool = True
+    # Color space for the emitted PDF stream. ``srgb`` is today's
+    # default and what home-printer / browser previews expect.
+    # ``cmyk`` switches the PDF backend to emit DeviceCMYK color
+    # operators (k/K) using a deterministic sRGB→CMYK conversion at
+    # render time; perceptual interpretation is deferred to the
+    # OutputIntent ICC profile attached by the PDF/X post-processor.
+    # Non-PDF backends (SVG/PNG) ignore this field today.
+    color_space: Literal["srgb", "cmyk"] = "srgb"
+    # PDF/X conformance level to apply via post-processing. ``None``
+    # means no PDF/X structuring (today's behavior). ``"PDF/X-1a:2003"``
+    # triggers the pikepdf post-pass that embeds the OutputIntent ICC
+    # profile, writes the XMP metadata stream, sets the /Trapped key,
+    # and forces PDF 1.4. Currently only ``"PDF/X-1a:2003"`` is
+    # recognized; other levels raise at post-process time.
+    pdfx: str | None = None
 
 
 REGISTRY: dict[str, ExportTarget] = {
@@ -92,12 +107,15 @@ REGISTRY: dict[str, ExportTarget] = {
             "MOO A6 folded card: each panel as a separate PDF/SVG/PNG "
             "at 4.13\"x5.83\" trim + 0.125\" bleed. Panel content is "
             "uniformly scaled to fit; aspect-ratio mismatch produces "
-            "letterbox bands."
+            "letterbox bands. PDF output is CMYK + PDF/X-1a:2003 "
+            "compliant for direct MOO submission."
         ),
         layout="per-panel",
         geometry=PageGeometry.moo_a6(),
         scale_panels_to_fit=True,
         fold_marks_default=False,
+        color_space="cmyk",
+        pdfx="PDF/X-1a:2003",
     ),
 }
 
