@@ -26,7 +26,7 @@ panels:
         x: 2.125  # Center of panel
         y: 2.75   # Middle of panel
         width: 3.75  # Leave 0.25" margin on each side
-        font_family: "Helvetica"
+        font_family: "Inter"  # modern variable sans matches the modern aesthetic
         font_size: 28
         font_style: "bold"
         alignment: "center"
@@ -80,7 +80,7 @@ panels:
         x: 0.5
         y: 4.0
         width: 3.25
-        font_family: "Helvetica"
+        font_family: "Inter"  # modern variable sans matches the modern aesthetic
         font_size: 12
         overflow_strategy: "wrap"
         max_lines: 10

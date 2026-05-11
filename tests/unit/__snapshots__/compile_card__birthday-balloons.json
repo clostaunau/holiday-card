@@ -761,12 +761,12 @@
         "g": 0.15,
         "r": 0.4
       },
-      "font_id": "Helvetica",
+      "font_id": "Comfortaa",
       "origin": {
         "x": 459.0,
         "y": 349.2
       },
-      "size_pt": 32.0,
+      "size_pt": 29.0,
       "text": "Happy Birthday!"
     }
   },
@@ -781,7 +781,7 @@
         "g": 0.3,
         "r": 0.5
       },
-      "font_id": "Times-Roman",
+      "font_id": "Caveat",
       "origin": {
         "x": 459.0,
         "y": 324.0
@@ -909,7 +909,7 @@
         "g": 0.3,
         "r": 0.3
       },
-      "font_id": "Times-Roman",
+      "font_id": "Lato",
       "origin": {
         "x": 342.0,
         "y": 612.0
@@ -929,7 +929,7 @@
         "g": 0.3,
         "r": 0.3
       },
-      "font_id": "Times-Roman",
+      "font_id": "Lato",
       "origin": {
         "x": 342.0,
         "y": 592.8

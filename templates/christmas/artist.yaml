@@ -280,6 +280,7 @@ panels:
         x: 2.125
         y: 0.5
         width: 3.75
+        font_family: "Caveat"  # handwritten script — fits the painterly "artist" aesthetic
         font_size: 22
         font_style: bold
         alignment: center
@@ -376,6 +377,7 @@ panels:
         x: 0.5
         y: 4.0
         width: 3.25
+        font_family: "Cormorant"  # editorial serif body, paired with Caveat cover
         font_size: 12
         alignment: left
         overflow_strategy: wrap

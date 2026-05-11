@@ -163,6 +163,7 @@ panels:
         x: 2.125
         y: 0.6
         width: 3.75
+        font_family: "Inter"  # modern variable sans, fits geometric aesthetic
         font_size: 24
         font_style: bold
         alignment: center
@@ -224,6 +225,7 @@ panels:
         x: 0.5
         y: 4.0
         width: 3.25
+        font_family: "Inter"  # consistent with cover greeting
         font_size: 12
         alignment: left
         overflow_strategy: wrap

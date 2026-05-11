@@ -65,7 +65,7 @@
         "g": 0.84,
         "r": 1.0
       },
-      "font_id": "Helvetica",
+      "font_id": "Inter",
       "origin": {
         "x": 459.0,
         "y": 198.0
@@ -193,7 +193,7 @@
         "g": 0.2,
         "r": 0.2
       },
-      "font_id": "Helvetica",
+      "font_id": "Inter",
       "origin": {
         "x": 342.0,
         "y": 684.0
@@ -213,7 +213,7 @@
         "g": 0.2,
         "r": 0.2
       },
-      "font_id": "Helvetica",
+      "font_id": "Inter",
       "origin": {
         "x": 342.0,
         "y": 669.6
