@@ -26,7 +26,7 @@ panels:
         x: 2.125  # Center of panel
         y: 2.75   # Middle of panel
         width: 3.75  # Leave 0.25" margin on each side
-        font_family: "Helvetica"
+        font_family: "PlayfairDisplay"  # curated display serif
         font_size: 36
         alignment: "center"
         overflow_strategy: "shrink"
@@ -79,7 +79,7 @@ panels:
         x: 0.5
         y: 3.0
         width: 3.25
-        font_family: "Helvetica"
+        font_family: "Cormorant"  # curated editorial serif (paired with PlayfairDisplay cover)
         font_size: 14
         overflow_strategy: "wrap"
         max_lines: 6

@@ -27,7 +27,9 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 __all__ = [
     "FONT_DIR",
+    "CURATED_FONT_DIR",
     "FONT_MAP",
+    "CURATED_FONTS",
     "ensure_default_fonts_registered",
     "resolve_font_id",
     "ttf_path_for",
@@ -38,6 +40,7 @@ logger = logging.getLogger(__name__)
 # Repo-relative fonts directory. Resolved at import time.
 # src/holiday_card/renderers/font_registry.py → ../../../fonts/
 FONT_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent / "fonts"
+CURATED_FONT_DIR: Path = FONT_DIR / "curated"
 
 # IR font_id (matches PDF base-14 conventional names) → (TTF filename, registered name).
 # The registered name is what gets passed to canvas.setFont() in the PDF
@@ -60,11 +63,44 @@ FONT_MAP: dict[str, tuple[str, str]] = {
     "Courier-BoldOblique":   ("LiberationMono-BoldItalic.ttf",   "LiberationMono-BoldItalic"),
 }
 
+
+# Curated fonts shipped with the project (Leapfrog 2). These are
+# *intentional* typeface choices — not the metric-equivalent
+# Liberation defaults — designed for greeting-card composition. The
+# panel's "curated font shipment" recommendation (consensus-general.md
+# Agreement 1) called for 6-8 curated open-source fonts in fonts/.
+#
+# IR font_id (the canonical short name templates reference) →
+# (TTF filename relative to CURATED_FONT_DIR, registered name).
+#
+# Pairing intent (templates can mix freely):
+#   * Cormorant — editorial / devotional serif (display + body)
+#   * PlayfairDisplay — high-contrast display serif (covers, accents)
+#   * Lato — friendly geometric sans (body, warm voice)
+#   * Inter — modern variable sans (body, modern voice; the only one
+#       with both opsz + wght axes)
+#   * Caveat — handwritten script (signatures, irreverent voice)
+#   * Comfortaa — rounded display (witty voice)
+#
+# Variable fonts (Cormorant, Inter, Caveat, PlayfairDisplay,
+# Comfortaa) load at their default weight in both ReportLab and
+# Pillow. A future PR can register specific weights as separate
+# font_ids if needed.
+CURATED_FONTS: dict[str, tuple[str, str]] = {
+    "Cormorant":       ("CormorantGaramond-Regular.ttf", "Cormorant"),
+    "PlayfairDisplay": ("PlayfairDisplay-Regular.ttf",   "PlayfairDisplay"),
+    "Lato":            ("Lato-Regular.ttf",              "Lato"),
+    "Lato-Bold":       ("Lato-Bold.ttf",                 "Lato-Bold"),
+    "Inter":           ("Inter-Regular.ttf",             "Inter"),
+    "Caveat":          ("Caveat-Regular.ttf",            "Caveat"),
+    "Comfortaa":       ("Comfortaa-Regular.ttf",         "Comfortaa"),
+}
+
 _registered: bool = False
 
 
 def ensure_default_fonts_registered() -> None:
-    """Register the default font chain with ReportLab. Idempotent.
+    """Register the default + curated font chains with ReportLab. Idempotent.
 
     Safe to call from every backend's ``render()`` and from every
     constructor — the second and subsequent calls are no-ops.
@@ -73,36 +109,52 @@ def ensure_default_fonts_registered() -> None:
     if _registered:
         return
     for font_id, (filename, reg_name) in FONT_MAP.items():
-        path = FONT_DIR / filename
-        if not path.exists():
-            logger.warning(
-                "Default font %s not found at %s; backend will fall back to %r.",
-                filename, path, font_id,
-            )
-            continue
-        try:
-            pdfmetrics.registerFont(TTFont(reg_name, str(path)))
-        except Exception as e:  # noqa: BLE001 — registration is best-effort
-            logger.warning("Failed to register font %s: %s", reg_name, e)
+        _try_register(reg_name, FONT_DIR / filename, font_id)
+    for font_id, (filename, reg_name) in CURATED_FONTS.items():
+        _try_register(reg_name, CURATED_FONT_DIR / filename, font_id)
     _registered = True
+
+
+def _try_register(reg_name: str, path: Path, font_id: str) -> None:
+    if not path.exists():
+        logger.warning(
+            "Font %s not found at %s; backend will fall back to %r.",
+            path.name, path, font_id,
+        )
+        return
+    try:
+        pdfmetrics.registerFont(TTFont(reg_name, str(path)))
+    except Exception as e:  # noqa: BLE001 — registration is best-effort
+        logger.warning("Failed to register font %s: %s", reg_name, e)
 
 
 def resolve_font_id(font_id: str) -> str:
     """Map an IR ``font_id`` to the registered ReportLab font name.
 
-    Returns the original ``font_id`` unchanged if it is not in the
-    default map (so custom fonts registered via ``font_file`` still
-    work). Returns the Liberation equivalent otherwise.
+    Curated fonts win over the Liberation default chain when a name
+    collides (currently no collision, but future-safe). Returns the
+    original ``font_id`` unchanged when it is not in either map (so
+    user-registered ``font_file`` paths still work).
     """
+    curated = CURATED_FONTS.get(font_id)
+    if curated:
+        return curated[1]
     entry = FONT_MAP.get(font_id)
     return entry[1] if entry else font_id
 
 
 def ttf_path_for(font_id: str) -> Path | None:
-    """Return the on-disk TTF path for a default font_id, or None if
-    not in the default map. Used by the PNG backend to give Pillow a
-    direct file path instead of relying on system font lookup.
+    """Return the on-disk TTF path for a registered font_id, or None.
+
+    Checks the curated chain first, then the Liberation default chain.
+    Used by the PNG backend to give Pillow a direct file path instead
+    of relying on system font lookup.
     """
+    curated = CURATED_FONTS.get(font_id)
+    if curated:
+        path = CURATED_FONT_DIR / curated[0]
+        if path.exists():
+            return path
     entry = FONT_MAP.get(font_id)
     if entry is None:
         return None

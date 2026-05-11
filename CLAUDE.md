@@ -21,7 +21,7 @@ pip install -e ".[dev]"            # one source of truth: pyproject.toml
 holiday-card create christmas-classic -m "Merry Christmas!"     # writes a PDF
 holiday-card create christmas-classic --format svg              # writes an SVG
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-pytest                              # all 482 tests, mypy-clean, ruff-clean
+pytest                              # all 506 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -99,7 +99,8 @@ templates/              # YAML card templates
   birthday/, hanukkah/, generic/
 themes/                 # Color theme YAML
 sentiments/             # Curated greeting copy: {occasion}/{voice}/{role}.yaml
-fonts/                  # Custom TTF/OTF fonts
+fonts/                  # Liberation default font chain (PDF base-14 substitutes)
+  curated/              # 6 curated open-source fonts (Cormorant, Playfair, Lato, Inter, Caveat, Comfortaa)
 specs/                  # Historical spec-kit feature plans (001-004; some describe deleted features)
 ```
 
@@ -234,6 +235,15 @@ template editing; a CMYK PDF wrapper for pro-press output; a JSON
 
 ## Recent changes
 
+- **2026-05-10 — Curated font shipment (Leapfrog 2, slice 2)**: Six SIL OFL
+  open-source fonts in `fonts/curated/` — Cormorant Garamond (editorial
+  serif), Playfair Display (display serif), Lato (friendly sans, regular +
+  bold), Inter (modern variable sans), Caveat (handwritten script),
+  Comfortaa (rounded display). `font_registry` consults a `CURATED_FONTS`
+  map alongside the Liberation default chain; `christmas-classic` is
+  updated as a demonstration (PlayfairDisplay cover + Cormorant body).
+  Existing templates referencing Helvetica/Times-Roman/Courier continue
+  to work unchanged.
 - **2026-05-10 — Sentiment library + `--voice` flag (Leapfrog 2, slice 1)**:
   Curated greeting copy organized as `sentiments/{occasion}/{voice}/{role}.yaml`
   for the five panel-recommended voices (warm, witty, spare, devotional,
