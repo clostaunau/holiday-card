@@ -26,7 +26,7 @@ holiday-card create christmas-classic --inside-message-md letter.md   # Markdown
 holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," --signature "C" --ps "PS hi"   # structured letter
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-pytest                              # all 643 tests, mypy-clean, ruff-clean
+pytest                              # all 653 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -122,8 +122,10 @@ fonts/                  # Liberation default font chain (PDF base-14 substitutes
   curated/              # 6 curated open-source fonts (Cormorant, Playfair, Lato, Inter, Caveat, Comfortaa)
 scripts/                # Stand-alone helpers used by CI/Actions
                         #   render_changed_templates.py — powers .github/workflows/render-cards.yml
+                        #   build_microsite.py — Leapfrog 5 template-gallery generator
 .github/workflows/      # CI: ci.yml (lint/type/test/smoke/build matrix)
                         #     render-cards.yml (PR-comment card previews)
+                        #     microsite.yml (build + deploy gallery to GitHub Pages)
 specs/                  # Historical spec-kit feature plans (001-004; some describe deleted features)
 docs/industry-review/   # Six critic personas + consensus docs that drive the roadmap
 ```
@@ -273,6 +275,26 @@ work already shipped.
 
 ## Recent changes
 
+- **2026-05-11 — Leapfrog 5: template-gallery microsite + GitHub Pages**:
+  Static site shipped: one HTML page per template (14 total) with a
+  form that builds a copy-paste-ready `holiday-card create ...`
+  command, plus a gallery index grouped by occasion. The Sandy
+  persona escape hatch the panel endorsed in
+  `docs/industry-review/consensus-general.md:163`. No backend, no
+  WASM build, no in-browser PDF generation — the site is a showcase
+  that surfaces the CLI's full surface (greeting / inside /
+  --voice / --salutation / --signoff / --signature / --ps /
+  --export-for moo-a6) as a friendly form. Vanilla CSS + JS only;
+  no Jinja2, no Tailwind, no React. New file
+  `scripts/build_microsite.py` generates the site; new workflow
+  `.github/workflows/microsite.yml` deploys to GitHub Pages on
+  every push to main. Photo-card templates render thumbnails via
+  `contextlib.chdir(tests/fixtures)` so the bundled
+  `sample_photo.jpg` is found at compile time. 10 new tests.
+  Completes the panel's named leapfrogs 1, 2 (engineering side),
+  4, and 5; only L3 (AI imagery — deferred per
+  `consensus-ai-feature.md`) and the L2 illustrator commission
+  (needs a human) remain.
 - **2026-05-11 — SVGPath compiler support + 14/14 templates compile**:
   Closes the last two dead christmas templates (holly-wreath,
   holiday-masterpiece). `_compile_svg_path` parses the path's `d`

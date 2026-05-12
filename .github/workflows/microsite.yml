@@ -1,0 +1,82 @@
+name: Build and deploy microsite
+
+# Builds the template-gallery microsite (Leapfrog 5) and publishes
+# it to GitHub Pages. The site is a static showcase: one page per
+# template with a form that builds a copy-paste-ready
+# `holiday-card create ...` command, hostable as plain files on
+# GitHub Pages.
+#
+# Trigger scope: pushes to main that touch anything affecting the
+# rendered output — templates, sentiments, fonts, themes, source
+# code, the build script, or this workflow itself. Manual trigger
+# also supported via workflow_dispatch.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "templates/**"
+      - "sentiments/**"
+      - "fonts/**"
+      - "themes/**"
+      - "src/**"
+      - "scripts/build_microsite.py"
+      - ".github/workflows/microsite.yml"
+  workflow_dispatch:
+
+# GitHub Pages deployment requires these permissions. ``id-token`` is
+# the OIDC handshake the deploy-pages action uses.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one site deployment at a time; cancel an in-flight build if
+# a newer commit arrives.
+concurrency:
+  group: "microsite"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build microsite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install holiday-card
+        run: pip install -e .
+
+      - name: Build static site
+        run: |
+          # ``_site`` is the path actions/upload-pages-artifact expects
+          # by default; using it keeps the next step zero-config.
+          python scripts/build_microsite.py --output _site
+          echo "::group::Built tree"
+          find _site -maxdepth 3 -type f | sort
+          echo "::endgroup::"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    # The deploy-pages action needs the environment for OIDC.
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
