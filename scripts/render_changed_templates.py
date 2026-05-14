@@ -99,26 +99,31 @@ def detect_affected_templates(changed_files: list[str]) -> list[str]:
 
 
 def _template_id_from_path(path: str) -> str | None:
-    """Convert ``templates/{occasion}/{stem}.yaml`` → template id.
+    """Read the template id from a YAML file path.
 
-    Mirrors the discovery logic in ``core/templates.py``: id is the
-    file's ``id:`` field. We can't read the file without parsing
-    YAML, but the convention across the shipped templates is
-    ``{occasion}-{stem}`` (with hyphens), so derive that and let the
-    rendering step surface mismatches.
+    Reads the file's ``id:`` field directly rather than guessing from
+    ``{occasion}-{stem}``. The path-to-id convention isn't strict:
+    ``mothers_day/classic.yaml`` ships as ``mothers-day``,
+    ``mothers_day/photo.yaml`` ships as ``mothers-day-photo``,
+    underscores in directory names don't map cleanly to hyphens in
+    ids. Treating the YAML as the source of truth eliminates the
+    divergence entirely.
     """
+    import yaml  # PyYAML is already a project dependency
+
     p = Path(path)
     parts = p.parts
-    if len(parts) < 3 or parts[0] != "templates":
+    if len(parts) < 3 or parts[0] != "templates" or p.suffix != ".yaml":
         return None
-    occasion = parts[1]
-    stem = p.stem
-    # Special case mirroring discover_templates output: mothers_day's
-    # "classic.yaml" file ships with id "mothers-day", not
-    # "mothers_day-classic". Other templates follow {occasion}-{stem}.
-    if occasion == "mothers_day" and stem == "classic":
-        return "mothers-day"
-    return f"{occasion}-{stem}"
+    try:
+        with open(p) as f:
+            data = yaml.safe_load(f)
+    except (yaml.YAMLError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    tid = data.get("id")
+    return tid if isinstance(tid, str) and tid else None
 
 
 def render_one(template_id: str, output_dir: Path, dpi: int = 144) -> Path:
@@ -127,15 +132,26 @@ def render_one(template_id: str, output_dir: Path, dpi: int = 144) -> Path:
     Uses the same compiler pipeline the CLI's ``preview`` command does.
     The PNG carries no message override — readers see the template's
     default content.
+
+    ``chdir``-s into ``tests/fixtures`` while compiling so photo-card
+    templates can resolve their relative ``sample_photo.jpg`` path
+    against a directory that contains the bundled sample. Same
+    pattern as ``scripts/build_microsite.py`` and
+    ``scripts/regenerate_visual_baselines.py``.
     """
+    import contextlib
+
     from holiday_card.core.compiler import compile_card
     from holiday_card.core.generators import CardGenerator
     from holiday_card.renderers.png_backend import PNGRenderer
 
+    fixtures_dir = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
+
     output_dir.mkdir(parents=True, exist_ok=True)
     out = output_dir / f"{template_id}.png"
-    card = CardGenerator().create_card(template_id=template_id)
-    cmds = compile_card(card)
+    with contextlib.chdir(fixtures_dir):
+        card = CardGenerator().create_card(template_id=template_id)
+        cmds = compile_card(card)
     PNGRenderer(dpi=dpi).render(cmds, out)
     return out
 
