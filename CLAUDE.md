@@ -1,7 +1,10 @@
 # holiday-card — Development Guidelines
 
-Last updated: 2026-05-10. Wave 2 architecture refactor is **complete**;
-Leapfrog 1 (POD prepress) is **complete**; the codebase is at v1.1.0
+Last updated: 2026-05-14. Wave 2 architecture refactor is **complete**.
+Of the five industry-panel leapfrogs, **L1 (POD prepress), L2-engineering
+(curated taste layer), L4 (cards-as-code identity), and L5 (template
+microsite) are shipped**; only L2-illustrator (needs a human contractor)
+and L3 (AI imagery — deferred to Q1 2027) remain. Codebase is at v1.1.0
 with all CI quality gates blocking.
 
 ## TL;DR for a fresh session
@@ -26,7 +29,7 @@ holiday-card create christmas-classic --inside-message-md letter.md   # Markdown
 holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," --signature "C" --ps "PS hi"   # structured letter
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-pytest                              # all 653 tests, mypy-clean, ruff-clean
+pytest                              # all 668 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -108,12 +111,14 @@ tests/
     __snapshots__/      # JSON snapshots of compile_card() output per template (8 files)
   integration/          # test_full_generation, test_svg_backend, test_png_backend,
                         #   test_per_panel_output, test_voice_flag, test_md_inside
-  visual/               # Reserved for future visual regression (no tests yet)
+  visual/               # Perceptual-hash regression gate over all 14 shipped templates
+                        #   (test_visual_regression.py); baselines in
+                        #   fixtures/reference_cards/. Regenerate via
+                        #   scripts/regenerate_visual_baselines.py.
 templates/              # YAML card templates
-  christmas/            # 10 templates: 4 compile (classic, geometric, modern, artist);
-                        #   6 demos still need gradient/pattern/SVGPath compiler support
-                        #   (festive-stripes, holiday-masterpiece, holly-wreath,
-                        #    metallic-ornaments, photo-ornament, winter-sky)
+  christmas/            # 10 templates, all compile cleanly: classic, geometric, modern,
+                        #   artist, festive-stripes, holiday-masterpiece, holly-wreath,
+                        #   metallic-ornaments, photo-ornament, winter-sky
   birthday/, hanukkah/, generic/, mothers_day/   # 1 template each, all compile cleanly
 themes/                 # Color theme YAML
 sentiments/             # Curated greeting copy: {occasion}/{voice}/{role}.yaml — 50 files
@@ -137,7 +142,7 @@ docs/industry-review/   # Six critic personas + consensus docs that drive the ro
 ```bash
 ruff check src/ tests/ scripts/   # Lint — must be clean
 mypy src/                         # Type-check — must be clean (strict mode)
-pytest                            # All 555 tests pass
+pytest                            # All 668 tests pass
 ```
 
 ### Card generation
@@ -231,13 +236,12 @@ The pattern that worked three times in PRs #7, #11, #12:
    `holiday-card create`, or via a new top-level command (like
    `preview` does for PNG).
 
-Beyond the panel's roadmap, speculative future backends:
-HTML/Canvas streaming over a websocket for live template editing; a
-JSON "render plan" backend for downstream tooling. A pro-press
-CMYK output (CMYK color space + GRACoL ICC profile + PDF/X-1a
-metadata) is **not** a speculative idea — it's the next planned
-slice of Leapfrog 1, sitting on top of the bleed and `--export-for`
-work already shipped.
+CMYK output is already shipped as a backend mode rather than a separate
+renderer: `IRReportLabRenderer(color_space="cmyk")` plus the pikepdf-based
+`renderers/pdfx_postprocess.py` produce DeviceCMYK PDF/X-1a:2003 when
+`--export-for moo-a6` is used. Beyond the panel's roadmap, speculative
+future backends: HTML/Canvas streaming over a websocket for live
+template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Code style
 
@@ -252,26 +256,28 @@ work already shipped.
 
 ## Known issues (good first tasks for a fresh session)
 
-- **Pending-compiler-support models in `models.py`:**
-  `LinearGradientFill`, `RadialGradientFill`, `PatternFill`,
-  `SVGPath`, `DecorativeElement`, and the clip-mask types are
-  imported by `core/templates.py` + `core/validators.py` and back
-  six shipped christmas demo YAMLs (`festive-stripes`,
-  `holiday-masterpiece`, `holly-wreath`, `metallic-ornaments`,
-  `photo-ornament`, `winter-sky`) plus the `clip_mask` field on
-  `ImageElement`. The compiler refuses them at render time
-  (`UnsupportedFeatureError`), so they look "dead" from a
-  user-visible perspective — but the data layer is load-bearing
-  groundwork. The right next step is wiring compiler support, not
-  pruning.
-- **Compiler feature gaps:** Adding `ImageElement` support would
-  re-enable photo cards (and is the prerequisite for Leapfrog 3 AI
-  imagery). Adding gradient + pattern fills would unlock the six
-  demo templates above.
-- **`tests/visual/` is empty:** A perceptual SSIM gate against a
-  committed baseline PNG per template would catch layout regressions
-  the structural tests miss. The PNG backend produces deterministic
-  output, so this is tractable.
+- **CI smoke job is narrow:** `.github/workflows/ci.yml` renders four
+  template PDFs but doesn't exercise `--voice` end-to-end or validate
+  the CMYK headers on `--export-for moo-a6` output. Both are
+  leapfrog-shipped features without a smoke-level gate.
+- **Out-of-scope compiler features (genuinely deferred, not bugs):**
+  SVG path arc commands (`A`/`a` — no shipped template uses arcs),
+  decorative-element expansion (Valentine-era; intentionally not
+  ported to the IR), photo `effects` / `frame_style`, Heart and
+  SVGPath clip masks, and `ImageElement` auto-sizing (width/height =
+  None). All raise `UnsupportedFeatureError` at compile time — the
+  "fail loud, not silent" convention.
+- **Dead model code in `models.py`:** `HeartClipMask`,
+  `DecorativeElement`, and friends were kept around when the
+  Valentine release was deprecated (PR #8) on the theory that the
+  data layer was load-bearing groundwork for a future port. Two-plus
+  releases later they remain unused by any shipped template or
+  compiler path. Removable; left in place is harmless but adds noise.
+- **L2 illustrator commission is the outstanding strategic item:**
+  Not a code task — the panel's recommendation in
+  `consensus-general.md` is to commission ~30 hand-illustrated SVG
+  motifs in one opinionated voice and migrate the shipped templates
+  to use them. Needs a contractor, not a PR.
 
 ## Recent changes
 
