@@ -29,7 +29,7 @@ holiday-card create christmas-classic --inside-message-md letter.md   # Markdown
 holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," --signature "C" --ps "PS hi"   # structured letter
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-pytest                              # all 671 tests, mypy-clean, ruff-clean
+pytest                              # all 712 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -144,7 +144,7 @@ docs/industry-review/   # Six critic personas + consensus docs that drive the ro
 ```bash
 ruff check src/ tests/ scripts/   # Lint — must be clean
 mypy src/                         # Type-check — must be clean (strict mode)
-pytest                            # All 671 tests pass
+pytest                            # All 712 tests pass
 ```
 
 ### Card generation

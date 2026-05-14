@@ -1,17 +1,18 @@
 """Integration tests for the SVG backend.
 
-Renders every Wave 2-supported template through the SVG backend and
-verifies the output is syntactically valid XML with the expected
-structural shape (``<svg>`` root, expected element counts).
+Renders every shipped template through the SVG backend and verifies
+the output is syntactically valid XML with the expected structural
+shape (``<svg>`` root, expected element counts).
 
 A perceptual SVG-vs-PDF parity test would require rasterizing both
-formats — out of scope for this PR. The structural checks here are
-sufficient to prove the backend works end-to-end without silently
-dropping content.
+formats — out of scope here. The structural checks here are sufficient
+to prove the backend works end-to-end without silently dropping
+content.
 """
 
 from __future__ import annotations
 
+import contextlib
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -21,25 +22,43 @@ from holiday_card.core.compiler import compile_card
 from holiday_card.core.generators import CardGenerator
 from holiday_card.renderers.svg_backend import SVGRenderer
 
-# Same set as the compiler snapshot suite (PR #6); kept in sync because
-# the SVG backend supports exactly what the compiler emits.
+_FIXTURES = Path(__file__).parent.parent / "fixtures"
+
+# Every shipped template; mirrors ``test_png_backend.py``'s
+# ``PNG_TEMPLATES``. ``tests/unit/test_compiler.py``'s
+# ``SUPPORTED_SNAPSHOT_TEMPLATES`` is a strict subset (excludes
+# photo templates whose IR carries machine-absolute paths).
 SVG_TEMPLATES = (
     "christmas-classic",
     "christmas-geometric",
     "christmas-modern",
     "christmas-artist",
+    "christmas-festive-stripes",
+    "christmas-holiday-masterpiece",
+    "christmas-holly-wreath",
+    "christmas-metallic-ornaments",
+    "christmas-winter-sky",
+    "christmas-photo-ornament",
+    "christmas-family-photo",
     "birthday-balloons",
+    "birthday-photo",
     "hanukkah-menorah",
     "generic-celebration",
     "mothers-day",
+    "mothers-day-photo",
 )
 
 _SVG_NS = "http://www.w3.org/2000/svg"
 
 
 def _render_svg(template_id: str, output_path: Path) -> None:
-    card = CardGenerator().create_card(template_id=template_id)
-    commands = compile_card(card)
+    """``chdir`` into ``tests/fixtures`` so photo-card templates can
+    resolve relative ``sample_photo.jpg`` paths. Same pattern as the
+    PNG backend tests, the visual-regression suite, and the microsite
+    build."""
+    with contextlib.chdir(_FIXTURES):
+        card = CardGenerator().create_card(template_id=template_id)
+        commands = compile_card(card)
     SVGRenderer().render(commands, output_path)
 
 
