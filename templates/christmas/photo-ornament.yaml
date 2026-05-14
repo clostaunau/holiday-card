@@ -51,15 +51,17 @@ panels:
         fill_color: "#C0C0C0"
         z_index: 12
 
-      # Ornament border (outer circle)
+      # Ornament border (outer circle) — stroke-only so the
+      # underlying clipped photo shows through. ``opacity: 0`` here
+      # used to silently render solid white over the photo because the
+      # PNG backend's RGB canvas drops alpha; the right way to get
+      # "no fill" is to omit ``fill_color`` entirely.
       - type: circle
         center_x: 2.125
         center_y: 2.75
         radius: 1.6
         stroke_color: "#FFD700"
         stroke_width: 8
-        fill_color: "#FFFFFF"
-        opacity: 0.0
         z_index: 5
 
       # Decorative corners - stars
@@ -129,7 +131,7 @@ panels:
       b: 0.95
 
     shape_elements:
-      # Star frame border
+      # Star frame border — stroke-only (see ornament-border note above)
       - type: star
         center_x: 2.125
         center_y: 2.75
@@ -138,8 +140,6 @@ panels:
         points: 5
         stroke_color: "#DAA520"
         stroke_width: 6
-        fill_color: "#FFFFFF"
-        opacity: 0.0
         z_index: 5
 
     # Star-shaped photo clipping mask
@@ -188,15 +188,13 @@ panels:
       b: 0.95
 
     shape_elements:
-      # Small circular frames
+      # Small circular frames — stroke-only (see ornament-border note above)
       - type: circle
         center_x: 1.2
         center_y: 4.0
         radius: 0.65
         stroke_color: "#B85C50"
         stroke_width: 4
-        fill_color: "#FFFFFF"
-        opacity: 0.0
         z_index: 5
 
       - type: circle
@@ -205,8 +203,6 @@ panels:
         radius: 0.65
         stroke_color: "#B85C50"
         stroke_width: 4
-        fill_color: "#FFFFFF"
-        opacity: 0.0
         z_index: 5
 
       - type: circle
@@ -215,8 +211,6 @@ panels:
         radius: 0.65
         stroke_color: "#B85C50"
         stroke_width: 4
-        fill_color: "#FFFFFF"
-        opacity: 0.0
         z_index: 5
 
     image_elements:
