@@ -1,0 +1,143 @@
+# Christmas Family Photo Card
+# Modern half-fold card: large rectangle-clipped cover photo, restrained
+# typography. Designed to compose with --voice / --inside-message /
+# letter flags — the inside-right "message" slot carries a generic
+# default that those flags override.
+
+id: "christmas-family-photo"
+name: "Christmas Family Photo"
+occasion: "christmas"
+fold_type: "half_fold"
+default_theme_id: "christmas-red-green"
+description: "Modern family photo card with a large rectangular cover photo and restrained typography"
+
+panels:
+  # Front panel (right half, bottom — visible when folded)
+  - id: "front"
+    position: "front"
+    x: 4.25
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.98
+      g: 0.96
+      b: 0.92  # warm cream
+    shape_elements:
+      # Matte backdrop behind the photo — slightly larger rectangle in
+      # deep forest green; gives the photo a printed-mounted feel.
+      - type: rectangle
+        x: 0.55
+        y: 1.65
+        width: 3.15
+        height: 3.15
+        fill_color: "#1F3A2E"
+        z_index: 1
+      # Hairline accent rule under the greeting
+      - type: rectangle
+        x: 1.625
+        y: 0.85
+        width: 1.0
+        height: 0.015
+        fill_color: "#1F3A2E"
+        opacity: 0.55
+        z_index: 2
+
+    image_elements:
+      # Rectangle-clipped cover photo. sample_photo.jpg is a placeholder
+      # the photo-ornament template also uses; in real use the
+      # holiday-card consumer points --photo (future flag) or edits the
+      # source_path here to their own JPG.
+      - source_path: "sample_photo.jpg"
+        x: 0.65
+        y: 1.75
+        width: 2.95
+        height: 2.95
+        clip_mask:
+          type: rectangle
+          x: 0.65
+          y: 1.75
+          width: 2.95
+          height: 2.95
+        z_index: 3
+
+    text_elements:
+      - id: "greeting"
+        content: "Merry Christmas"
+        x: 2.125
+        y: 1.05
+        width: 3.75
+        font_family: "Inter"  # modern geometric sans for the contemporary aesthetic
+        font_size: 26
+        alignment: "center"
+        overflow_strategy: "shrink"
+        min_font_size: 14
+        color:
+          r: 0.12
+          g: 0.23
+          b: 0.18  # deep forest green to echo the matte
+      - id: "subtitle"
+        content: "from our family to yours"
+        x: 2.125
+        y: 0.55
+        width: 3.5
+        font_family: "Lato"  # friendly geometric body sans pairs with Inter
+        font_size: 12
+        font_style: "italic"
+        alignment: "center"
+        color:
+          r: 0.40
+          g: 0.40
+          b: 0.40
+
+  # Back panel (left half, bottom — blank cream)
+  - id: "back"
+    position: "back"
+    x: 0
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.98
+      g: 0.96
+      b: 0.92
+
+  # Inside left (left half, top — blank cream)
+  - id: "inside_left"
+    position: "inside_left"
+    x: 0
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180  # half-fold imposition
+    background_color:
+      r: 0.98
+      g: 0.96
+      b: 0.92
+
+  # Inside right (right half, top — message slot)
+  - id: "inside_right"
+    position: "inside_right"
+    x: 4.25
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180  # half-fold imposition
+    background_color:
+      r: 0.98
+      g: 0.96
+      b: 0.92
+    text_elements:
+      - id: "message"
+        content: "Wishing your home warmth, your table abundance, and your hearts joy this Christmas."
+        x: 0.5
+        y: 2.7
+        width: 3.25
+        font_family: "Lato"
+        font_size: 14
+        overflow_strategy: "wrap"
+        max_lines: 6
+        color:
+          r: 0.20
+          g: 0.20
+          b: 0.20

@@ -1,0 +1,192 @@
+# Birthday Photo Card
+# Playful half-fold: circle-clipped cover photo, confetti accents,
+# Comfortaa + Caveat pairing. Inside-right message composes with
+# --voice / letter flags.
+
+id: "birthday-photo"
+name: "Birthday Photo"
+occasion: "birthday"
+fold_type: "half_fold"
+default_theme_id: "birthday-pastel"
+description: "Cheerful birthday photo card with a circular portrait and confetti accents"
+
+panels:
+  # Front panel (right half, bottom — visible when folded)
+  - id: "front"
+    position: "front"
+    x: 4.25
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.99
+      g: 0.97
+      b: 0.92  # warm cream
+    shape_elements:
+      # Confetti — scattered small filled shapes around the photo
+      - type: circle
+        center_x: 0.45
+        center_y: 4.95
+        radius: 0.07
+        fill_color: "#F4B400"
+        opacity: 0.75
+        z_index: 1
+      - type: circle
+        center_x: 3.80
+        center_y: 4.85
+        radius: 0.06
+        fill_color: "#DB4437"
+        opacity: 0.75
+        z_index: 1
+      - type: circle
+        center_x: 0.55
+        center_y: 1.50
+        radius: 0.05
+        fill_color: "#0F9D58"
+        opacity: 0.75
+        z_index: 1
+      - type: circle
+        center_x: 3.70
+        center_y: 1.25
+        radius: 0.06
+        fill_color: "#4285F4"
+        opacity: 0.70
+        z_index: 1
+      - type: circle
+        center_x: 0.40
+        center_y: 0.50
+        radius: 0.06
+        fill_color: "#F06292"
+        opacity: 0.75
+        z_index: 1
+      - type: circle
+        center_x: 3.55
+        center_y: 0.40
+        radius: 0.05
+        fill_color: "#7E57C2"
+        opacity: 0.75
+        z_index: 1
+      # Confetti rectangles for variety
+      - type: rectangle
+        x: 1.0
+        y: 4.85
+        width: 0.05
+        height: 0.18
+        fill_color: "#F4B400"
+        rotation: 30
+        opacity: 0.65
+        z_index: 1
+      - type: rectangle
+        x: 3.1
+        y: 4.95
+        width: 0.05
+        height: 0.18
+        fill_color: "#0F9D58"
+        rotation: 60
+        opacity: 0.65
+        z_index: 1
+      # Photo frame ring — slightly larger circle behind the clip,
+      # gives the portrait a "framed" feel without a heavy border.
+      - type: circle
+        center_x: 2.125
+        center_y: 3.35
+        radius: 1.58
+        fill_color: "#F06292"
+        opacity: 0.18
+        z_index: 2
+
+    image_elements:
+      - source_path: "sample_photo.jpg"
+        x: 0.625
+        y: 1.85
+        width: 3.0
+        height: 3.0
+        clip_mask:
+          type: circle
+          center_x: 2.125
+          center_y: 3.35
+          radius: 1.5
+        z_index: 3
+
+    text_elements:
+      - id: "greeting"
+        content: "Happy Birthday"
+        x: 2.125
+        y: 1.0
+        width: 3.75
+        font_family: "Comfortaa"  # rounded display feels celebratory
+        font_size: 28
+        font_style: "bold"
+        alignment: "center"
+        overflow_strategy: "shrink"
+        min_font_size: 14
+        color:
+          r: 0.40
+          g: 0.15
+          b: 0.55  # rich purple — matches the balloon template
+      - id: "subtitle"
+        content: "cheers to another year"
+        x: 2.125
+        y: 0.55
+        width: 3.5
+        font_family: "Caveat"
+        font_size: 15
+        font_style: "italic"
+        alignment: "center"
+        color:
+          r: 0.50
+          g: 0.30
+          b: 0.60
+
+  # Back panel
+  - id: "back"
+    position: "back"
+    x: 0
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.99
+      g: 0.97
+      b: 0.92
+
+  # Inside left
+  - id: "inside_left"
+    position: "inside_left"
+    x: 0
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180  # half-fold imposition
+    background_color:
+      r: 0.99
+      g: 0.97
+      b: 0.92
+
+  # Inside right — message slot
+  - id: "inside_right"
+    position: "inside_right"
+    x: 4.25
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180  # half-fold imposition
+    background_color:
+      r: 0.99
+      g: 0.97
+      b: 0.92
+    text_elements:
+      - id: "message"
+        content: "Wishing you another year as wonderful as you are."
+        x: 0.5
+        y: 2.8
+        width: 3.25
+        font_family: "Lato"
+        font_size: 14
+        font_style: "italic"
+        overflow_strategy: "wrap"
+        max_lines: 6
+        color:
+          r: 0.30
+          g: 0.30
+          b: 0.30

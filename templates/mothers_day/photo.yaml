@@ -1,0 +1,159 @@
+# Mother's Day Photo Card
+# Soft-elegance half-fold: ellipse-clipped cover photo gives a vintage
+# cameo feel, Playfair Display + Caveat pairing carries the affection.
+# Inside-right is laid out for the structured letter flags
+# (--salutation / --signoff / --signature / --ps) — heading slot leaves
+# room for the salutation, body for a personal note.
+
+id: "mothers-day-photo"
+name: "Mother's Day Photo"
+occasion: "mothers_day"
+fold_type: "half_fold"
+default_theme_id: "generic-celebration"
+description: "Soft floral Mother's Day photo card with an ellipse-clipped portrait and handwritten accent"
+
+panels:
+  # Front panel (right half, bottom — visible when folded)
+  - id: "front"
+    position: "front"
+    x: 4.25
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.98
+      g: 0.91
+      b: 0.92  # blush
+    shape_elements:
+      # Soft rose accents in three corners — same palette as the
+      # mothers-day classic template, intentional family resemblance.
+      - type: circle
+        center_x: 0.55
+        center_y: 5.05
+        radius: 0.28
+        fill_color: "#E89BA6"
+        opacity: 0.45
+        z_index: 1
+      - type: circle
+        center_x: 3.75
+        center_y: 4.95
+        radius: 0.22
+        fill_color: "#D87C8A"
+        opacity: 0.55
+        z_index: 1
+      - type: circle
+        center_x: 0.65
+        center_y: 0.55
+        radius: 0.18
+        fill_color: "#D87C8A"
+        opacity: 0.50
+        z_index: 1
+      # Hairline rule under the greeting
+      - type: rectangle
+        x: 1.625
+        y: 0.95
+        width: 1.0
+        height: 0.012
+        fill_color: "#A03050"
+        opacity: 0.55
+        z_index: 2
+
+    image_elements:
+      # Ellipse-clipped portrait — vertical orientation gives a vintage
+      # cameo silhouette. The bounding rectangle is square-ish; the clip
+      # narrows it.
+      - source_path: "sample_photo.jpg"
+        x: 0.825
+        y: 1.55
+        width: 2.6
+        height: 3.4
+        clip_mask:
+          type: ellipse
+          center_x: 2.125
+          center_y: 3.25
+          radius_x: 1.0
+          radius_y: 1.55
+        z_index: 3
+
+    text_elements:
+      - id: "greeting"
+        content: "Happy Mother's Day"
+        x: 2.125
+        y: 1.15
+        width: 3.75
+        font_family: "PlayfairDisplay"  # editorial display serif matches the elegant cameo
+        font_size: 26
+        font_style: "italic"
+        alignment: "center"
+        overflow_strategy: "shrink"
+        min_font_size: 14
+        color:
+          r: 0.55
+          g: 0.20
+          b: 0.30  # deep rose
+      - id: "subtitle"
+        content: "with love"
+        x: 2.125
+        y: 0.55
+        width: 3.0
+        font_family: "Caveat"  # handwritten script for the affectionate accent
+        font_size: 16
+        font_style: "italic"
+        alignment: "center"
+        color:
+          r: 0.55
+          g: 0.20
+          b: 0.30
+
+  # Back panel (left half, bottom — blank blush)
+  - id: "back"
+    position: "back"
+    x: 0
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 1.0
+      g: 0.98
+      b: 0.98
+
+  # Inside left (left half, top — blank cream)
+  - id: "inside_left"
+    position: "inside_left"
+    x: 0
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180  # half-fold imposition
+    background_color:
+      r: 1.0
+      g: 0.98
+      b: 0.98
+
+  # Inside right (right half, top — letter slot)
+  - id: "inside_right"
+    position: "inside_right"
+    x: 4.25
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180  # half-fold imposition
+    background_color:
+      r: 1.0
+      g: 0.98
+      b: 0.98
+    text_elements:
+      - id: "message"
+        content: "Thank you for everything, Mom."
+        x: 0.5
+        y: 2.7
+        width: 3.25
+        font_family: "Lato"  # warm geometric body sans
+        font_size: 14
+        font_style: "italic"
+        overflow_strategy: "wrap"
+        max_lines: 6
+        color:
+          r: 0.55
+          g: 0.20
+          b: 0.30

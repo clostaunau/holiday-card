@@ -29,7 +29,7 @@ holiday-card create christmas-classic --inside-message-md letter.md   # Markdown
 holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," --signature "C" --ps "PS hi"   # structured letter
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-pytest                              # all 668 tests, mypy-clean, ruff-clean
+pytest                              # all 671 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -111,15 +111,17 @@ tests/
     __snapshots__/      # JSON snapshots of compile_card() output per template (8 files)
   integration/          # test_full_generation, test_svg_backend, test_png_backend,
                         #   test_per_panel_output, test_voice_flag, test_md_inside
-  visual/               # Perceptual-hash regression gate over all 14 shipped templates
+  visual/               # Perceptual-hash regression gate over all 17 shipped templates
                         #   (test_visual_regression.py); baselines in
                         #   fixtures/reference_cards/. Regenerate via
                         #   scripts/regenerate_visual_baselines.py.
 templates/              # YAML card templates
-  christmas/            # 10 templates, all compile cleanly: classic, geometric, modern,
+  christmas/            # 11 templates, all compile cleanly: classic, geometric, modern,
                         #   artist, festive-stripes, holiday-masterpiece, holly-wreath,
-                        #   metallic-ornaments, photo-ornament, winter-sky
-  birthday/, hanukkah/, generic/, mothers_day/   # 1 template each, all compile cleanly
+                        #   metallic-ornaments, photo-ornament, winter-sky, family-photo
+  birthday/             # balloons + photo
+  mothers_day/          # classic + photo
+  hanukkah/, generic/   # 1 template each, all compile cleanly
 themes/                 # Color theme YAML
 sentiments/             # Curated greeting copy: {occasion}/{voice}/{role}.yaml — 50 files
                         #   covering 5 occasions × 5 voices × 2 roles, ~250 lines total
@@ -142,7 +144,7 @@ docs/industry-review/   # Six critic personas + consensus docs that drive the ro
 ```bash
 ruff check src/ tests/ scripts/   # Lint — must be clean
 mypy src/                         # Type-check — must be clean (strict mode)
-pytest                            # All 668 tests pass
+pytest                            # All 671 tests pass
 ```
 
 ### Card generation
@@ -192,7 +194,7 @@ rich text (paragraphs + **bold**) + structured letter parts
 circle / rectangle / ellipse / star clip masks, fold lines, identity
 or rotation-only group transforms, and **bleed extension** on edges
 that touch the page trim (default 0.125", set per Card via
-`card.bleed` or per Panel via `panel.bleed`). **All 14 shipped
+`card.bleed` or per Panel via `panel.bleed`). **All 17 shipped
 templates currently compile cleanly:**
 
 ```
@@ -200,8 +202,10 @@ christmas-classic         christmas-geometric        christmas-modern
 christmas-artist          christmas-photo-ornament   christmas-holly-wreath
 christmas-winter-sky      christmas-metallic-ornaments
 christmas-festive-stripes christmas-holiday-masterpiece
-birthday-balloons         hanukkah-menorah
-generic-celebration       mothers-day
+christmas-family-photo
+birthday-balloons         birthday-photo
+hanukkah-menorah          generic-celebration
+mothers-day               mothers-day-photo
 ```
 
 Remaining gaps (out-of-scope features, each raises
