@@ -88,6 +88,33 @@ jobs:
           test -s out/birthday.pdf
           test -s out/hanukkah.pdf
           test -s out/generic.pdf
+      - name: every --voice resolves and renders
+        # Catches packaging regressions on the sentiment library and
+        # the --voice CLI wiring. Deep voice-resolution behavior is
+        # covered by tests/integration/test_voice_flag.py.
+        run: |
+          mkdir -p out/voices
+          for voice in warm witty spare devotional irreverent; do
+            holiday-card create christmas-classic --voice "$voice" --seed 42 \
+              -o "out/voices/$voice.pdf"
+            test -s "out/voices/$voice.pdf"
+          done
+          ls -la out/voices/
+      - name: --export-for moo-a6 emits four panel PDFs at PDF/X-1a header
+        # Catches packaging regressions on the pikepdf-based PDF/X-1a
+        # post-processor and the moo-a6 export target. Deep PDF/X-1a
+        # conformance is covered by tests/integration/test_pdfx_moo_a6.py;
+        # the cheap header check here confirms the post-processor
+        # actually ran (default PDFs are 1.7; only the moo-a6 path
+        # rewrites the header down to 1.4).
+        run: |
+          mkdir -p out/moo
+          holiday-card create christmas-classic --export-for moo-a6 -o out/moo/
+          ls -la out/moo/
+          for panel in front back inside-left inside-right; do
+            test -s "out/moo/$panel.pdf"
+          done
+          head -c 8 out/moo/front.pdf | grep -q '%PDF-1.4'
 
   build:
     name: Build sdist + wheel
