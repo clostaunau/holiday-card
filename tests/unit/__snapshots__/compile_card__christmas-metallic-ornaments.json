@@ -1,0 +1,814 @@
+[
+  {
+    "bleed": 9.0,
+    "cmd": "begin_page",
+    "height": 792.0,
+    "safe_margin": 18.0,
+    "width": 612.0
+  },
+  {
+    "cmd": "set_metadata",
+    "key": "template_id",
+    "value": "christmas-metallic-ornaments"
+  },
+  {
+    "cmd": "set_metadata",
+    "key": "fold_type",
+    "value": "half_fold"
+  },
+  {
+    "cmd": "set_metadata",
+    "key": "theme_id",
+    "value": "christmas-gold-burgundy"
+  },
+  {
+    "cmd": "begin_group",
+    "opacity": 1.0,
+    "transform": {
+      "rotate_deg": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "translate_x": 0.0,
+      "translate_y": 0.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.18,
+        "g": 0.15,
+        "r": 0.12
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 405.0,
+      "kind": "rect",
+      "width": 315.0,
+      "x": 306.0,
+      "y": -9.0
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": null,
+    "geometry": {
+      "kind": "polyline",
+      "points": [
+        {
+          "x": 363.59999999999997,
+          "y": 396.0
+        },
+        {
+          "x": 363.59999999999997,
+          "y": 302.40000000000003
+        }
+      ]
+    },
+    "opacity": 1.0,
+    "stroke": {
+      "color": {
+        "a": 1.0,
+        "b": 0.7529411764705882,
+        "g": 0.7529411764705882,
+        "r": 0.7529411764705882
+      },
+      "dash": [],
+      "line_cap": "butt",
+      "width": 1.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": null,
+    "geometry": {
+      "kind": "polyline",
+      "points": [
+        {
+          "x": 459.0,
+          "y": 396.0
+        },
+        {
+          "x": 459.0,
+          "y": 273.59999999999997
+        }
+      ]
+    },
+    "opacity": 1.0,
+    "stroke": {
+      "color": {
+        "a": 1.0,
+        "b": 0.7529411764705882,
+        "g": 0.7529411764705882,
+        "r": 0.7529411764705882
+      },
+      "dash": [],
+      "line_cap": "butt",
+      "width": 1.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": null,
+    "geometry": {
+      "kind": "polyline",
+      "points": [
+        {
+          "x": 554.4,
+          "y": 396.0
+        },
+        {
+          "x": 554.4,
+          "y": 324.0
+        }
+      ]
+    },
+    "opacity": 1.0,
+    "stroke": {
+      "color": {
+        "a": 1.0,
+        "b": 0.7529411764705882,
+        "g": 0.7529411764705882,
+        "r": 0.7529411764705882
+      },
+      "dash": [],
+      "line_cap": "butt",
+      "width": 1.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "center": {
+        "x": 399.59999999999997,
+        "y": 129.6
+      },
+      "kind": "radial_gradient",
+      "radius": 25.2,
+      "stops": [
+        {
+          "color": {
+            "a": 1.0,
+            "b": 0.5490196078431373,
+            "g": 0.9019607843137255,
+            "r": 0.9411764705882353
+          },
+          "position": 0.0
+        },
+        {
+          "color": {
+            "a": 1.0,
+            "b": 0.12549019607843137,
+            "g": 0.6470588235294118,
+            "r": 0.8549019607843137
+          },
+          "position": 0.5
+        },
+        {
+          "color": {
+            "a": 1.0,
+            "b": 0.043137254901960784,
+            "g": 0.5254901960784314,
+            "r": 0.7215686274509804
+          },
+          "position": 1.0
+        }
+      ]
+    },
+    "geometry": {
+      "center": {
+        "x": 399.59999999999997,
+        "y": 129.6
+      },
+      "kind": "circle",
+      "radius": 25.2
+    },
+    "opacity": 0.6,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "center": {
+        "x": 522.0,
+        "y": 108.0
+      },
+      "kind": "radial_gradient",
+      "radius": 21.599999999999998,
+      "stops": [
+        {
+          "color": {
+            "a": 1.0,
+            "b": 0.4980392156862745,
+            "g": 0.4980392156862745,
+            "r": 1.0
+          },
+          "position": 0.0
+        },
+        {
+          "color": {
+            "a": 1.0,
+            "b": 0.3607843137254902,
+            "g": 0.3607843137254902,
+            "r": 0.803921568627451
+          },
+          "position": 0.5
+        },
+        {
+          "color": {
+            "a": 1.0,
+            "b": 0.22745098039215686,
+            "g": 0.22745098039215686,
+            "r": 0.5450980392156862
+          },
+          "position": 1.0
+        }
+      ]
+    },
+    "geometry": {
+      "center": {
+        "x": 522.0,
+        "y": 108.0
+      },
+      "kind": "circle",
+      "radius": 21.599999999999998
+    },
+    "opacity": 0.5,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "center": {
+        "x": 363.59999999999997,
+        "y": 252.0
+      },
+      "kind": "radial_gradient",
+      "radius": 43.199999999999996,
+      "stops": [
+        {
+          "color": {
+            "a": 1.0,
+            "b": 0.8627450980392157,
+            "g": 0.9725490196078431,
+            "r": 1.0
+          },
+          "position": 0.0
+        },
+        {
+          "color": {
+            "a": 1.0,
+            "b": 0.0,
+            "g": 0.8431372549019608,
+            "r": 1.0
+          },
+          "position": 0.3
+        },
+        {
+          "color": {
+            "a": 1.0,
+            "b": 0.12549019607843137,
+            "g": 0.6470588235294118,
+            "r": 0.8549019607843137
+          },
+          "position": 0.7
+        },
+        {
+          "color": {
+            "a": 1.0,
+            "b": 0.0784313725490196,
+            "g": 0.4117647058823529,
+            "r": 0.5450980392156862
+          },
+          "position": 1.0
+        }
+      ]
+    },
+    "geometry": {
+      "center": {
+        "x": 363.59999999999997,
+        "y": 252.0
+      },
+      "kind": "circle",
+      "radius": 43.199999999999996
+    },
+    "opacity": 1.0,
+    "stroke": {
+      "color": {
+        "a": 1.0,
+        "b": 0.12941176470588237,
+        "g": 0.2627450980392157,
+        "r": 0.396078431372549
+      },
+      "dash": [],
+      "line_cap": "butt",
+      "width": 1.5
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "center": {
+        "x": 459.0,
+        "y": 201.6
+      },
+      "kind": "radial_gradient",
+      "radius": 54.0,
+      "stops": [
+        {
+          "color": {
+            "a": 1.0,
+            "b": 0.7568627450980392,
+            "g": 0.7137254901960784,
+            "r": 1.0
+          },
+          "position": 0.0
+        },
+        {
+          "color": {
+            "a": 1.0,
+            "b": 0.23529411764705882,
+            "g": 0.0784313725490196,
+            "r": 0.8627450980392157
+          },
+          "position": 0.2
+        },
+        {
+          "color": {
+            "a": 1.0,
+            "b": 0.13333333333333333,
+            "g": 0.13333333333333333,
+            "r": 0.6980392156862745
+          },
+          "position": 0.6
+        },
+        {
+          "color": {
+            "a": 1.0,
+            "b": 0.0,
+            "g": 0.0,
+            "r": 0.5450980392156862
+          },
+          "position": 1.0
+        }
+      ]
+    },
+    "geometry": {
+      "center": {
+        "x": 459.0,
+        "y": 201.6
+      },
+      "kind": "circle",
+      "radius": 54.0
+    },
+    "opacity": 1.0,
+    "stroke": {
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.0,
+        "r": 0.2901960784313726
+      },
+      "dash": [],
+      "line_cap": "butt",
+      "width": 2.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "center": {
+        "x": 554.4,
+        "y": 273.59999999999997
+      },
+      "kind": "radial_gradient",
+      "radius": 46.800000000000004,
+      "stops": [
+        {
+          "color": {
+            "a": 1.0,
+            "b": 1.0,
+            "g": 0.9725490196078431,
+            "r": 0.9725490196078431
+          },
+          "position": 0.0
+        },
+        {
+          "color": {
+            "a": 1.0,
+            "b": 0.8784313725490196,
+            "g": 0.8784313725490196,
+            "r": 0.8784313725490196
+          },
+          "position": 0.25
+        },
+        {
+          "color": {
+            "a": 1.0,
+            "b": 0.7529411764705882,
+            "g": 0.7529411764705882,
+            "r": 0.7529411764705882
+          },
+          "position": 0.6
+        },
+        {
+          "color": {
+            "a": 1.0,
+            "b": 0.6627450980392157,
+            "g": 0.6627450980392157,
+            "r": 0.6627450980392157
+          },
+          "position": 0.85
+        },
+        {
+          "color": {
+            "a": 1.0,
+            "b": 0.4117647058823529,
+            "g": 0.4117647058823529,
+            "r": 0.4117647058823529
+          },
+          "position": 1.0
+        }
+      ]
+    },
+    "geometry": {
+      "center": {
+        "x": 554.4,
+        "y": 273.59999999999997
+      },
+      "kind": "circle",
+      "radius": 46.800000000000004
+    },
+    "opacity": 1.0,
+    "stroke": {
+      "color": {
+        "a": 1.0,
+        "b": 0.3137254901960784,
+        "g": 0.3137254901960784,
+        "r": 0.3137254901960784
+      },
+      "dash": [],
+      "line_cap": "butt",
+      "width": 1.5
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.7529411764705882,
+        "g": 0.7529411764705882,
+        "r": 0.7529411764705882
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 10.799999999999999,
+      "kind": "rect",
+      "width": 14.4,
+      "x": 356.40000000000003,
+      "y": 295.2
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.7529411764705882,
+        "g": 0.7529411764705882,
+        "r": 0.7529411764705882
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 10.799999999999999,
+      "kind": "rect",
+      "width": 14.4,
+      "x": 451.8,
+      "y": 255.6
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.7529411764705882,
+        "g": 0.7529411764705882,
+        "r": 0.7529411764705882
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 10.799999999999999,
+      "kind": "rect",
+      "width": 14.4,
+      "x": 547.1999999999999,
+      "y": 320.40000000000003
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.803921568627451,
+        "g": 0.9803921568627451,
+        "r": 1.0
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "kind": "polygon",
+      "points": [
+        {
+          "x": 342.0,
+          "y": 331.2
+        },
+        {
+          "x": 339.4544155877284,
+          "y": 326.5455844122716
+        },
+        {
+          "x": 334.8,
+          "y": 324.0
+        },
+        {
+          "x": 339.4544155877284,
+          "y": 321.4544155877284
+        },
+        {
+          "x": 342.0,
+          "y": 316.8
+        },
+        {
+          "x": 344.5455844122716,
+          "y": 321.4544155877284
+        },
+        {
+          "x": 349.2,
+          "y": 324.0
+        },
+        {
+          "x": 344.5455844122716,
+          "y": 326.5455844122716
+        }
+      ]
+    },
+    "opacity": 0.8,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.803921568627451,
+        "g": 0.9803921568627451,
+        "r": 1.0
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "kind": "polygon",
+      "points": [
+        {
+          "x": 579.6,
+          "y": 207.35999999999999
+        },
+        {
+          "x": 577.5635324701827,
+          "y": 203.63646752981725
+        },
+        {
+          "x": 573.84,
+          "y": 201.6
+        },
+        {
+          "x": 577.5635324701827,
+          "y": 199.56353247018274
+        },
+        {
+          "x": 579.6,
+          "y": 195.84
+        },
+        {
+          "x": 581.6364675298173,
+          "y": 199.56353247018274
+        },
+        {
+          "x": 585.36,
+          "y": 201.6
+        },
+        {
+          "x": 581.6364675298173,
+          "y": 203.63646752981725
+        }
+      ]
+    },
+    "opacity": 0.7,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_text",
+    "opacity": 1.0,
+    "run": {
+      "align": "center",
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.84,
+        "r": 1.0
+      },
+      "font_id": "Helvetica",
+      "origin": {
+        "x": 459.0,
+        "y": 43.199999999999996
+      },
+      "size_pt": 28.0,
+      "text": "Joy & Peace"
+    }
+  },
+  {
+    "cmd": "end_group"
+  },
+  {
+    "cmd": "begin_group",
+    "opacity": 1.0,
+    "transform": {
+      "rotate_deg": 180.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "translate_x": 153.0,
+      "translate_y": 594.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.95,
+        "g": 0.98,
+        "r": 0.98
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 405.0,
+      "kind": "rect",
+      "width": 315.0,
+      "x": 0.0,
+      "y": 387.0
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_text",
+    "opacity": 1.0,
+    "run": {
+      "align": "left",
+      "color": {
+        "a": 1.0,
+        "b": 0.2,
+        "g": 0.2,
+        "r": 0.2
+      },
+      "font_id": "Helvetica",
+      "origin": {
+        "x": 36.0,
+        "y": 684.0
+      },
+      "size_pt": 12.0,
+      "text": "May your holidays shine bright with"
+    }
+  },
+  {
+    "cmd": "draw_text",
+    "opacity": 1.0,
+    "run": {
+      "align": "left",
+      "color": {
+        "a": 1.0,
+        "b": 0.2,
+        "g": 0.2,
+        "r": 0.2
+      },
+      "font_id": "Helvetica",
+      "origin": {
+        "x": 36.0,
+        "y": 669.6
+      },
+      "size_pt": 12.0,
+      "text": "happiness!"
+    }
+  },
+  {
+    "cmd": "end_group"
+  },
+  {
+    "cmd": "begin_group",
+    "opacity": 1.0,
+    "transform": {
+      "rotate_deg": 180.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "translate_x": 459.0,
+      "translate_y": 594.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.95,
+        "g": 0.98,
+        "r": 0.98
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 405.0,
+      "kind": "rect",
+      "width": 315.0,
+      "x": 297.0,
+      "y": 387.0
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "end_group"
+  },
+  {
+    "cmd": "begin_group",
+    "opacity": 1.0,
+    "transform": {
+      "rotate_deg": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "translate_x": 0.0,
+      "translate_y": 0.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.18,
+        "g": 0.15,
+        "r": 0.12
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 405.0,
+      "kind": "rect",
+      "width": 315.0,
+      "x": -9.0,
+      "y": -9.0
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "end_group"
+  },
+  {
+    "cmd": "draw_fold_line",
+    "end": {
+      "x": 612.0,
+      "y": 396.0
+    },
+    "start": {
+      "x": 0.0,
+      "y": 396.0
+    },
+    "style": "dashed"
+  },
+  {
+    "cmd": "end_page"
+  }
+]

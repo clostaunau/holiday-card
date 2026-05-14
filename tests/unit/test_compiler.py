@@ -57,15 +57,28 @@ from holiday_card.utils.measurements import PageGeometry
 SNAPSHOT_DIR = Path(__file__).parent / "__snapshots__"
 UPDATE_SNAPSHOTS = os.environ.get("UPDATE_COMPILER_SNAPSHOTS") == "1"
 
-# Templates that compile cleanly with the Step 2b feature subset.
-# When a follow-up PR adds support for images / gradients / etc., move
-# the relevant template id from SUPPORTED_REJECTING_TEMPLATES to
-# SUPPORTED_SNAPSHOT_TEMPLATES and regenerate the snapshot.
+# Templates whose compiled IR is snapshot-stable across machines.
+# Templates with non-empty ``image_elements: source_path: ...`` are
+# excluded because the compiler resolves the source to an absolute
+# path at compile time, and a committed snapshot would carry
+# ``/Users/<dev>/...`` — diff noise on every contributor's machine
+# and a CI failure as soon as the generating machine differs from the
+# committing machine. The exclusion covers photo-ornament,
+# family-photo, mothers-day-photo, birthday-photo, AND
+# holiday-masterpiece (its decorative ``image_elements`` carry a
+# sample_photo.jpg path even though the template's identity is the
+# SVGPath illustration, not the photo). These templates have
+# coverage via test_png_backend.py + test_svg_backend.py + the
+# visual-regression suite instead.
 SUPPORTED_SNAPSHOT_TEMPLATES = (
     "christmas-classic",
     "christmas-geometric",
     "christmas-modern",
     "christmas-artist",
+    "christmas-festive-stripes",
+    "christmas-holly-wreath",
+    "christmas-metallic-ornaments",
+    "christmas-winter-sky",
     "birthday-balloons",
     "hanukkah-menorah",
     "generic-celebration",

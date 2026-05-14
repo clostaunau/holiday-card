@@ -37,18 +37,32 @@ import argparse
 import sys
 from pathlib import Path
 
-# The canonical shipping set the snapshot tests + smoke job cover.
-# Keep this list in sync with tests/unit/test_compiler.py's
-# SUPPORTED_SNAPSHOT_TEMPLATES and .github/workflows/ci.yml's smoke job.
+# The canonical shipping set — every template that compiles cleanly.
+# Used by the L4 PR-preview workflow on shared-infra changes (e.g.,
+# someone edits src/ or fonts/ → render the whole library so reviewers
+# see what moved). Keep in sync with the list of compileable templates
+# under ``templates/`` — when a new template ships, add it here.
+# ``tests/unit/test_compiler.py``'s ``SUPPORTED_SNAPSHOT_TEMPLATES`` is
+# a strict subset (excludes the photo templates whose IR carries
+# machine-absolute paths and can't be committed as snapshots).
 SHIPPING_TEMPLATES: tuple[str, ...] = (
     "christmas-classic",
     "christmas-geometric",
     "christmas-modern",
     "christmas-artist",
+    "christmas-festive-stripes",
+    "christmas-holiday-masterpiece",
+    "christmas-holly-wreath",
+    "christmas-metallic-ornaments",
+    "christmas-winter-sky",
+    "christmas-photo-ornament",
+    "christmas-family-photo",
     "birthday-balloons",
+    "birthday-photo",
     "hanukkah-menorah",
     "generic-celebration",
     "mothers-day",
+    "mothers-day-photo",
 )
 
 # Top-level directories whose changes invalidate every template.
