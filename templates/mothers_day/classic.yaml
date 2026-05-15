@@ -122,7 +122,7 @@ panels:
       - id: "message"
         content: "Thank you for everything, Mom."
         x: 0.5
-        y: 9.0
+        y: 3.0
         width: 3.25
         font_family: "Lato"  # warm geometric sans body
         font_size: 16
