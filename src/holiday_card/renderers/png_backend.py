@@ -189,6 +189,13 @@ class PNGRenderer:
         # this; shapes and text inside a clip are not exercised by the
         # compiler. Push on BeginClip, pop on EndClip.
         self._clip_stack: list[object] = []
+        # Recursion guard: when ``_draw_shape_with_alpha_compositing``
+        # redirects drawing to a temp RGBA layer, it re-enters
+        # ``_draw_shape`` with the canvas swapped. The fast path needs
+        # to run on that re-entry without bouncing back into
+        # alpha-compositing. Set True for the duration of the temp-layer
+        # draw, then cleared in the ``finally``.
+        self._in_alpha_composite: bool = False
 
         for cmd in commands:
             self._dispatch(cmd)
@@ -283,7 +290,12 @@ class PNGRenderer:
         width_px = max(1, int(round(media_w * self._scale)))
         height_px = max(1, int(round(media_h * self._scale)))
         # Start with an opaque white canvas — matches a printed page.
-        self._image = Image.new("RGB", (width_px, height_px), (255, 255, 255))
+        # RGBA mode (not RGB) so the ``_draw_shape_with_alpha_compositing``
+        # path's ``Image.alpha_composite`` correctly blends semi-
+        # transparent shapes onto the panel. The save path at the end
+        # of ``render`` composites this RGBA canvas back onto opaque
+        # white before writing PNG, so the saved file is still RGB.
+        self._image = Image.new("RGBA", (width_px, height_px), (255, 255, 255, 255))
         self._draw = ImageDraw.Draw(self._image)
 
     # ------------------------------------------------------------------
@@ -372,6 +384,16 @@ class PNGRenderer:
         ):
             self._draw_shape_with_complex_fill(cmd)
             return
+        # Pillow's ImageDraw drops the alpha channel: a fill or stroke
+        # with alpha < 255 *replaces* the pixel instead of compositing
+        # with what's underneath. For shapes that need true alpha
+        # blending (opacity < 1.0, or a fill/stroke color with alpha
+        # < 1.0) we render onto a transparent RGBA temp layer and
+        # ``alpha_composite`` it onto the canvas. The common
+        # fully-opaque case still hits the fast direct-draw path.
+        if not self._in_alpha_composite and self._shape_needs_alpha_compositing(cmd):
+            self._draw_shape_with_alpha_compositing(cmd)
+            return
         fill_rgba = self._fill_to_rgba(cmd.fill, cmd.opacity)
         stroke_rgba = self._stroke_to_rgba(cmd.stroke, cmd.opacity)
         stroke_width = max(1, int(round(self._len(cmd.stroke.width)))) if cmd.stroke else 0
@@ -425,6 +447,58 @@ class PNGRenderer:
             # PathGeom is not exercised by the current compiler; flatten
             # to lines via the points and draw best-effort.
             self._draw_path(geom, fill_rgba, stroke_rgba, stroke_width)
+
+    @staticmethod
+    def _shape_needs_alpha_compositing(cmd: DrawShape) -> bool:
+        """Return True when ``cmd`` has any sub-unit alpha contribution.
+
+        Triggers redirection to ``_draw_shape_with_alpha_compositing``
+        so the pixel actually blends with the underlying panel
+        instead of replacing it (which is what Pillow's ImageDraw
+        does on RGBA images when given a fill with alpha < 255).
+        """
+        if cmd.opacity < 1.0:
+            return True
+        if isinstance(cmd.fill, SolidPaint) and cmd.fill.color.a < 1.0:
+            return True
+        return cmd.stroke is not None and cmd.stroke.color.a < 1.0
+
+    def _draw_shape_with_alpha_compositing(self, cmd: DrawShape) -> None:
+        """Render a partially-transparent shape via ``Image.alpha_composite``.
+
+        Why this path exists: ``ImageDraw.ellipse(fill=(R,G,B,A))`` on
+        an RGBA image *replaces* the pixel with ``(R,G,B,A)`` rather
+        than alpha-blending it over what was there. So a shape with
+        ``opacity: 0.7`` over a red panel renders as a translucent
+        shape over the *save-time white background*, not over the red
+        panel — visually wrong.
+
+        Fix: draw the shape onto a transparent RGBA temp layer
+        (where outside-shape pixels stay alpha=0 because Pillow only
+        touches what the shape covers), then
+        ``Image.alpha_composite`` the layer onto the canvas. That
+        applies proper Porter-Duff "source over" blending.
+
+        Recursion: temporarily swaps ``self._image``/``self._draw`` to
+        the temp layer, sets ``self._in_alpha_composite`` to bypass
+        the alpha-compositing branch in ``_draw_shape`` on the
+        re-entry, and runs the fast path against the temp. After the
+        draw, restores state and composites.
+        """
+        assert self._image is not None
+        saved_image = self._image
+        saved_draw = self._draw
+        layer = Image.new("RGBA", saved_image.size, (0, 0, 0, 0))
+        self._image = layer
+        self._draw = ImageDraw.Draw(layer)
+        self._in_alpha_composite = True
+        try:
+            self._draw_shape(cmd)
+        finally:
+            self._in_alpha_composite = False
+            self._image = saved_image
+            self._draw = saved_draw
+        saved_image.alpha_composite(layer)
 
     # Number of polyline samples per Bezier curve segment. 16 is a
     # sweet spot for the holly-wreath style organic curves we see in
