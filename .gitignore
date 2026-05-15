@@ -232,3 +232,9 @@ Thumbs.db
 *.iml
 .vscode/settings.json
 .vscode/launch.json
+
+# Claude Code harness runtime state
+#   .claude/agents/, commands/, and skills/ are committed (the
+#   project's custom subagents and slash commands live there).
+#   Lock files and other transient harness state are local-only.
+.claude/*.lock
