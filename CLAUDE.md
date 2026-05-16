@@ -260,20 +260,6 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Known issues (good first tasks for a fresh session)
 
-- **PNG backend doesn't truly alpha-blend `opacity < 1.0` shapes:** the
-  canvas is initialized as ``Image.new("RGB", ...)`` in
-  `png_backend.py`, and Pillow's ``ImageDraw.ellipse``/``rectangle``/
-  ``polygon`` drop the alpha channel on RGB images — so a shape with
-  ``opacity: 0.7`` over a colored panel currently renders fully
-  opaque instead of blending. Templates that look "right" with
-  semi-transparent decorative shapes are coincidentally OK because
-  they sit on solid backgrounds; visually the bug shows up when an
-  ``opacity:0`` fill *covers* something the author wanted to show
-  through (photo-ornament's white-fill ornament border hid the photo
-  for months — fixed by removing the fill instead, since the proper
-  renderer fix needs per-shape alpha-composite via ``Image.alpha_composite``
-  and would regenerate every baseline). PDF and SVG backends are
-  vector and handle alpha correctly.
 - **CI smoke job is narrow:** `.github/workflows/ci.yml` renders four
   template PDFs but doesn't exercise `--voice` end-to-end or validate
   the CMYK headers on `--export-for moo-a6` output. Both are
