@@ -79,12 +79,14 @@ holiday-card create birthday-balloons --inside-message-md letter.md
 
 | Layer | What's in it |
 |---|---|
-| **Templates** | 8 ship-quality templates (Christmas, Hanukkah, Birthday, Mother's Day, Generic) + 6 demo templates (gradient/pattern features, currently uncompilable) |
+| **Templates** | 17 ship-quality templates across Christmas (11, incl. 1 family photo), Birthday (2, incl. 1 photo), Hanukkah, Mother's Day (2, incl. 1 photo), Generic — all compile cleanly |
 | **Voices** | warm, witty, spare, devotional, irreverent — pick via `--voice` |
 | **Sentiments** | 250 hand-tagged copy lines across 5 occasions × 5 voices × 2 roles |
 | **Fonts** | 6 curated SIL OFL families (Cormorant Garamond, Playfair Display, Lato, Inter, Caveat, Comfortaa) embedded in every PDF |
-| **POD targets** | `letter` (single imposed sheet), `per-panel-pdf` (native trim per panel), `moo-a6` (A6 with content scaled to fit) |
+| **Photo cards** | `ImageElement` + circle / rectangle / ellipse / star clip masks; render a portrait into a styled frame |
+| **POD targets** | `letter` (single imposed sheet), `per-panel-pdf` (native trim per panel), `moo-a6` (A6 with content scaled to fit + DeviceCMYK PDF/X-1a:2003 + GRACoL2013 ICC) |
 | **Output formats** | PDF (default), SVG, PNG |
+| **Quality gates** | ruff + mypy strict + 711 tests + visual-regression perceptual-hash gate across all 17 templates + smoke job covering each voice and the CMYK export |
 
 ## Hacking on it
 
@@ -93,7 +95,7 @@ git clone https://github.com/clostaunau/holiday-card.git
 cd holiday-card
 pip install -e ".[dev]"
 
-pytest                         # 555 tests, runs in ~6s
+pytest                         # 711 tests, runs in ~20s
 ruff check src/ tests/         # lint (zero warnings)
 mypy src/                      # strict-mode type-check (zero errors)
 
@@ -142,13 +144,15 @@ critic breakdowns. Recent work targets the panel's "1-month" and
 * ✅ Structured inside letter: `--salutation` / `--signoff` / `--signature` / `--ps` (Leapfrog 2, slice 4)
 * ✅ Photo cards: ImageElement compiler support + clip masks (Circle / Rectangle / Ellipse / Star) — unblocks photo-ornament
 * ✅ Gradient + pattern fills (linear / radial / stripes / dots / grid / checkerboard) — unblocks 3 more christmas templates
-* ✅ SVG path support — unblocks the last 2 christmas demos (holly-wreath, holiday-masterpiece). **All 14 shipped templates now compile.**
+* ✅ SVG path support — unblocks holly-wreath + holiday-masterpiece
 * ✅ Template-gallery microsite (Leapfrog 5) — static page per template with a copy-paste CLI command builder; deployed to GitHub Pages
+* ✅ 3 new photo-card templates — `christmas-family-photo` (rectangle clip + Inter/Lato), `mothers-day-photo` (ellipse clip + Playfair/Caveat cameo), `birthday-photo` (circle clip + Comfortaa/Caveat). **All 17 shipped templates now compile.**
+* ✅ Visual-regression perceptual-hash gate across all 17 templates
+* ✅ PNG backend true alpha-blending — semi-transparent shapes now compose over panel backgrounds correctly (was an RGB-canvas alpha-drop bug)
 * ⏳ Illustrator commission: ~30 hand-drawn SVG path assets (Leapfrog 2 final slice — needs a human)
 * ⏳ Italic font variants (extends Markdown mode beyond bold)
 * ⏳ Multi-panel spill for long Markdown letters
 * ⏳ Father's Day + sympathy templates (calendar-driven SKU expansion)
-* ⏳ Template microsite generator (Leapfrog 5 — single-page form per template)
 * ❌ AI-native authoring (Leapfrog 3) — explicitly deferred per the AI-feature consensus doc until the curation moat is wider
 
 ## Architecture
