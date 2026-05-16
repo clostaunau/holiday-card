@@ -1,5 +1,179 @@
 # Holiday Card Generator — Release Notes
 
+## v1.2.0 — "Template library complete + curation layer" — 2026-05-16
+
+If v1.1.0 was the architecture, v1.2.0 fills the artifact. Every
+shipped template compiles. Every leapfrog the industry panel
+endorsed for v1 ships except L3 (AI imagery, deferred by the
+panel itself). Prepress is production-grade — \`--export-for moo-a6\`
+emits DeviceCMYK PDF/X-1a:2003 with embedded GRACoL2013 ICC,
+ready to drop into MOO's ingester. The PNG backend now alpha-
+blends correctly so the visual-regression gate can protect what
+actually ships.
+
+### What's new for users
+
+**Templates — 8 → 17, all compile cleanly.** Six dormant Christmas
+demos (festive-stripes, holiday-masterpiece, holly-wreath,
+metallic-ornaments, photo-ornament, winter-sky) revive as the
+compiler grows up; three new photo cards ship (christmas-family-
+photo, mothers-day-photo, birthday-photo). Mother's Day and
+Birthday occasions both double in template count.
+
+**Voiced greetings — \`--voice\`.** Pick from \`warm\`, \`witty\`,
+\`spare\`, \`devotional\`, \`irreverent\` and the CLI fills the cover
++ inside slots from a 250-line hand-tagged sentiment library.
+\`--seed N\` makes the pick reproducible; \`--blank-inside\` skips
+the inside-message override.
+
+**Structured inside letter.** Four new flags compose a personal
+note: \`--salutation "Dear M,"\`, \`--signoff "Love,"\`,
+\`--signature "C"\`, \`--ps "PS hi"\`. Add \`--signature-font Caveat\`
+for the handwritten override.
+
+**Christmas-letter Markdown mode.** \`--inside-message-md letter.md\`
+turns the inside panel into a "letter" surface: paragraphs, hard
+line breaks, \`**bold**\` spans, proper paragraph spacing, bold-
+aware font fallback.
+
+**POD prepress — \`--export-for moo-a6\`.** DeviceCMYK PDF/X-1a:2003
+output: each panel emitted at its A6 trim + 0.125" bleed, with
+the GRACoL2013_CRPC6 ICC profile embedded as the OutputIntent,
+XMP metadata declaring PDF/X-1a:2003 conformance,
+\`/Info /Trapped /False\`, and the PDF header forced to 1.4. The
+moo-a6 target produces files that pass MOO's preflight on first
+upload.
+
+**Curated typography.** Six SIL OFL families ship in
+\`fonts/curated/\` — Cormorant Garamond (editorial serif),
+Playfair Display (display serif), Lato (geometric sans, with
+bold), Inter (modern variable sans), Caveat (handwritten script),
+Comfortaa (rounded display). Every shipped template is migrated;
+zero Helvetica/Times-Roman references remain in \`templates/\`.
+
+**Photo cards.** \`ImageElement\` compiler support with circle,
+rectangle, ellipse, and star clip masks. Backends compose the
+image through the mask correctly — base64-embedded in SVG,
+DrawImage in PDF, Pillow \`ImageChops\` mask in PNG.
+
+**Gradient and pattern fills.** Linear gradients, radial gradients,
+and patterns (stripes / dots / grid / checkerboard) lower into
+per-backend paint resources. CMYK propagates through gradient
+stops so \`--export-for moo-a6\` produces CMYK gradients.
+
+**SVG path shapes.** \`SVGPath\` lowers to bezier-flattened
+polylines (cubic + quadratic sampling at 16 samples/segment) in
+the PNG backend; native path in SVG and PDF. Smooth-reflection
+shortcuts (\`S\`, \`T\`) and \`H\`/\`V\` shortcuts work. Arc commands
+(\`A\`/\`a\`) raise \`UnsupportedFeatureError\` — no shipped template
+uses them.
+
+**Bleed support.** \`Card.bleed\` / \`Panel.bleed\` configure the
+bleed extension (default 0.125"); backgrounds extend past the
+trim on edges touching the page boundary. PDFs declare distinct
+\`/MediaBox\` / \`/TrimBox\` / \`/BleedBox\` / \`/ArtBox\`.
+
+**Cards-as-code identity.** A new \`.github/workflows/render-cards.yml\`
+detects affected templates on every PR (direct YAML touch →
+that template; indirect src/fonts/sentiments/themes touch →
+the full shipping set), renders PNG previews at 144 DPI,
+uploads them as a workflow artifact, and posts a sticky PR
+comment with the list. Reviewers see what the change does to
+the actual cards.
+
+**Template-gallery microsite.** \`scripts/build_microsite.py\`
+generates one HTML page per template with a form that builds a
+copy-paste-ready \`holiday-card create ...\` command, plus a
+gallery index grouped by occasion. Deployed to GitHub Pages on
+every push to main via \`.github/workflows/microsite.yml\`.
+
+**\`--with-fold-marks\` gate.** Fold lines are now opt-in/opt-out
+with per-target defaults (\`letter\` ON, \`per-panel\` OFF).
+
+### What's new for the codebase
+
+**711 tests** (was 555 at v1.1.0). Coverage spans all 17
+templates across snapshot, integration, and visual suites.
+
+**Visual-regression perceptual-hash gate** in \`tests/visual/\` —
+\`imagehash.phash\` Hamming-distance comparison against committed
+baseline PNGs (one per template, 72 DPI). Threshold 5. Tighter
+than SSIM at this resolution; robust to anti-aliasing variation
+across platforms. Regenerate with
+\`python scripts/regenerate_visual_baselines.py\`.
+
+**PNG backend true alpha-blending.** Shapes with \`opacity < 1.0\`
+or sub-unit color alpha now render through a temp RGBA layer +
+\`Image.alpha_composite\` onto the canvas instead of Pillow's
+default \`ImageDraw\` pixel-replace behavior. Fixes a long-standing
+issue where opacity < 1.0 silently rendered as fully opaque on
+the (previously RGB) canvas — and protected by baselines that
+captured the wrong rendering as the new "truth."
+
+**IR snapshot tests over 12 templates** (was 7 at v1.1.0). Photo-
+bearing templates are excluded because their compiled IR carries
+machine-absolute image source paths; they have coverage via
+PNG + SVG + visual suites instead.
+
+**Compiler feature coverage.** \`compiler.py\` grew handlers for
+\`ImageElement\` (\`_compile_image\`), gradient and pattern paints,
+SVGPath bezier resolution, structured letter content,
+RichTextContent (Markdown), and per-panel scaling for POD output.
+All 14 IR command types still in the same discriminated union;
+no new command types needed.
+
+**Strict CI gates.** ruff + mypy + pytest matrix (Ubuntu + macOS
+× py3.11/3.12/3.13) + smoke job + sdist/wheel build + render-cards
+PR comment + microsite deploy. The smoke job now exercises every
+\`--voice\` and validates the \`--export-for moo-a6\` PDF/X-1a header
+on every push.
+
+### Bug fixes worth calling out
+
+* **photo-ornament rendered white silhouettes where photos should
+  show.** Shipping bug: the template used
+  \`fill_color: "#FFFFFF" + opacity: 0\` to mean "no fill, only
+  stroke." But \`opacity\` multiplies both fill and stroke alpha,
+  and the RGB canvas dropped the alpha channel anyway, so the
+  white fill rendered solid on top of the clipped photo.
+  Fixed first at the template level (PR #36 stripped the misuse
+  pattern), then properly at the renderer (PR #41 made
+  \`opacity: 0\` truly transparent via alpha-compositing).
+* **\`christmas-holiday-masterpiece\` had the same hidden-photo bug.**
+  Fixed automatically as a side effect of PR #41 — the template
+  author's intent (transparent fill, visible stroke, photo
+  showing through) now just works.
+* **\`mothers-day\` inside-right message rendered off-page.** The
+  template had \`y: 9.0\` for the message text — panel-relative
+  coordinates on a 5.5" panel, so the compiled IR put the text
+  at global y=14.5", off the 11" letter trim. Fixed by changing
+  to \`y: 3.0\` matching the convention used by other templates.
+
+### Known limitations
+
+* SVG path arc commands (\`A\`/\`a\`) raise
+  \`UnsupportedFeatureError\`. No shipped template uses arcs.
+* Photo \`effects\` and \`frame_style\` not yet wired (deferred —
+  the data model exists, no compiler path yet).
+* Heart and SVGPath clip masks raise
+  \`UnsupportedFeatureError\`. \`Circle\` / \`Rectangle\` / \`Ellipse\` /
+  \`Star\` cover every shipped template.
+* \`ImageElement\` requires explicit \`width\` / \`height\` — auto-
+  sizing from the source image is not yet wired.
+* AI-native authoring (panel Leapfrog 3) is **explicitly
+  deferred** until the curation moat is wider. See
+  \`docs/industry-review/consensus-ai-feature.md\`.
+
+### Strategic items remaining
+
+* **L2 illustrator commission** — ~30 hand-drawn SVG path motifs
+  in one opinionated voice. Needs a contractor, not a PR.
+* **L3 AI imagery** — deferred to Q1 2027 with hard rails on
+  sympathy / bereavement / religious iconography / photo slots
+  / recognizable likenesses.
+
+---
+
 ## v1.1.0 — "Three backends on one IR" — 2026-05-10
 
 The Wave 2 architecture refactor lands. The PDF-only renderer is
