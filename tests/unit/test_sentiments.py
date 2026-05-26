@@ -212,3 +212,54 @@ def test_shipped_library_covers_every_combination(
     repo-shipped sentiments/ tree."""
     line = pick_sentiment(occasion, voice, role, seed=0)
     assert line, f"empty sentiment for ({occasion}, {voice}, {role})"
+
+
+# Sympathy-class occasions (panel L2 taxonomy) intentionally ship only a
+# subset of voices. The "absent rather than wrong" principle: a bad
+# sympathy card is worse than no sympathy card. Witty + irreverent are
+# always inappropriate for grief. Devotional ships for adult-loss only
+# (sympathy + condolence); miscarriage and pet_loss skip devotional
+# because religious framing of pregnancy loss or pet death is delicate
+# enough that absence beats getting it wrong.
+_SYMPATHY_LIBRARY: dict[str, tuple[str, ...]] = {
+    "sympathy":    ("warm", "spare", "devotional"),
+    "condolence":  ("warm", "spare", "devotional"),
+    "miscarriage": ("warm", "spare"),
+    "pet_loss":    ("warm", "spare"),
+}
+
+_SYMPATHY_SUPPORTED = [
+    (occ, voice, role)
+    for occ, voices in _SYMPATHY_LIBRARY.items()
+    for voice in voices
+    for role in ROLES
+]
+
+_SYMPATHY_UNSUPPORTED = (
+    [(occ, "witty") for occ in _SYMPATHY_LIBRARY]
+    + [(occ, "irreverent") for occ in _SYMPATHY_LIBRARY]
+    + [("miscarriage", "devotional"), ("pet_loss", "devotional")]
+)
+
+
+@pytest.mark.parametrize(("occasion", "voice", "role"), _SYMPATHY_SUPPORTED)
+def test_sympathy_class_sentiments_load(
+    occasion: str, voice: str, role: str
+) -> None:
+    """Every supported (sympathy-class occasion × voice × role) has a
+    non-empty sentiment file."""
+    line = pick_sentiment(occasion, voice, role, seed=0)
+    assert line, f"empty sentiment for ({occasion}, {voice}, {role})"
+
+
+@pytest.mark.parametrize(("occasion", "voice"), _SYMPATHY_UNSUPPORTED)
+def test_sympathy_class_inappropriate_voices_raise(
+    occasion: str, voice: str
+) -> None:
+    """Voices deliberately not shipped for sympathy-class occasions
+    must raise SentimentNotFoundError — fail-loud convention. A future
+    contributor adding e.g. ``sentiments/sympathy/witty/`` would fail
+    this test, prompting a conversation about whether that's actually
+    a good idea."""
+    with pytest.raises(SentimentNotFoundError):
+        pick_sentiment(occasion, voice, "cover", seed=0)

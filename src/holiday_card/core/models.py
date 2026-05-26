@@ -143,6 +143,13 @@ class OccasionType(StrEnum):
     THANKSGIVING = "thanksgiving"
     VALENTINE = "valentine"
     MOTHERS_DAY = "mothers_day"
+    # Sympathy-class occasions (panel L2 taxonomy). These exist so the
+    # AI hard-rails planned for L3 (consensus-ai-feature.md) have
+    # categories to refuse against by default.
+    SYMPATHY = "sympathy"
+    CONDOLENCE = "condolence"
+    MISCARRIAGE = "miscarriage"
+    PET_LOSS = "pet_loss"
 
 
 class PanelPosition(StrEnum):

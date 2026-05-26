@@ -83,6 +83,10 @@ SUPPORTED_SNAPSHOT_TEMPLATES = (
     "hanukkah-menorah",
     "generic-celebration",
     "mothers-day",
+    "sympathy-spare",
+    "condolence-spare",
+    "miscarriage-spare",
+    "pet-loss-spare",
 )
 
 # Templates expected to raise UnsupportedFeatureError. Empty after the
@@ -90,6 +94,15 @@ SUPPORTED_SNAPSHOT_TEMPLATES = (
 # compiles via the IR. Kept as a hook so a future feature with partial
 # coverage can re-enable the watch-dog without restructuring the test.
 SUPPORTED_REJECTING_TEMPLATES: tuple[str, ...] = ()
+
+# Sympathy-class templates (panel L2 taxonomy). One restrained template
+# per occasion; each compiles via the IR pipeline like the rest.
+SYMPATHY_CLASS_TEMPLATES = (
+    "sympathy-spare",
+    "condolence-spare",
+    "miscarriage-spare",
+    "pet-loss-spare",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +182,17 @@ def test_unsupported_features_raise_loudly(template_id: str) -> None:
     card = CardGenerator().create_card(template_id=template_id)
     with pytest.raises(UnsupportedFeatureError):
         compile_card(card)
+
+
+@pytest.mark.parametrize("template_id", SYMPATHY_CLASS_TEMPLATES)
+def test_sympathy_class_template_compiles_cleanly(template_id: str) -> None:
+    """Every sympathy-class template (panel L2 taxonomy) compiles via
+    the IR pipeline without raising UnsupportedFeatureError."""
+    card = CardGenerator().create_card(template_id=template_id)
+    commands = compile_card(card)
+    assert any(isinstance(c, BeginPage) for c in commands)
+    assert any(isinstance(c, EndPage) for c in commands)
+    assert_balanced(commands)
 
 
 # ---------------------------------------------------------------------------

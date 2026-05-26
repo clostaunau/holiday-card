@@ -11,8 +11,10 @@ sentiments/
   {occasion}/{voice}/{role}.yaml
 ```
 
-* **occasion** — matches `OccasionType` (`christmas`, `birthday`,
-  `hanukkah`, `mothers_day`, `generic`)
+* **occasion** — matches `OccasionType`. Celebratory: `christmas`,
+  `birthday`, `hanukkah`, `mothers_day`, `generic`. Sympathy-class:
+  `sympathy`, `condolence`, `miscarriage`, `pet_loss` (each ships a
+  curated subset of voices; see "Voice gating" below).
 * **voice** — one of:
   - `warm` — heartfelt, family-first, sincere
   - `witty` — playful, light, self-aware
@@ -36,6 +38,26 @@ sentiments:
 
 `sentiments` is a non-empty list of strings. The CLI picks one (random
 by default; reproducible with `--seed`).
+
+## Voice gating (sympathy-class occasions)
+
+The sympathy-class occasions deliberately ship a curated subset of
+voices rather than the full 5×2 grid. The "absent rather than wrong"
+principle: a bad sympathy card is worse than no sympathy card.
+
+| Occasion      | Voices shipped               |
+|---------------|------------------------------|
+| `sympathy`    | warm, spare, devotional      |
+| `condolence`  | warm, spare, devotional      |
+| `miscarriage` | warm, spare                  |
+| `pet_loss`    | warm, spare                  |
+
+Witty and irreverent are always inappropriate for grief contexts and
+are not shipped for any sympathy-class occasion. Devotional is
+omitted for `miscarriage` and `pet_loss` because religious framing
+of those losses is delicate enough that absence beats getting it
+wrong. Asking the CLI for an un-shipped combination raises
+`SentimentNotFoundError` — the fail-loud convention.
 
 ## v0 content disclaimer
 
