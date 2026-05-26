@@ -217,11 +217,21 @@ class TestFontIdResolution:
         # Lato is the only curated font with a -Bold registered today.
         assert font_id_for_run("Lato", bold=True) == "Lato-Bold"
 
-    def test_other_curated_fonts_fall_back_to_regular_for_bold(self) -> None:
-        # Cormorant, PlayfairDisplay, Inter, Caveat, Comfortaa are
-        # variable fonts; no -Bold is registered. Documented limitation.
-        assert font_id_for_run("Cormorant", bold=True) == "Cormorant"
-        assert font_id_for_run("PlayfairDisplay", bold=True) == "PlayfairDisplay"
+    def test_curated_editorial_serifs_have_bold_variants(self) -> None:
+        # Cormorant and PlayfairDisplay ship static Bold + BoldItalic
+        # TTFs (instanced from the variable masters at weight=700).
+        assert font_id_for_run("Cormorant", bold=True) == "Cormorant-Bold"
+        assert (
+            font_id_for_run("PlayfairDisplay", bold=True)
+            == "PlayfairDisplay-Bold"
+        )
+
+    def test_remaining_curated_fonts_still_fall_back_for_bold(self) -> None:
+        # Inter, Caveat, Comfortaa are variable fonts with no static
+        # Bold TTF yet — they fall back to regular. Documented limitation.
+        assert font_id_for_run("Inter", bold=True) == "Inter"
+        assert font_id_for_run("Caveat", bold=True) == "Caveat"
+        assert font_id_for_run("Comfortaa", bold=True) == "Comfortaa"
 
 
 class TestFontIdItalic:
@@ -272,6 +282,19 @@ class TestFontIdItalic:
         # Lato has a Bold but no BoldItalic; degrade to Bold rather than
         # losing the weight signal entirely.
         assert font_id_for_run("Lato", bold=True, italic=True) == "Lato-Bold"
+
+    def test_curated_editorial_serifs_have_bold_italic_variants(self) -> None:
+        # Cormorant and PlayfairDisplay ship both Bold and BoldItalic
+        # statics. ``***x***`` on those families resolves to the
+        # combined variant directly.
+        assert (
+            font_id_for_run("Cormorant", bold=True, italic=True)
+            == "Cormorant-BoldItalic"
+        )
+        assert (
+            font_id_for_run("PlayfairDisplay", bold=True, italic=True)
+            == "PlayfairDisplay-BoldItalic"
+        )
 
 
 class TestRichTextSchema:

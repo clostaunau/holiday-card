@@ -87,15 +87,19 @@ FONT_MAP: dict[str, tuple[str, str]] = {
 # Pillow. A future PR can register specific weights as separate
 # font_ids if needed.
 CURATED_FONTS: dict[str, tuple[str, str]] = {
-    "Cormorant":              ("CormorantGaramond-Regular.ttf", "Cormorant"),
-    "Cormorant-Italic":       ("CormorantGaramond-Italic.ttf",  "Cormorant-Italic"),
-    "PlayfairDisplay":        ("PlayfairDisplay-Regular.ttf",   "PlayfairDisplay"),
-    "PlayfairDisplay-Italic": ("PlayfairDisplay-Italic.ttf",    "PlayfairDisplay-Italic"),
-    "Lato":                   ("Lato-Regular.ttf",              "Lato"),
-    "Lato-Bold":              ("Lato-Bold.ttf",                 "Lato-Bold"),
-    "Inter":                  ("Inter-Regular.ttf",             "Inter"),
-    "Caveat":                 ("Caveat-Regular.ttf",            "Caveat"),
-    "Comfortaa":              ("Comfortaa-Regular.ttf",         "Comfortaa"),
+    "Cormorant":                  ("CormorantGaramond-Regular.ttf",    "Cormorant"),
+    "Cormorant-Bold":             ("CormorantGaramond-Bold.ttf",       "Cormorant-Bold"),
+    "Cormorant-Italic":           ("CormorantGaramond-Italic.ttf",     "Cormorant-Italic"),
+    "Cormorant-BoldItalic":       ("CormorantGaramond-BoldItalic.ttf", "Cormorant-BoldItalic"),
+    "PlayfairDisplay":            ("PlayfairDisplay-Regular.ttf",      "PlayfairDisplay"),
+    "PlayfairDisplay-Bold":       ("PlayfairDisplay-Bold.ttf",         "PlayfairDisplay-Bold"),
+    "PlayfairDisplay-Italic":     ("PlayfairDisplay-Italic.ttf",       "PlayfairDisplay-Italic"),
+    "PlayfairDisplay-BoldItalic": ("PlayfairDisplay-BoldItalic.ttf",   "PlayfairDisplay-BoldItalic"),
+    "Lato":                       ("Lato-Regular.ttf",                 "Lato"),
+    "Lato-Bold":                  ("Lato-Bold.ttf",                    "Lato-Bold"),
+    "Inter":                      ("Inter-Regular.ttf",                "Inter"),
+    "Caveat":                     ("Caveat-Regular.ttf",               "Caveat"),
+    "Comfortaa":                  ("Comfortaa-Regular.ttf",            "Comfortaa"),
 }
 
 _registered: bool = False

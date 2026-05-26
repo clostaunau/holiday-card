@@ -77,19 +77,36 @@ class TestRichTextCompilation:
         # across lines but at least one bold segment carries it.
         assert any("Lily" in t.run.text for t in bold_texts)
 
-    def test_bold_falls_back_to_regular_for_fonts_without_bold_variant(
+    def test_bold_uses_cormorant_bold_when_family_is_cormorant(
         self,
     ) -> None:
+        # Cormorant now ships a static Bold TTF (instanced from the
+        # variable master at weight=700). Bold runs resolve to
+        # Cormorant-Bold; this is the user-facing change closing the
+        # bold-fallback documented limitation.
         card = self._card_with_rich_inside(font="Cormorant")
         cmds = compile_card(card)
         texts = [c for c in cmds if isinstance(c, DrawText)]
-        # Cormorant has no -Bold registered → bold runs fall back to
-        # the regular family. None should carry "-Bold" in font_id for
-        # this template (cover greeting uses PlayfairDisplay which also
-        # has no -Bold).
-        bold_segments = [t for t in texts if "Bold" in t.run.font_id]
-        assert bold_segments == [], (
-            f"Cormorant has no Bold variant; found {bold_segments}"
+        cormorant_bold = [t for t in texts if t.run.font_id == "Cormorant-Bold"]
+        assert cormorant_bold, (
+            f"Expected at least one Cormorant-Bold DrawText for the "
+            f"bold span; saw font_ids: {[t.run.font_id for t in texts]}"
+        )
+        assert any("Lily" in t.run.text for t in cormorant_bold)
+
+    def test_bold_falls_back_to_regular_for_fonts_without_bold_variant(
+        self,
+    ) -> None:
+        # Inter, Caveat, Comfortaa still have no static Bold TTFs —
+        # bold runs on those families fall back to regular. Documented
+        # limitation that lifts when more bold variants are added.
+        card = self._card_with_rich_inside(font="Inter")
+        cmds = compile_card(card)
+        texts = [c for c in cmds if isinstance(c, DrawText)]
+        inter_bold = [t for t in texts if t.run.font_id == "Inter-Bold"]
+        assert inter_bold == [], (
+            f"Inter has no Bold variant; should fall back to regular. "
+            f"Found {inter_bold}"
         )
 
     def test_italic_runs_use_oblique_font_id_when_family_is_helvetica(

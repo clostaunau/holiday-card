@@ -128,8 +128,10 @@ def test_pdf_render_embeds_a_font_subset(tmp_path: Path) -> None:
 
 
 _EXPECTED_CURATED_FONT_IDS = {
-    "Cormorant", "Cormorant-Italic",
-    "PlayfairDisplay", "PlayfairDisplay-Italic",
+    "Cormorant", "Cormorant-Bold",
+    "Cormorant-Italic", "Cormorant-BoldItalic",
+    "PlayfairDisplay", "PlayfairDisplay-Bold",
+    "PlayfairDisplay-Italic", "PlayfairDisplay-BoldItalic",
     "Lato", "Lato-Bold",
     "Inter", "Caveat", "Comfortaa",
 }
@@ -166,15 +168,19 @@ class TestCuratedFonts:
         # All seven font_ids share three license files (Lato + Lato-Bold
         # share one). Map font_id to its license stem.
         license_stems = {
-            "Cormorant":              "CormorantGaramond",
-            "Cormorant-Italic":       "CormorantGaramond",
-            "PlayfairDisplay":        "PlayfairDisplay",
-            "PlayfairDisplay-Italic": "PlayfairDisplay",
-            "Lato":                   "Lato",
-            "Lato-Bold":              "Lato",
-            "Inter":                  "Inter",
-            "Caveat":                 "Caveat",
-            "Comfortaa":              "Comfortaa",
+            "Cormorant":                  "CormorantGaramond",
+            "Cormorant-Bold":             "CormorantGaramond",
+            "Cormorant-Italic":           "CormorantGaramond",
+            "Cormorant-BoldItalic":       "CormorantGaramond",
+            "PlayfairDisplay":            "PlayfairDisplay",
+            "PlayfairDisplay-Bold":       "PlayfairDisplay",
+            "PlayfairDisplay-Italic":     "PlayfairDisplay",
+            "PlayfairDisplay-BoldItalic": "PlayfairDisplay",
+            "Lato":                       "Lato",
+            "Lato-Bold":                  "Lato",
+            "Inter":                      "Inter",
+            "Caveat":                     "Caveat",
+            "Comfortaa":                  "Comfortaa",
         }
         license_path = CURATED_FONT_DIR / f"{license_stems[font_id]}-LICENSE.txt"
         assert license_path.exists(), (
