@@ -249,10 +249,24 @@ class TestFontIdItalic:
             == "Courier-BoldOblique"
         )
 
-    def test_curated_fonts_fall_back_to_regular_for_italic(self) -> None:
-        assert font_id_for_run("Cormorant", italic=True) == "Cormorant"
-        assert font_id_for_run("PlayfairDisplay", italic=True) == "PlayfairDisplay"
+    def test_curated_editorial_serifs_have_italic_variants(self) -> None:
+        # Cormorant and PlayfairDisplay are the editorial-serif families
+        # in the curated chain — italic matters most for them. Both ship
+        # italic TTFs in fonts/curated/.
+        assert font_id_for_run("Cormorant", italic=True) == "Cormorant-Italic"
+        assert (
+            font_id_for_run("PlayfairDisplay", italic=True)
+            == "PlayfairDisplay-Italic"
+        )
+
+    def test_remaining_curated_fonts_still_fall_back_for_italic(self) -> None:
+        # Inter, Caveat, Comfortaa, Lato don't ship italic TTFs in the
+        # curated chain yet — they fall back to regular. Documented
+        # limitation that lifts when more italic variants are added.
         assert font_id_for_run("Inter", italic=True) == "Inter"
+        assert font_id_for_run("Caveat", italic=True) == "Caveat"
+        assert font_id_for_run("Comfortaa", italic=True) == "Comfortaa"
+        assert font_id_for_run("Lato", italic=True) == "Lato"
 
     def test_lato_bold_italic_falls_back_to_lato_bold(self) -> None:
         # Lato has a Bold but no BoldItalic; degrade to Bold rather than

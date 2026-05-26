@@ -128,7 +128,9 @@ def test_pdf_render_embeds_a_font_subset(tmp_path: Path) -> None:
 
 
 _EXPECTED_CURATED_FONT_IDS = {
-    "Cormorant", "PlayfairDisplay", "Lato", "Lato-Bold",
+    "Cormorant", "Cormorant-Italic",
+    "PlayfairDisplay", "PlayfairDisplay-Italic",
+    "Lato", "Lato-Bold",
     "Inter", "Caveat", "Comfortaa",
 }
 
@@ -164,13 +166,15 @@ class TestCuratedFonts:
         # All seven font_ids share three license files (Lato + Lato-Bold
         # share one). Map font_id to its license stem.
         license_stems = {
-            "Cormorant":       "CormorantGaramond",
-            "PlayfairDisplay": "PlayfairDisplay",
-            "Lato":            "Lato",
-            "Lato-Bold":       "Lato",
-            "Inter":           "Inter",
-            "Caveat":          "Caveat",
-            "Comfortaa":       "Comfortaa",
+            "Cormorant":              "CormorantGaramond",
+            "Cormorant-Italic":       "CormorantGaramond",
+            "PlayfairDisplay":        "PlayfairDisplay",
+            "PlayfairDisplay-Italic": "PlayfairDisplay",
+            "Lato":                   "Lato",
+            "Lato-Bold":              "Lato",
+            "Inter":                  "Inter",
+            "Caveat":                 "Caveat",
+            "Comfortaa":              "Comfortaa",
         }
         license_path = CURATED_FONT_DIR / f"{license_stems[font_id]}-LICENSE.txt"
         assert license_path.exists(), (

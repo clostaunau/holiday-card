@@ -275,6 +275,18 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Recent changes
 
+- **2026-05-25 — Italic TTFs for Cormorant + Playfair (closes Italic
+  Markdown loop)**: Bundles `CormorantGaramond-Italic.ttf` and
+  `PlayfairDisplay-Italic.ttf` (both SIL OFL 1.1, variable-weight from
+  Google Fonts) under `fonts/curated/`, registers them in `CURATED_FONTS`
+  as `Cormorant-Italic` / `PlayfairDisplay-Italic`, extends
+  `markdown._ITALIC_VARIANT` and `_KNOWN_ITALIC_VARIANTS` to route
+  italic resolution to the new TTFs. Italic spans on the two editorial-
+  serif families (the ones where italic matters most) now render real
+  italic glyphs end-to-end. Inter/Caveat/Comfortaa/Lato still fall back
+  to regular — same documented limitation as bold. 8 new tests
+  (4 IR-level + 4 registry-coverage via the parametrized expected-set
+  expansion).
 - **2026-05-25 — Italic Markdown support**: `--inside-message-md` now
   parses `*italic*` and `_italic_` spans alongside the existing `**bold**`,
   plus `***bold-italic***` / `___bold-italic___` as a combined-style

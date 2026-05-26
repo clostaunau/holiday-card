@@ -125,6 +125,35 @@ class TestRichTextCompilation:
             for t in italic_texts
         ), f"italic font_id segments: {[t.run.text for t in italic_texts]}"
 
+    def test_italic_uses_cormorant_italic_when_family_is_cormorant(
+        self,
+    ) -> None:
+        """``*italic*`` on a Cormorant-family text element should
+        resolve to ``Cormorant-Italic`` now that the italic TTF ships
+        in fonts/curated/. The shipped christmas-classic template uses
+        Cormorant for its inside-message body, so this is the real
+        user-facing path."""
+        letter = "Dear,\n\nMissing you *especially* this year.\n"
+        gen = CardGenerator()
+        card = gen.create_card("christmas-classic")
+        for panel in card.panels:
+            for te in panel.text_elements:
+                if te.id == "message":
+                    # Christmas-classic already uses Cormorant for the
+                    # inside; assert + set defensively.
+                    te.font_family = "Cormorant"
+                    te.rich_content = parse_markdown(letter)
+                    te.width = 3.25
+                    break
+        cmds = compile_card(card)
+        texts = [c for c in cmds if isinstance(c, DrawText)]
+        italic_texts = [t for t in texts if t.run.font_id == "Cormorant-Italic"]
+        assert italic_texts, (
+            f"Expected at least one Cormorant-Italic DrawText; "
+            f"saw font_ids: {[t.run.font_id for t in texts]}"
+        )
+        assert any("especially" in t.run.text for t in italic_texts)
+
     def test_bold_italic_triple_marker_resolves_to_bolditalic_variant(
         self,
     ) -> None:

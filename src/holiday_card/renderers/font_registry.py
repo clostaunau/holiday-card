@@ -87,13 +87,15 @@ FONT_MAP: dict[str, tuple[str, str]] = {
 # Pillow. A future PR can register specific weights as separate
 # font_ids if needed.
 CURATED_FONTS: dict[str, tuple[str, str]] = {
-    "Cormorant":       ("CormorantGaramond-Regular.ttf", "Cormorant"),
-    "PlayfairDisplay": ("PlayfairDisplay-Regular.ttf",   "PlayfairDisplay"),
-    "Lato":            ("Lato-Regular.ttf",              "Lato"),
-    "Lato-Bold":       ("Lato-Bold.ttf",                 "Lato-Bold"),
-    "Inter":           ("Inter-Regular.ttf",             "Inter"),
-    "Caveat":          ("Caveat-Regular.ttf",            "Caveat"),
-    "Comfortaa":       ("Comfortaa-Regular.ttf",         "Comfortaa"),
+    "Cormorant":              ("CormorantGaramond-Regular.ttf", "Cormorant"),
+    "Cormorant-Italic":       ("CormorantGaramond-Italic.ttf",  "Cormorant-Italic"),
+    "PlayfairDisplay":        ("PlayfairDisplay-Regular.ttf",   "PlayfairDisplay"),
+    "PlayfairDisplay-Italic": ("PlayfairDisplay-Italic.ttf",    "PlayfairDisplay-Italic"),
+    "Lato":                   ("Lato-Regular.ttf",              "Lato"),
+    "Lato-Bold":              ("Lato-Bold.ttf",                 "Lato-Bold"),
+    "Inter":                  ("Inter-Regular.ttf",             "Inter"),
+    "Caveat":                 ("Caveat-Regular.ttf",            "Caveat"),
+    "Comfortaa":              ("Comfortaa-Regular.ttf",         "Comfortaa"),
 }
 
 _registered: bool = False
