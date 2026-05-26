@@ -241,15 +241,18 @@ _ITALIC_VARIANT: dict[str, str] = {
     "PlayfairDisplay": "PlayfairDisplay-Italic",
 }
 _BOLD_ITALIC_VARIANT: dict[str, str] = {
-    "Helvetica":   "Helvetica-BoldOblique",
-    "Times-Roman": "Times-BoldItalic",
-    "Courier":     "Courier-BoldOblique",
+    "Helvetica":       "Helvetica-BoldOblique",
+    "Times-Roman":     "Times-BoldItalic",
+    "Courier":         "Courier-BoldOblique",
+    "Cormorant":       "Cormorant-BoldItalic",
+    "PlayfairDisplay": "PlayfairDisplay-BoldItalic",
 }
 
 # Variants known to be registered in renderers/font_registry.py.
 _KNOWN_BOLD_VARIANTS = frozenset({
     "Helvetica-Bold", "Times-Bold", "Courier-Bold",
     "Lato-Bold",
+    "Cormorant-Bold", "PlayfairDisplay-Bold",
 })
 _KNOWN_ITALIC_VARIANTS = frozenset({
     "Helvetica-Oblique", "Times-Italic", "Courier-Oblique",
@@ -257,6 +260,7 @@ _KNOWN_ITALIC_VARIANTS = frozenset({
 })
 _KNOWN_BOLD_ITALIC_VARIANTS = frozenset({
     "Helvetica-BoldOblique", "Times-BoldItalic", "Courier-BoldOblique",
+    "Cormorant-BoldItalic", "PlayfairDisplay-BoldItalic",
 })
 
 

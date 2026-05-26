@@ -275,6 +275,25 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Recent changes
 
+- **2026-05-26 — Bold + BoldItalic TTFs for Cormorant + Playfair**:
+  Mirrors the italic loop shipped in #48. The two editorial-serif
+  families now have full Regular + Bold + Italic + BoldItalic statics
+  in `fonts/curated/`. Static Bold and BoldItalic TTFs were instanced
+  from the variable masters at weight=700 using
+  `fontTools.varLib.instancer` (the upstream Google Fonts repos only
+  ship variable masters; ReportLab and Pillow load variable fonts at
+  the default weight, so instanced statics are what actually render
+  bold). New `CURATED_FONTS` entries: `Cormorant-Bold`,
+  `Cormorant-BoldItalic`, `PlayfairDisplay-Bold`,
+  `PlayfairDisplay-BoldItalic`. Extends `markdown._BOLD_ITALIC_VARIANT`
+  and `_KNOWN_BOLD_VARIANTS` / `_KNOWN_BOLD_ITALIC_VARIANTS`. After
+  this PR all four style combinations (regular, bold, italic,
+  bold-italic) render visibly on christmas-classic and the other
+  9 templates that use Cormorant for inside body. Inter, Caveat,
+  Comfortaa still fall back to regular for bold — documented
+  limitation. Visual-eyeball confirmed: a Markdown letter on
+  christmas-classic with mixed `*it*`, `**bold**`, `***both***`
+  spans renders four distinct weights.
 - **2026-05-25 — `--inside-message-md` / `--inside-message` panel
   targeting fix**: The three inside-content apply functions
   (`_apply_inside_message`, `apply_inside_letter`,

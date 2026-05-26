@@ -153,7 +153,8 @@ critic breakdowns. Recent work targets the panel's "1-month" and
 * ✅ Sympathy-class occasion taxonomy: 4 new occasions (sympathy / condolence / miscarriage / pet_loss), 4 restrained templates, 20 hand-curated sentiment files with explicit voice gating (witty + irreverent never ship for grief contexts; devotional limited to adult-loss). Completes the panel's L2 prerequisite for the L3 hard-rails (consensus-ai-feature.md:109)
 * ✅ Microsite Celebrations / Sympathy category split — sympathy cards no longer interleaved with cake-and-balloons cards
 * ⏳ Illustrator commission: ~30 hand-drawn SVG path assets (Leapfrog 2 final slice — needs a human)
-* ✅ Italic Markdown — `*x*` / `_x_` / `***bold-italic***` parse and thread through the compiler to italic font_ids. Helvetica/Times/Courier render real italic via Liberation; Cormorant and Playfair render real italic via their bundled italic TTFs (Inter/Caveat/Comfortaa/Lato still fall back to regular — same documented limitation as bold)
+* ✅ Italic Markdown — `*x*` / `_x_` / `***bold-italic***` parse and thread through the compiler to italic font_ids. Helvetica/Times/Courier render real italic via Liberation; Cormorant and Playfair render real italic via bundled italic TTFs (Inter/Caveat/Comfortaa still fall back to regular)
+* ✅ Bold Markdown for curated editorial serifs — `**bold**` and `***bold-italic***` on `Cormorant` / `PlayfairDisplay` resolve to bundled static Bold + BoldItalic TTFs (instanced from the variable masters at weight=700). Closes the bold-fallback documented limitation for the two editorial-serif families
 * ⏳ Multi-panel spill for long Markdown letters
 * ⏳ Father's Day templates (calendar-driven SKU expansion)
 * ❌ AI-native authoring (Leapfrog 3) — explicitly deferred per the AI-feature consensus doc until the curation moat is wider
