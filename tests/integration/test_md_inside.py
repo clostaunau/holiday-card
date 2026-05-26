@@ -220,6 +220,117 @@ class TestRichTextCompilation:
 # ---------------------------------------------------------------------------
 
 
+class TestApplyInsideRichContentTargeting:
+    """``apply_inside_rich_content`` should find the template's existing
+    'message' text element wherever it lives (inside_left or
+    inside_right) and update it in place, preserving its font_family.
+    Auto-adding a new Lato element on inside_left was the prior bug —
+    it caused two messages to render on the inside (the template's
+    default plus the user's Markdown) with different fonts.
+    """
+
+    def test_targets_inside_right_message_on_christmas_classic(self) -> None:
+        # christmas-classic puts "message" on inside_right with
+        # font_family=Cormorant. The fix should reuse it.
+        gen = CardGenerator()
+        card = gen.create_card("christmas-classic")
+        text_count_before = sum(len(p.text_elements) for p in card.panels)
+
+        rich = parse_markdown("Hello, *world*.")
+        gen.apply_inside_rich_content(card, rich)
+
+        text_count_after = sum(len(p.text_elements) for p in card.panels)
+        assert text_count_after == text_count_before, (
+            "Should reuse existing 'message' element; got "
+            f"{text_count_after - text_count_before} new element(s)"
+        )
+        # The message element now carries the rich content, content is
+        # cleared, font_family is preserved from the template.
+        msg = next(
+            te for panel in card.panels
+            for te in panel.text_elements
+            if te.id == "message"
+        )
+        assert msg.rich_content == rich
+        assert msg.content == ""
+        assert msg.font_family == "Cormorant"
+
+    def test_fallback_auto_adds_to_inside_left_when_no_message_anywhere(
+        self,
+    ) -> None:
+        # sympathy-spare has no inside-text elements on either inside
+        # panel. The fallback should auto-add to inside_left so the
+        # user's Markdown actually renders somewhere.
+        gen = CardGenerator()
+        card = gen.create_card("sympathy-spare")
+        rich = parse_markdown("With care.")
+        gen.apply_inside_rich_content(card, rich)
+
+        inside_left_panel = next(
+            p for p in card.panels if p.position.value == "inside_left"
+        )
+        assert len(inside_left_panel.text_elements) == 1
+        added = inside_left_panel.text_elements[0]
+        assert added.rich_content == rich
+        assert added.font_family == "Lato"
+
+    def test_christmas_classic_cli_path_renders_cormorant_not_lato(
+        self, runner: CliRunner, letter_md: Path, tmp_path: Path,
+    ) -> None:
+        """End-to-end through the CLI: a Markdown letter on
+        christmas-classic should render with Cormorant (the template's
+        message font), not Lato. christmas-classic references only
+        PlayfairDisplay (cover) and Cormorant (inside message). If
+        Lato shows up in the rendered SVG, the auto-add-to-inside_left
+        bug kicked in."""
+        import re
+
+        out = tmp_path / "card.svg"
+        result = runner.invoke(
+            app,
+            ["create", "christmas-classic",
+             "--inside-message-md", str(letter_md),
+             "--output", str(out)],
+        )
+        assert result.exit_code == 0, result.stdout + result.output
+        svg = out.read_text()
+        fonts = set(re.findall(r'font-family="([^"]+)"', svg))
+        # Sanity: Cormorant must be present (the inside body).
+        assert "Cormorant" in fonts, (
+            f"expected Cormorant in rendered SVG; got fonts {fonts}"
+        )
+        # The real assertion: no Lato should appear. christmas-classic
+        # does not reference Lato anywhere.
+        lato_fonts = {f for f in fonts if f.startswith("Lato")}
+        assert not lato_fonts, (
+            f"christmas-classic should not produce any Lato fonts; "
+            f"got {lato_fonts}. The auto-add-to-inside_left bug is the "
+            f"likely cause."
+        )
+
+    def test_christmas_classic_cli_renders_single_inside_body(
+        self, runner: CliRunner, letter_md: Path, tmp_path: Path,
+    ) -> None:
+        """End-to-end: the user's Markdown letter should replace the
+        template's default 'Wishing you joy and happiness this holiday
+        season!' content — not render alongside it. Two simultaneous
+        inside bodies (template default in Cormorant + user content in
+        Lato) was the visible symptom of the panel-targeting bug."""
+        out = tmp_path / "card.svg"
+        result = runner.invoke(
+            app,
+            ["create", "christmas-classic",
+             "--inside-message-md", str(letter_md),
+             "--output", str(out)],
+        )
+        assert result.exit_code == 0, result.stdout + result.output
+        svg = out.read_text()
+        assert "Wishing you joy and happiness" not in svg, (
+            "Template default 'Wishing you joy...' should be cleared "
+            "when the user provides --inside-message-md"
+        )
+
+
 class TestCliMarkdownFlag:
     def test_inside_message_md_renders_a_pdf(
         self, runner: CliRunner, letter_md: Path, tmp_path: Path
