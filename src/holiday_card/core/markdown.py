@@ -8,12 +8,12 @@ Parses a small Markdown subset chosen for greeting-card use:
   letter).
 * **Bold** — ``**text**`` (and ``__text__``) renders in the bold
   variant of the font_family.
+* **Italic** — ``*text*`` (and ``_text_``) renders in the italic
+  variant of the font_family. Combined: ``***text***`` and
+  ``___text___`` render as bold-italic.
 
 Intentional non-features:
 
-* Italic — most curated fonts are variable and don't ship distinct
-  italic faces. A future PR can register italic variants and lift
-  this limitation.
 * Lists, headings, code, links, images, tables — none belong in a
   greeting-card's inside panel. If a user needs them, the inside
   panel is the wrong place.
@@ -40,17 +40,13 @@ __all__ = [
 
 
 class StyledRun(BaseModel):
-    """A continuous span of text in a single style.
-
-    ``bold`` is the only style flag in the v0 surface; future
-    additions (italic, etc.) extend this with extra fields and
-    require corresponding font-registry support.
-    """
+    """A continuous span of text in a single style."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     text: str
     bold: bool = False
+    italic: bool = False
 
 
 class Paragraph(BaseModel):
@@ -78,8 +74,16 @@ class RichTextContent(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-# Match `**bold**` or `__bold__` non-greedily. Captures the inner text.
+# Markdown marker priority: triple-marker (bold+italic) wins over
+# double (bold) wins over single (italic). All three regexes are
+# evaluated; the one that matches earliest in the input wins, and its
+# captured content is recursively re-parsed for any *higher-marker*
+# styles it still permits (e.g. italic inside bold).
+_TRIPLE_BOLD_ITALIC = re.compile(r"\*\*\*(.+?)\*\*\*|___(.+?)___")
 _BOLD = re.compile(r"\*\*(.+?)\*\*|__(.+?)__")
+# Italic forbids the same marker char inside (no nesting same-marker
+# spans) and forbids newlines (no spanning paragraphs).
+_ITALIC = re.compile(r"\*([^*\n]+?)\*|_([^_\n]+?)_")
 
 
 def parse_markdown(source: str) -> RichTextContent:
@@ -112,28 +116,64 @@ def parse_markdown(source: str) -> RichTextContent:
 
 
 def _parse_inline(line: str) -> list[StyledRun]:
-    """Split a single line into alternating bold and normal runs.
+    """Split a single line into styled runs.
 
-    Falls back to a single normal run if no bold markers appear.
+    Recursive descent over marker priority (triple > double > single).
+    At each position the earliest matching marker wins; the captured
+    content is recursively re-parsed with the discovered style turned
+    on, enabling italic-inside-bold (``**a *b* c**``) and the
+    triple-marker bold-italic shortcut (``***x***``).
     """
     runs: list[StyledRun] = []
-    cursor = 0
-    for match in _BOLD.finditer(line):
-        # Text before this bold span (if any).
-        if match.start() > cursor:
-            runs.append(StyledRun(text=line[cursor : match.start()], bold=False))
-        bold_text = match.group(1) or match.group(2) or ""
-        if bold_text:
-            runs.append(StyledRun(text=bold_text, bold=True))
-        cursor = match.end()
-    # Trailing text after the last bold span.
-    if cursor < len(line):
-        runs.append(StyledRun(text=line[cursor:], bold=False))
+    _walk(line, bold=False, italic=False, runs=runs)
     if not runs:
-        # Defensive — line was entirely whitespace, but the caller
-        # already filters those.
-        runs.append(StyledRun(text=line, bold=False))
+        runs.append(StyledRun(text=line, bold=False, italic=False))
     return runs
+
+
+def _walk(
+    text: str, *, bold: bool, italic: bool, runs: list[StyledRun]
+) -> None:
+    if not text:
+        return
+    if bold and italic:
+        runs.append(StyledRun(text=text, bold=True, italic=True))
+        return
+
+    candidates: list[tuple[re.Pattern[str], bool, bool]] = []
+    if not bold and not italic:
+        candidates.append((_TRIPLE_BOLD_ITALIC, True, True))
+    if not bold:
+        candidates.append((_BOLD, True, False))
+    if not italic:
+        candidates.append((_ITALIC, False, True))
+
+    best: tuple[re.Match[str], bool, bool] | None = None
+    for pattern, set_bold, set_italic in candidates:
+        match = pattern.search(text)
+        if match is None:
+            continue
+        if best is None or match.start() < best[0].start():
+            best = (match, set_bold, set_italic)
+
+    if best is None:
+        runs.append(StyledRun(text=text, bold=bold, italic=italic))
+        return
+
+    match, set_bold, set_italic = best
+    if match.start() > 0:
+        runs.append(StyledRun(
+            text=text[: match.start()], bold=bold, italic=italic,
+        ))
+    inner = match.group(1) or match.group(2) or ""
+    if inner:
+        _walk(
+            inner,
+            bold=bold or set_bold,
+            italic=italic or set_italic,
+            runs=runs,
+        )
+    _walk(text[match.end():], bold=bold, italic=italic, runs=runs)
 
 
 # ---------------------------------------------------------------------------
@@ -141,30 +181,79 @@ def _parse_inline(line: str) -> list[StyledRun]:
 # ---------------------------------------------------------------------------
 
 
-def font_id_for_run(font_family: str, *, bold: bool) -> str:
-    """Map a (font_family, bold) pair to the IR font_id the compiler
-    should use.
+def font_id_for_run(
+    font_family: str, *, bold: bool = False, italic: bool = False
+) -> str:
+    """Map a (font_family, bold, italic) triple to the IR font_id the
+    compiler should use.
 
-    For curated fonts, only ``Lato`` ships with a distinct ``Lato-Bold``
-    variant in the registry. For others, we fall back to the regular
-    family name and trust the variable-font's default weight to be
-    visually distinct enough. Future PRs can register additional
-    weights and remove this fallback.
+    Resolution order for (bold, italic):
+
+    * Both flags off → ``font_family`` verbatim.
+    * Bold-italic requested → try the BoldItalic variant; degrade to
+      Bold, then Italic, then regular.
+    * Bold only → try the Bold variant; degrade to regular.
+    * Italic only → try the Italic variant; degrade to regular.
+
+    The known-variant sets are explicit (not derived from the font
+    registry) so this module stays independent of ReportLab. Curated
+    fonts ship Regular only today — italic and bold spans on those
+    fonts render as Regular. Documented limitation; lifts when italic
+    TTFs are added to ``fonts/curated/``.
     """
-    if not bold:
+    if not bold and not italic:
         return font_family
-    bold_id = f"{font_family}-Bold"
-    # Only Lato-Bold is registered today; the rest are variable fonts
-    # where ``Family-Bold`` doesn't resolve. The compiler validates
-    # font_ids at render time, so listing them explicitly here keeps
-    # the parser independent of the registry.
-    KNOWN_BOLD_VARIANTS = {"Lato-Bold"}
-    if bold_id in KNOWN_BOLD_VARIANTS:
-        return bold_id
-    # Fallback: use the regular family. Renders as not-bold, which is
-    # visually wrong but doesn't crash. Documented limitation in
-    # docs/markdown.md (when that doc lands).
+
+    if bold and italic:
+        bi_id = _BOLD_ITALIC_VARIANT.get(font_family, f"{font_family}-BoldItalic")
+        if bi_id in _KNOWN_BOLD_ITALIC_VARIANTS:
+            return bi_id
+        bold_id = f"{font_family}-Bold"
+        if bold_id in _KNOWN_BOLD_VARIANTS:
+            return bold_id
+        italic_id = _ITALIC_VARIANT.get(font_family, f"{font_family}-Italic")
+        if italic_id in _KNOWN_ITALIC_VARIANTS:
+            return italic_id
+        return font_family
+
+    if bold:
+        bold_id = f"{font_family}-Bold"
+        if bold_id in _KNOWN_BOLD_VARIANTS:
+            return bold_id
+        return font_family
+
+    # italic only
+    italic_id = _ITALIC_VARIANT.get(font_family, f"{font_family}-Italic")
+    if italic_id in _KNOWN_ITALIC_VARIANTS:
+        return italic_id
     return font_family
+
+
+# PDF base-14 conventions use "Oblique" for sans/mono and "Italic"
+# for serif. The italic variant id can't be mechanically generated
+# from the family name; table-driven.
+_ITALIC_VARIANT: dict[str, str] = {
+    "Helvetica":   "Helvetica-Oblique",
+    "Times-Roman": "Times-Italic",
+    "Courier":     "Courier-Oblique",
+}
+_BOLD_ITALIC_VARIANT: dict[str, str] = {
+    "Helvetica":   "Helvetica-BoldOblique",
+    "Times-Roman": "Times-BoldItalic",
+    "Courier":     "Courier-BoldOblique",
+}
+
+# Variants known to be registered in renderers/font_registry.py.
+_KNOWN_BOLD_VARIANTS = frozenset({
+    "Helvetica-Bold", "Times-Bold", "Courier-Bold",
+    "Lato-Bold",
+})
+_KNOWN_ITALIC_VARIANTS = frozenset({
+    "Helvetica-Oblique", "Times-Italic", "Courier-Oblique",
+})
+_KNOWN_BOLD_ITALIC_VARIANTS = frozenset({
+    "Helvetica-BoldOblique", "Times-BoldItalic", "Courier-BoldOblique",
+})
 
 
 _BoldFlag = Literal[True, False]  # noqa: PYI051  - documents the option set

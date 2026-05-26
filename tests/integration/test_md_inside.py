@@ -92,6 +92,62 @@ class TestRichTextCompilation:
             f"Cormorant has no Bold variant; found {bold_segments}"
         )
 
+    def test_italic_runs_use_oblique_font_id_when_family_is_helvetica(
+        self,
+    ) -> None:
+        """Italic Markdown spans resolve to the registered italic
+        variant when the family has one (Helvetica → Helvetica-Oblique)."""
+        italic_letter = (
+            "Dear *Sarah*,\n\n"
+            "Thinking of you — *especially* this year.\n\n"
+            "With love,\nThe Smiths\n"
+        )
+        gen = CardGenerator()
+        card = gen.create_card("christmas-classic")
+        for panel in card.panels:
+            for te in panel.text_elements:
+                if te.id == "message":
+                    te.font_family = "Helvetica"
+                    te.rich_content = parse_markdown(italic_letter)
+                    te.width = 3.25
+                    break
+        cmds = compile_card(card)
+        texts = [c for c in cmds if isinstance(c, DrawText)]
+        italic_texts = [t for t in texts if "Oblique" in t.run.font_id]
+        assert italic_texts, (
+            f"Expected at least one Helvetica-Oblique DrawText; "
+            f"saw font_ids: {[t.run.font_id for t in texts]}"
+        )
+        # The italic spans cover "Sarah" and "especially" — at least one
+        # should appear in an italic-font_id segment.
+        assert any(
+            "Sarah" in t.run.text or "especially" in t.run.text
+            for t in italic_texts
+        ), f"italic font_id segments: {[t.run.text for t in italic_texts]}"
+
+    def test_bold_italic_triple_marker_resolves_to_bolditalic_variant(
+        self,
+    ) -> None:
+        """``***x***`` should resolve to the BoldItalic variant when the
+        family registers one."""
+        letter = "Dear,\n\nWe wish you ***great*** joy.\n"
+        gen = CardGenerator()
+        card = gen.create_card("christmas-classic")
+        for panel in card.panels:
+            for te in panel.text_elements:
+                if te.id == "message":
+                    te.font_family = "Helvetica"
+                    te.rich_content = parse_markdown(letter)
+                    te.width = 3.25
+                    break
+        cmds = compile_card(card)
+        texts = [c for c in cmds if isinstance(c, DrawText)]
+        bi_texts = [t for t in texts if "BoldOblique" in t.run.font_id]
+        assert bi_texts, (
+            f"Expected Helvetica-BoldOblique for ***great***; "
+            f"saw font_ids: {[t.run.font_id for t in texts]}"
+        )
+
     def test_rich_content_takes_priority_over_content(self) -> None:
         """If both content (template default) and rich_content (override)
         are present, rich_content wins."""

@@ -102,6 +102,71 @@ class TestBoldParsing:
         assert "**" in runs[0].text
 
 
+class TestItalicParsing:
+    def test_single_asterisk_italic(self) -> None:
+        result = parse_markdown("Hello *world*.")
+        runs = result.paragraphs[0].hard_lines[0]
+        assert runs == [
+            StyledRun(text="Hello ", bold=False, italic=False),
+            StyledRun(text="world", bold=False, italic=True),
+            StyledRun(text=".", bold=False, italic=False),
+        ]
+
+    def test_single_underscore_italic(self) -> None:
+        result = parse_markdown("Hello _world_.")
+        runs = result.paragraphs[0].hard_lines[0]
+        assert runs == [
+            StyledRun(text="Hello ", bold=False, italic=False),
+            StyledRun(text="world", bold=False, italic=True),
+            StyledRun(text=".", bold=False, italic=False),
+        ]
+
+    def test_double_asterisk_still_bold_not_italic(self) -> None:
+        # Regression: **x** must remain bold-only, never split as ``*<*x*>*``.
+        result = parse_markdown("**bold**")
+        runs = result.paragraphs[0].hard_lines[0]
+        assert runs == [StyledRun(text="bold", bold=True, italic=False)]
+
+    def test_triple_asterisk_is_bold_italic(self) -> None:
+        result = parse_markdown("***both***")
+        runs = result.paragraphs[0].hard_lines[0]
+        assert runs == [StyledRun(text="both", bold=True, italic=True)]
+
+    def test_triple_underscore_is_bold_italic(self) -> None:
+        result = parse_markdown("___both___")
+        runs = result.paragraphs[0].hard_lines[0]
+        assert runs == [StyledRun(text="both", bold=True, italic=True)]
+
+    def test_mixed_bold_and_italic_in_one_line(self) -> None:
+        result = parse_markdown("Plain *it* **bold** *more*.")
+        runs = result.paragraphs[0].hard_lines[0]
+        styles = [(r.text, r.bold, r.italic) for r in runs]
+        assert styles == [
+            ("Plain ", False, False),
+            ("it", False, True),
+            (" ", False, False),
+            ("bold", True, False),
+            (" ", False, False),
+            ("more", False, True),
+            (".", False, False),
+        ]
+
+    def test_multiple_italic_spans_in_one_line(self) -> None:
+        result = parse_markdown("*one* and *two* and plain.")
+        runs = result.paragraphs[0].hard_lines[0]
+        italicized = [r.text for r in runs if r.italic]
+        assert italicized == ["one", "two"]
+
+    def test_unclosed_single_asterisk_is_literal(self) -> None:
+        # ``*never closed`` should pass through, not silently absorb
+        # everything to end-of-line as italic.
+        result = parse_markdown("Five stars: *never closed")
+        runs = result.paragraphs[0].hard_lines[0]
+        assert len(runs) == 1
+        assert runs[0].italic is False
+        assert "*" in runs[0].text
+
+
 class TestRealisticChristmasLetter:
     """Sanity-check the parser on the canonical 'Christmas letter'
     example used in the README and the PR description."""
@@ -157,6 +222,42 @@ class TestFontIdResolution:
         # variable fonts; no -Bold is registered. Documented limitation.
         assert font_id_for_run("Cormorant", bold=True) == "Cormorant"
         assert font_id_for_run("PlayfairDisplay", bold=True) == "PlayfairDisplay"
+
+
+class TestFontIdItalic:
+    """Italic font resolution mirrors the bold story. Liberation-backed
+    PDF base-14 names have registered italic variants (Helvetica-Oblique,
+    Times-Italic, Courier-Oblique). Curated fonts fall back to the
+    regular face — documented limitation, same as bold."""
+
+    def test_pdf_base14_italic_resolves(self) -> None:
+        assert font_id_for_run("Helvetica", italic=True) == "Helvetica-Oblique"
+        assert font_id_for_run("Times-Roman", italic=True) == "Times-Italic"
+        assert font_id_for_run("Courier", italic=True) == "Courier-Oblique"
+
+    def test_pdf_base14_bold_italic_resolves(self) -> None:
+        assert (
+            font_id_for_run("Helvetica", bold=True, italic=True)
+            == "Helvetica-BoldOblique"
+        )
+        assert (
+            font_id_for_run("Times-Roman", bold=True, italic=True)
+            == "Times-BoldItalic"
+        )
+        assert (
+            font_id_for_run("Courier", bold=True, italic=True)
+            == "Courier-BoldOblique"
+        )
+
+    def test_curated_fonts_fall_back_to_regular_for_italic(self) -> None:
+        assert font_id_for_run("Cormorant", italic=True) == "Cormorant"
+        assert font_id_for_run("PlayfairDisplay", italic=True) == "PlayfairDisplay"
+        assert font_id_for_run("Inter", italic=True) == "Inter"
+
+    def test_lato_bold_italic_falls_back_to_lato_bold(self) -> None:
+        # Lato has a Bold but no BoldItalic; degrade to Bold rather than
+        # losing the weight signal entirely.
+        assert font_id_for_run("Lato", bold=True, italic=True) == "Lato-Bold"
 
 
 class TestRichTextSchema:

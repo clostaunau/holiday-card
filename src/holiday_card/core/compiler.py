@@ -1125,7 +1125,9 @@ def _compile_rich_text(
                 # x-offset by the cumulative width of preceding segments.
                 offset = 0.0
                 for run in wrapped:
-                    font_id = font_id_for_run(font_family, bold=run.bold)
+                    font_id = font_id_for_run(
+                        font_family, bold=run.bold, italic=run.italic,
+                    )
                     seg_width = measurer.stringWidth(
                         run.text, font_id, font_size,
                     )
@@ -1174,7 +1176,9 @@ def _wrap_styled_runs(
     current_width = 0.0
 
     for run in runs:
-        font_id = font_id_for_run(font_family, bold=run.bold)
+        font_id = font_id_for_run(
+            font_family, bold=run.bold, italic=run.italic,
+        )
         # Split on whitespace but keep visible spacing — reassemble
         # with a space between words.
         words = run.text.split(" ")
@@ -1201,13 +1205,21 @@ def _wrap_styled_runs(
 
             # Append: merge with the previous run if same style, else
             # start a new styled segment on this line.
-            if current_line and current_line[-1].bold == run.bold:
+            same_style = (
+                current_line
+                and current_line[-1].bold == run.bold
+                and current_line[-1].italic == run.italic
+            )
+            if same_style:
                 merged = StyledRun(
-                    text=current_line[-1].text + candidate, bold=run.bold,
+                    text=current_line[-1].text + candidate,
+                    bold=run.bold, italic=run.italic,
                 )
                 current_line[-1] = merged
             else:
-                current_line.append(StyledRun(text=candidate, bold=run.bold))
+                current_line.append(StyledRun(
+                    text=candidate, bold=run.bold, italic=run.italic,
+                ))
             current_width += candidate_width
 
     if current_line:

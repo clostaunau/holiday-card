@@ -189,7 +189,8 @@ The compiler supports backgrounds, borders, basic shapes (Rectangle,
 Circle, Triangle, Star, Line, **SVGPath**) with **solid fills, linear
 gradients, radial gradients, and patterns (stripes / dots / grid /
 checkerboard)**, text with left/center/right alignment + Markdown
-rich text (paragraphs + **bold**) + structured letter parts
+rich text (paragraphs + **bold** + *italic* + ***bold-italic***)
++ structured letter parts
 (salutation / signoff / signature / P.S.), **photo images** with
 circle / rectangle / ellipse / star clip masks, fold lines, identity
 or rotation-only group transforms, and **bleed extension** on edges
@@ -274,6 +275,21 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Recent changes
 
+- **2026-05-25 — Italic Markdown support**: `--inside-message-md` now
+  parses `*italic*` and `_italic_` spans alongside the existing `**bold**`,
+  plus `***bold-italic***` / `___bold-italic___` as a combined-style
+  shorthand. `StyledRun` gained an `italic: bool` field. The parser
+  shifted from a two-pass (bold-then-italic) regex to a recursive-
+  descent walk over marker priority (triple > double > single) so
+  ``***x***`` resolves cleanly without the lazy bold regex eating the
+  inner asterisks. `font_id_for_run` accepts an `italic=` kwarg and
+  maps to PDF base-14 conventions (`Helvetica-Oblique`, `Times-Italic`,
+  `Courier-Oblique` for italic; `Helvetica-BoldOblique` and friends
+  for bold-italic). Curated fonts fall back to regular — same
+  documented limitation as bold — and lift once italic TTFs are added
+  to `fonts/curated/`. Compiler's rich-text layout threads the italic
+  flag through the wrapper (line-merge predicate now requires both
+  bold AND italic to match). 14 new tests.
 - **2026-05-25 — Sympathy-class occasion taxonomy (Leapfrog 2 finishing slice)**:
   Adds the four sympathy-class occasions the panel called out in
   `consensus-ai-feature.md:109` as a prerequisite for L3 AI imagery
