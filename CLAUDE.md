@@ -275,6 +275,24 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Recent changes
 
+- **2026-05-25 — `--inside-message-md` / `--inside-message` panel
+  targeting fix**: The three inside-content apply functions
+  (`_apply_inside_message`, `apply_inside_letter`,
+  `apply_inside_rich_content`) previously only searched the
+  `inside_left` panel for a "message" target. But shipped templates
+  put the "message" element on `inside_right` (10 of 21 templates do
+  this; the rest ship no inside text). The functions hit the auto-add
+  fallback every time and dropped a fresh `Lato` element onto
+  `inside_left` — leaving the template's existing message untouched.
+  Two simultaneous inside bodies (template's default in Cormorant +
+  user's content in Lato) rendered on every `christmas-classic`
+  Markdown letter. Extracted a shared `_find_or_add_inside_target`
+  helper that searches `inside_right` first, then `inside_left`,
+  then falls back to auto-add — and updated all three apply functions
+  to use it. Side effect: italic Markdown now renders in the
+  template's intended font (Cormorant-Italic on christmas-classic
+  etc.) instead of falling back to Lato (which has no italic). 4 new
+  integration tests pin the new targeting behavior.
 - **2026-05-25 — Italic TTFs for Cormorant + Playfair (closes Italic
   Markdown loop)**: Bundles `CormorantGaramond-Italic.ttf` and
   `PlayfairDisplay-Italic.ttf` (both SIL OFL 1.1, variable-weight from

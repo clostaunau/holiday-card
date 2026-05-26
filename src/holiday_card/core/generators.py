@@ -48,6 +48,64 @@ _PER_PANEL_FILENAMES: dict[str, str] = {
     "inside_right": "inside-right",
 }
 
+# Inside panels in priority order for targeting. ``inside_right`` comes
+# first because that's where most shipped templates place the "message"
+# element — it's the right-side page when the card is opened (natural
+# reading position for English left-to-right). Templates that put a
+# message on inside_left still get picked up by the search.
+_INSIDE_PANEL_POSITIONS: tuple[str, ...] = ("inside_right", "inside_left")
+
+
+def _find_or_add_inside_target(card: Card) -> TextElement:
+    """Locate the ``TextElement`` that should receive an inside-panel
+    message (plain text, Markdown rich content, or structured letter).
+
+    Priority:
+
+    1. Element with ``id="message"`` on any inside panel (searched
+       inside_right first, then inside_left — the order most templates
+       use).
+    2. First text element on any inside panel.
+    3. Auto-added Lato element on ``inside_left`` (the fallback for
+       templates that ship no inside text at all).
+
+    Returns the target ``TextElement``. Callers update its
+    ``content`` / ``rich_content`` / ``letter_content`` fields directly.
+    """
+    # Pass 1: look for the named "message" element.
+    for position in _INSIDE_PANEL_POSITIONS:
+        for panel in card.panels:
+            if panel.position.value != position:
+                continue
+            for text in panel.text_elements:
+                if text.id == "message":
+                    return text
+    # Pass 2: first text element on any inside panel.
+    for position in _INSIDE_PANEL_POSITIONS:
+        for panel in card.panels:
+            if panel.position.value != position:
+                continue
+            if panel.text_elements:
+                return panel.text_elements[0]
+    # Pass 3: auto-add to inside_left. Lato is the curated friendly sans
+    # — a safe default when the template designer left no text slot.
+    for panel in card.panels:
+        if panel.position.value == "inside_left":
+            new_text = TextElement(
+                content="",
+                x=0.5,
+                y=panel.height - 0.5,
+                width=panel.width - 1.0,
+                font_family="Lato",
+                font_size=12,
+            )
+            panel.text_elements.append(new_text)
+            return new_text
+    raise RuntimeError(
+        "Card has no inside_left panel — cannot apply inside content. "
+        "All shipped templates declare both inside_left and inside_right."
+    )
+
 
 class CardGenerator:
     """Orchestrates card generation from template to PDF output.
@@ -190,113 +248,46 @@ class CardGenerator:
     def apply_inside_letter(self, card: Card, letter: LetterContent) -> None:
         """Apply a structured :class:`LetterContent` to the inside panel.
 
-        Mirrors ``apply_inside_rich_content`` but sets
-        ``letter_content`` (and clears ``content`` + ``rich_content``)
-        on the inside_left panel's "message" text element. Used by the
-        CLI's ``--salutation`` / ``--signoff`` / ``--signature`` /
-        ``--ps`` flag set.
+        Targets the template's existing "message" text element wherever
+        it lives (inside_left or inside_right); falls back to the first
+        inside-panel text element; finally auto-adds a Lato element to
+        inside_left if no inside text exists. Used by the CLI's
+        ``--salutation`` / ``--signoff`` / ``--signature`` / ``--ps``
+        flag set.
 
         An entirely empty ``LetterContent`` is a no-op (consistent
         with ``is_empty()`` returning True).
         """
         if letter.is_empty():
             return
-        for panel in card.panels:
-            if panel.position.value == "inside_left":
-                target: TextElement | None = None
-                for text in panel.text_elements:
-                    if text.id == "message":
-                        target = text
-                        break
-                if target is None and panel.text_elements:
-                    target = panel.text_elements[0]
-                if target is None:
-                    panel.text_elements.append(
-                        TextElement(
-                            content="",
-                            x=0.5,
-                            y=panel.height - 0.5,
-                            width=panel.width - 1.0,
-                            font_family="Lato",
-                            font_size=12,
-                            letter_content=letter,
-                        )
-                    )
-                    return
-                target.content = ""
-                target.rich_content = None
-                target.letter_content = letter
-                return
+        target = _find_or_add_inside_target(card)
+        target.content = ""
+        target.rich_content = None
+        target.letter_content = letter
 
     def apply_inside_rich_content(self, card: Card, rich: RichTextContent) -> None:
         """Apply Markdown-derived ``RichTextContent`` to the inside panel.
 
-        Mirrors ``_apply_inside_message`` but sets ``rich_content`` (and
-        clears ``content``) on the inside_left panel's "message" text
-        element (or first available, or auto-added one if absent).
-
-        Used by the CLI's ``--inside-message-md`` flag.
+        Mirrors :meth:`apply_inside_letter`'s targeting: reuses the
+        template's existing "message" element (which lives on
+        inside_right for most shipped templates) so the user's Markdown
+        renders in the font and position the template intended. Used
+        by the CLI's ``--inside-message-md`` flag.
         """
-        for panel in card.panels:
-            if panel.position.value == "inside_left":
-                target: TextElement | None = None
-                for text in panel.text_elements:
-                    if text.id == "message":
-                        target = text
-                        break
-                if target is None and panel.text_elements:
-                    target = panel.text_elements[0]
-                if target is None:
-                    panel.text_elements.append(
-                        TextElement(
-                            content="",
-                            x=0.5,
-                            y=panel.height - 0.5,
-                            width=panel.width - 1.0,
-                            font_family="Lato",
-                            font_size=12,
-                            rich_content=rich,
-                        )
-                    )
-                    return
-                target.content = ""
-                target.rich_content = rich
-                return
+        target = _find_or_add_inside_target(card)
+        target.content = ""
+        target.letter_content = None
+        target.rich_content = rich
 
     def _apply_inside_message(self, card: Card, message: str) -> None:
-        """Apply a message to the inside panel.
-
-        Args:
-            card: Card to modify.
-            message: Inside message to apply.
+        """Apply a plain-text inside message to the template's existing
+        message element (wherever it lives), or auto-add to inside_left
+        if none exists.
         """
-        # Find the inside_left panel (for book-style opening, this becomes
-        # the right page when opened, which is the natural reading position)
-        for panel in card.panels:
-            if panel.position.value == "inside_left":
-                # Look for a text element with id "message" or use the first one
-                for text in panel.text_elements:
-                    if text.id == "message":
-                        text.content = message
-                        return
-                # Fall back to first text element
-                if panel.text_elements:
-                    panel.text_elements[0].content = message
-                    return
-                # No text element, add one. "Lato" matches the cover
-                # auto-add default; together they're the safe fallback
-                # when a template doesn't already carry text slots.
-                panel.text_elements.append(
-                    TextElement(
-                        content=message,
-                        x=0.5,
-                        y=panel.height / 2,
-                        width=panel.width - 1.0,  # Leave margins
-                        font_family="Lato",
-                        font_size=14,
-                    )
-                )
-                return
+        target = _find_or_add_inside_target(card)
+        target.content = message
+        target.rich_content = None
+        target.letter_content = None
 
     def _apply_images(self, card: Card, images: list[ImageElement]) -> None:
         """Apply images to the card.
