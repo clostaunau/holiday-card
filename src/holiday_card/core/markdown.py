@@ -231,11 +231,14 @@ def font_id_for_run(
 
 # PDF base-14 conventions use "Oblique" for sans/mono and "Italic"
 # for serif. The italic variant id can't be mechanically generated
-# from the family name; table-driven.
+# from the family name; table-driven. Curated fonts use "-Italic"
+# suffix uniformly.
 _ITALIC_VARIANT: dict[str, str] = {
-    "Helvetica":   "Helvetica-Oblique",
-    "Times-Roman": "Times-Italic",
-    "Courier":     "Courier-Oblique",
+    "Helvetica":       "Helvetica-Oblique",
+    "Times-Roman":     "Times-Italic",
+    "Courier":         "Courier-Oblique",
+    "Cormorant":       "Cormorant-Italic",
+    "PlayfairDisplay": "PlayfairDisplay-Italic",
 }
 _BOLD_ITALIC_VARIANT: dict[str, str] = {
     "Helvetica":   "Helvetica-BoldOblique",
@@ -250,6 +253,7 @@ _KNOWN_BOLD_VARIANTS = frozenset({
 })
 _KNOWN_ITALIC_VARIANTS = frozenset({
     "Helvetica-Oblique", "Times-Italic", "Courier-Oblique",
+    "Cormorant-Italic", "PlayfairDisplay-Italic",
 })
 _KNOWN_BOLD_ITALIC_VARIANTS = frozenset({
     "Helvetica-BoldOblique", "Times-BoldItalic", "Courier-BoldOblique",
