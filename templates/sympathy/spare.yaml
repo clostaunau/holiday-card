@@ -1,0 +1,76 @@
+# Sympathy (spare). A restrained, dignified card.
+# Cream background, italic serif, no decoration.
+# Front carries one short greeting; inside is left blank so the
+# sender can write their own message via --inside-message,
+# --inside-message-md, or the structured letter flags.
+
+id: "sympathy-spare"
+name: "Sympathy (spare)"
+occasion: "sympathy"
+fold_type: "half_fold"
+description: "Restrained sympathy card. Cream on cream, italic serif. Inside blank for a handwritten message."
+
+panels:
+  # Front (right half, bottom — visible when folded)
+  - id: "front"
+    position: "front"
+    x: 4.25
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.97
+      g: 0.95
+      b: 0.91
+    text_elements:
+      - id: "greeting"
+        content: "With sympathy"
+        x: 2.125
+        y: 2.85
+        width: 3.5
+        font_family: "Cormorant"
+        font_size: 26
+        font_style: "italic"
+        alignment: "center"
+        color:
+          r: 0.25
+          g: 0.22
+          b: 0.20
+
+  # Back (left half, bottom — blank)
+  - id: "back"
+    position: "back"
+    x: 0
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.97
+      g: 0.95
+      b: 0.91
+
+  # Inside-left (left half, top — blank, rotated 180 for fold)
+  - id: "inside_left"
+    position: "inside_left"
+    x: 0
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180
+    background_color:
+      r: 0.97
+      g: 0.95
+      b: 0.91
+
+  # Inside-right (right half, top — blank, rotated 180 for fold)
+  - id: "inside_right"
+    position: "inside_right"
+    x: 4.25
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180
+    background_color:
+      r: 0.97
+      g: 0.95
+      b: 0.91

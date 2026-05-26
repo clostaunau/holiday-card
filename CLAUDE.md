@@ -194,7 +194,7 @@ rich text (paragraphs + **bold**) + structured letter parts
 circle / rectangle / ellipse / star clip masks, fold lines, identity
 or rotation-only group transforms, and **bleed extension** on edges
 that touch the page trim (default 0.125", set per Card via
-`card.bleed` or per Panel via `panel.bleed`). **All 17 shipped
+`card.bleed` or per Panel via `panel.bleed`). **All 21 shipped
 templates currently compile cleanly:**
 
 ```
@@ -206,6 +206,8 @@ christmas-family-photo
 birthday-balloons         birthday-photo
 hanukkah-menorah          generic-celebration
 mothers-day               mothers-day-photo
+sympathy-spare            condolence-spare
+miscarriage-spare         pet-loss-spare
 ```
 
 Remaining gaps (out-of-scope features, each raises
@@ -272,6 +274,22 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Recent changes
 
+- **2026-05-25 — Sympathy-class occasion taxonomy (Leapfrog 2 finishing slice)**:
+  Adds the four sympathy-class occasions the panel called out in
+  `consensus-ai-feature.md:109` as a prerequisite for L3 AI imagery
+  (so the hard-rails have categories to refuse against). New
+  `OccasionType` values: `SYMPATHY`, `CONDOLENCE`, `MISCARRIAGE`,
+  `PET_LOSS`. Each ships one restrained template (`sympathy-spare`,
+  `condolence-spare`, `miscarriage-spare`, `pet-loss-spare`) plus
+  a curated voice subset: `warm` + `spare` everywhere, plus
+  `devotional` for sympathy/condolence only. Witty and irreverent
+  are deliberately not shipped for any sympathy-class occasion
+  ("absent rather than wrong"); devotional skipped for miscarriage
+  and pet_loss because religious framing of those losses is delicate
+  enough that absence beats getting it wrong. Asking the CLI for an
+  un-shipped combination raises `SentimentNotFoundError` — fail
+  loud. Sentiment lines are hand-curated, not v0/generated. 21 new
+  templates shipping (was 17), 20 new sentiment files, +6 tests.
 - **2026-05-11 — Leapfrog 5: template-gallery microsite + GitHub Pages**:
   Static site shipped: one HTML page per template (14 total) with a
   form that builds a copy-paste-ready `holiday-card create ...`

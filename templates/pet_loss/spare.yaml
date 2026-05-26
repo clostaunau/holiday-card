@@ -1,0 +1,69 @@
+# Pet loss (spare). For the loss of a companion animal.
+# Cream background, italic serif, no decoration.
+
+id: "pet-loss-spare"
+name: "In memory (pet, spare)"
+occasion: "pet_loss"
+fold_type: "half_fold"
+description: "Restrained card for the loss of a pet. Cream on cream, italic serif. Inside blank for a personal message."
+
+panels:
+  - id: "front"
+    position: "front"
+    x: 4.25
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.97
+      g: 0.95
+      b: 0.91
+    text_elements:
+      - id: "greeting"
+        content: "In memory"
+        x: 2.125
+        y: 2.85
+        width: 3.5
+        font_family: "Cormorant"
+        font_size: 28
+        font_style: "italic"
+        alignment: "center"
+        color:
+          r: 0.25
+          g: 0.22
+          b: 0.20
+
+  - id: "back"
+    position: "back"
+    x: 0
+    y: 0
+    width: 4.25
+    height: 5.5
+    background_color:
+      r: 0.97
+      g: 0.95
+      b: 0.91
+
+  - id: "inside_left"
+    position: "inside_left"
+    x: 0
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180
+    background_color:
+      r: 0.97
+      g: 0.95
+      b: 0.91
+
+  - id: "inside_right"
+    position: "inside_right"
+    x: 4.25
+    y: 5.5
+    width: 4.25
+    height: 5.5
+    rotation: 180
+    background_color:
+      r: 0.97
+      g: 0.95
+      b: 0.91

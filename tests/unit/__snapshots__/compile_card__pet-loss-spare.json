@@ -1,0 +1,198 @@
+[
+  {
+    "bleed": 9.0,
+    "cmd": "begin_page",
+    "height": 792.0,
+    "safe_margin": 18.0,
+    "width": 612.0
+  },
+  {
+    "cmd": "set_metadata",
+    "key": "template_id",
+    "value": "pet-loss-spare"
+  },
+  {
+    "cmd": "set_metadata",
+    "key": "fold_type",
+    "value": "half_fold"
+  },
+  {
+    "cmd": "begin_group",
+    "opacity": 1.0,
+    "transform": {
+      "rotate_deg": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "translate_x": 0.0,
+      "translate_y": 0.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.91,
+        "g": 0.95,
+        "r": 0.97
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 405.0,
+      "kind": "rect",
+      "width": 315.0,
+      "x": 306.0,
+      "y": -9.0
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "draw_text",
+    "opacity": 1.0,
+    "run": {
+      "align": "center",
+      "color": {
+        "a": 1.0,
+        "b": 0.2,
+        "g": 0.22,
+        "r": 0.25
+      },
+      "font_id": "Cormorant",
+      "origin": {
+        "x": 459.0,
+        "y": 205.20000000000002
+      },
+      "size_pt": 28.0,
+      "text": "In memory"
+    }
+  },
+  {
+    "cmd": "end_group"
+  },
+  {
+    "cmd": "begin_group",
+    "opacity": 1.0,
+    "transform": {
+      "rotate_deg": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "translate_x": 0.0,
+      "translate_y": 0.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.91,
+        "g": 0.95,
+        "r": 0.97
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 405.0,
+      "kind": "rect",
+      "width": 315.0,
+      "x": -9.0,
+      "y": -9.0
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "end_group"
+  },
+  {
+    "cmd": "begin_group",
+    "opacity": 1.0,
+    "transform": {
+      "rotate_deg": 180.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "translate_x": 153.0,
+      "translate_y": 594.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.91,
+        "g": 0.95,
+        "r": 0.97
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 405.0,
+      "kind": "rect",
+      "width": 315.0,
+      "x": 0.0,
+      "y": 387.0
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "end_group"
+  },
+  {
+    "cmd": "begin_group",
+    "opacity": 1.0,
+    "transform": {
+      "rotate_deg": 180.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "translate_x": 459.0,
+      "translate_y": 594.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.91,
+        "g": 0.95,
+        "r": 0.97
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 405.0,
+      "kind": "rect",
+      "width": 315.0,
+      "x": 297.0,
+      "y": 387.0
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "end_group"
+  },
+  {
+    "cmd": "draw_fold_line",
+    "end": {
+      "x": 612.0,
+      "y": 396.0
+    },
+    "start": {
+      "x": 0.0,
+      "y": 396.0
+    },
+    "style": "dashed"
+  },
+  {
+    "cmd": "end_page"
+  }
+]

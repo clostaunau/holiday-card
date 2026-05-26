@@ -75,6 +75,15 @@ class TestEnums:
         assert OccasionType.CHRISTMAS.value == "christmas"
         assert OccasionType.BIRTHDAY.value == "birthday"
 
+    def test_sympathy_class_occasions_exist(self):
+        # Panel L2 taxonomy expansion — these exist so the AI hard-rails
+        # planned for L3 (consensus-ai-feature.md) have categories to
+        # refuse against by default.
+        assert OccasionType.SYMPATHY.value == "sympathy"
+        assert OccasionType.CONDOLENCE.value == "condolence"
+        assert OccasionType.MISCARRIAGE.value == "miscarriage"
+        assert OccasionType.PET_LOSS.value == "pet_loss"
+
     def test_panel_position_values(self):
         """Test PanelPosition enum values."""
         assert PanelPosition.FRONT.value == "front"
