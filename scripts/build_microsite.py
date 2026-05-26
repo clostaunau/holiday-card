@@ -69,7 +69,27 @@ _OCCASION_LABELS = {
     "hanukkah": "Hanukkah",
     "mothers_day": "Mother's Day",
     "generic": "Generic",
+    "sympathy": "Sympathy",
+    "condolence": "Condolence",
+    "miscarriage": "After a loss",
+    "pet_loss": "Pet loss",
 }
+
+# Top-level grouping in the gallery. The sympathy-class occasions live
+# in their own category so a user looking for a sympathy card does not
+# scroll past birthday and Christmas cards to get there — the panel's
+# Sandy-the-DIY-crafter, looking for the right tone after a hard
+# message, deserves an obvious path.
+_SYMPATHY_OCCASIONS = frozenset({"sympathy", "condolence", "miscarriage", "pet_loss"})
+
+_CATEGORIES = (
+    ("celebrations", "Celebrations", None),
+    (
+        "sympathy",
+        "With sympathy",
+        "Cards for grief and loss. Restrained design, hand-curated copy.",
+    ),
+)
 
 # Voice options surfaced in the form. Matches the CLI's VOICES set.
 _VOICES = ("warm", "witty", "spare", "devotional", "irreverent")
@@ -148,26 +168,45 @@ def _render_thumbnail(template_id: str, out_path: Path, dpi: int) -> None:
 def _render_index(cards: list[TemplateCard]) -> str:
     """Render the gallery index page.
 
-    Groups templates by occasion. Each card is a thumbnail + name +
-    occasion badge linking to the per-template page.
+    Top-level structure: two categories ("Celebrations" and "With
+    sympathy"), each containing occasion subsections sorted
+    alphabetically. The category split keeps grief cards visually
+    distinct from celebration cards.
     """
     by_occasion: dict[str, list[TemplateCard]] = {}
     for card in cards:
         by_occasion.setdefault(card.occasion, []).append(card)
 
-    section_chunks: list[str] = []
-    for occasion in sorted(by_occasion):
-        label = _OCCASION_LABELS.get(occasion, occasion.title())
-        cards_html = "\n".join(_index_card(c) for c in by_occasion[occasion])
-        section_chunks.append(f"""
-    <section class="occasion">
-      <h2>{html.escape(label)}</h2>
-      <div class="grid">
-        {cards_html}
-      </div>
+    category_chunks: list[str] = []
+    for cat_id, cat_label, cat_blurb in _CATEGORIES:
+        occasions_in_cat = sorted(
+            occ for occ in by_occasion
+            if (occ in _SYMPATHY_OCCASIONS) == (cat_id == "sympathy")
+        )
+        if not occasions_in_cat:
+            continue
+        occasion_chunks: list[str] = []
+        for occasion in occasions_in_cat:
+            label = _OCCASION_LABELS.get(occasion, occasion.title())
+            cards_html = "\n".join(_index_card(c) for c in by_occasion[occasion])
+            occasion_chunks.append(f"""
+      <section class="occasion">
+        <h3>{html.escape(label)}</h3>
+        <div class="grid">
+          {cards_html}
+        </div>
+      </section>""")
+        blurb_html = (
+            f'<p class="category-blurb">{html.escape(cat_blurb)}</p>'
+            if cat_blurb else ""
+        )
+        category_chunks.append(f"""
+    <section class="category category-{cat_id}">
+      <h2>{html.escape(cat_label)}</h2>
+      {blurb_html}{"".join(occasion_chunks)}
     </section>""")
 
-    sections = "\n".join(section_chunks)
+    sections = "\n".join(category_chunks)
     return _HTML_FRAME.format(
         title="holiday-card — templates",
         head_extra="",
@@ -405,12 +444,35 @@ main {
   padding: 1rem 1.5rem 3rem;
 }
 
-section.occasion { margin: 2rem 0; }
-section.occasion h2 {
+section.category { margin: 2rem 0 3rem; }
+section.category h2 {
+  font-size: 1.8rem;
+  margin: 0 0 0.4rem;
+  color: var(--ink);
+}
+.category-blurb {
+  color: var(--muted);
+  margin: 0 0 1.5rem;
+  max-width: 48ch;
+}
+section.category-sympathy {
+  background: #f3f0e8;
+  padding: 1.5rem 1.5rem 0.5rem;
+  border-radius: 8px;
+  margin-top: 4rem;
+}
+section.category-sympathy h2 { color: #4a463e; }
+section.category-sympathy .card { background: #faf8f3; }
+section.category-sympathy .thumb { background: #ece8de; }
+
+section.occasion { margin: 1.5rem 0; }
+section.occasion h3 {
   border-bottom: 1px solid var(--line);
   padding-bottom: 0.3rem;
-  font-size: 1.4rem;
+  font-size: 1.2rem;
   margin: 0 0 1rem;
+  font-weight: 600;
+  color: var(--muted);
 }
 
 .grid {
@@ -461,6 +523,10 @@ section.occasion h2 {
 .badge-hanukkah { background: #eaf3fa; color: #205070; }
 .badge-mothers_day { background: #fef0f5; color: #a04060; }
 .badge-generic { background: #efece5; color: var(--muted); }
+.badge-sympathy { background: #ece8de; color: #4a463e; }
+.badge-condolence { background: #ece8de; color: #4a463e; }
+.badge-miscarriage { background: #ece8de; color: #4a463e; }
+.badge-pet_loss { background: #ece8de; color: #4a463e; }
 
 /* Per-template page */
 .page-header { display: flex; flex-direction: column; gap: 0.25rem; }

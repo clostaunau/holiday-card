@@ -128,10 +128,10 @@ class TestTemplatePageContents:
 class TestOccasionGrouping:
     """Templates are grouped by occasion in the gallery."""
 
-    def test_christmas_section_appears(self, built_site) -> None:
+    def test_christmas_subsection_appears(self, built_site) -> None:
         output, _ = built_site
         index_html = (output / "index.html").read_text()
-        assert "<h2>Christmas</h2>" in index_html
+        assert "<h3>Christmas</h3>" in index_html
 
     def test_known_occasions_have_sections(self, built_site) -> None:
         output, cards = built_site
@@ -144,3 +144,76 @@ class TestOccasionGrouping:
             assert f"badge-{occ}" in index_html, (
                 f"Gallery should style occasion {occ!r} with a badge class"
             )
+
+
+class TestCategorySeparation:
+    """Sympathy-class occasions live in a visually separated category so
+    a user looking for a sympathy card doesn't scroll past birthday and
+    Christmas cards to get there."""
+
+    def test_celebrations_category_renders(self, built_site) -> None:
+        output, _ = built_site
+        index_html = (output / "index.html").read_text()
+        assert 'class="category category-celebrations"' in index_html
+        assert "<h2>Celebrations</h2>" in index_html
+
+    def test_sympathy_category_renders(self, built_site) -> None:
+        output, _ = built_site
+        index_html = (output / "index.html").read_text()
+        assert 'class="category category-sympathy"' in index_html
+        assert "<h2>With sympathy</h2>" in index_html
+
+    def test_sympathy_class_cards_live_in_sympathy_category(
+        self, built_site
+    ) -> None:
+        """A card linked from the sympathy category must be a
+        sympathy-class template (not, say, a birthday card)."""
+        output, _ = built_site
+        index_html = (output / "index.html").read_text()
+        sympathy_block = _between(
+            index_html,
+            'class="category category-sympathy"',
+            "</section>\n  </main>",  # category end → main end
+        )
+        # Every sympathy-class template should appear in this block.
+        for tmpl_id in (
+            "sympathy-spare", "condolence-spare",
+            "miscarriage-spare", "pet-loss-spare",
+        ):
+            assert f'href="templates/{tmpl_id}.html"' in sympathy_block, (
+                f"{tmpl_id} should appear in the sympathy category section"
+            )
+        # And a celebration template should NOT.
+        assert 'href="templates/christmas-classic.html"' not in sympathy_block
+
+    def test_celebrations_cards_live_in_celebrations_category(
+        self, built_site
+    ) -> None:
+        output, _ = built_site
+        index_html = (output / "index.html").read_text()
+        celebrations_block = _between(
+            index_html,
+            'class="category category-celebrations"',
+            'class="category category-sympathy"',
+        )
+        for tmpl_id in (
+            "christmas-classic", "birthday-balloons",
+            "hanukkah-menorah", "mothers-day",
+        ):
+            assert f'href="templates/{tmpl_id}.html"' in celebrations_block, (
+                f"{tmpl_id} should appear in the celebrations category"
+            )
+        # And a sympathy template should NOT.
+        assert 'href="templates/sympathy-spare.html"' not in celebrations_block
+
+
+def _between(haystack: str, start_marker: str, end_marker: str) -> str:
+    """Return the substring of ``haystack`` between the first occurrence
+    of ``start_marker`` and the next occurrence of ``end_marker``. Raises
+    AssertionError with context if either marker is missing — keeps test
+    failure modes loud."""
+    i = haystack.find(start_marker)
+    assert i != -1, f"start_marker not found: {start_marker!r}"
+    j = haystack.find(end_marker, i + len(start_marker))
+    assert j != -1, f"end_marker not found after start: {end_marker!r}"
+    return haystack[i:j]
