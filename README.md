@@ -37,8 +37,9 @@ This project is the third option:
 * **Curated typography ships with the project** — six SIL OFL fonts
   (Cormorant, Playfair, Lato, Inter, Caveat, Comfortaa), embedded in
   every PDF
-* **Voiced greetings ship with the project** — 250 hand-tagged
-  sentiments across 5 voices and 5 occasions, picked via `--voice`
+* **Voiced greetings ship with the project** — 300+ hand-tagged
+  sentiments across 5 voices and 9 occasions (5 celebratory +
+  4 sympathy-class), picked via `--voice`
 
 ## Install
 
@@ -79,14 +80,14 @@ holiday-card create birthday-balloons --inside-message-md letter.md
 
 | Layer | What's in it |
 |---|---|
-| **Templates** | 17 ship-quality templates across Christmas (11, incl. 1 family photo), Birthday (2, incl. 1 photo), Hanukkah, Mother's Day (2, incl. 1 photo), Generic — all compile cleanly |
+| **Templates** | 21 ship-quality templates across Christmas (11, incl. 1 family photo), Birthday (2, incl. 1 photo), Hanukkah, Mother's Day (2, incl. 1 photo), Generic, and 4 sympathy-class (sympathy, condolence, miscarriage, pet loss) — all compile cleanly |
 | **Voices** | warm, witty, spare, devotional, irreverent — pick via `--voice` |
-| **Sentiments** | 250 hand-tagged copy lines across 5 occasions × 5 voices × 2 roles |
+| **Sentiments** | 303 hand-tagged copy lines across 9 occasions × up-to-5 voices × 2 roles. Sympathy-class occasions ship a curated voice subset ("absent rather than wrong" — witty + irreverent never appear for grief contexts) |
 | **Fonts** | 6 curated SIL OFL families (Cormorant Garamond, Playfair Display, Lato, Inter, Caveat, Comfortaa) embedded in every PDF |
 | **Photo cards** | `ImageElement` + circle / rectangle / ellipse / star clip masks; render a portrait into a styled frame |
 | **POD targets** | `letter` (single imposed sheet), `per-panel-pdf` (native trim per panel), `moo-a6` (A6 with content scaled to fit + DeviceCMYK PDF/X-1a:2003 + GRACoL2013 ICC) |
 | **Output formats** | PDF (default), SVG, PNG |
-| **Quality gates** | ruff + mypy strict + 711 tests + visual-regression perceptual-hash gate across all 17 templates + smoke job covering each voice and the CMYK export |
+| **Quality gates** | ruff + mypy strict + 744 tests + visual-regression perceptual-hash gate across all 21 templates + smoke job covering each voice and the CMYK export |
 
 ## Hacking on it
 
@@ -95,7 +96,7 @@ git clone https://github.com/clostaunau/holiday-card.git
 cd holiday-card
 pip install -e ".[dev]"
 
-pytest                         # 711 tests, runs in ~20s
+pytest                         # 744 tests, runs in ~25s
 ruff check src/ tests/         # lint (zero warnings)
 mypy src/                      # strict-mode type-check (zero errors)
 
@@ -146,13 +147,15 @@ critic breakdowns. Recent work targets the panel's "1-month" and
 * ✅ Gradient + pattern fills (linear / radial / stripes / dots / grid / checkerboard) — unblocks 3 more christmas templates
 * ✅ SVG path support — unblocks holly-wreath + holiday-masterpiece
 * ✅ Template-gallery microsite (Leapfrog 5) — static page per template with a copy-paste CLI command builder; deployed to GitHub Pages
-* ✅ 3 new photo-card templates — `christmas-family-photo` (rectangle clip + Inter/Lato), `mothers-day-photo` (ellipse clip + Playfair/Caveat cameo), `birthday-photo` (circle clip + Comfortaa/Caveat). **All 17 shipped templates now compile.**
-* ✅ Visual-regression perceptual-hash gate across all 17 templates
+* ✅ 3 new photo-card templates — `christmas-family-photo` (rectangle clip + Inter/Lato), `mothers-day-photo` (ellipse clip + Playfair/Caveat cameo), `birthday-photo` (circle clip + Comfortaa/Caveat). **All shipped templates compile cleanly.**
+* ✅ Visual-regression perceptual-hash gate across every shipped template (auto-discovered, so new templates need a baseline before merge)
 * ✅ PNG backend true alpha-blending — semi-transparent shapes now compose over panel backgrounds correctly (was an RGB-canvas alpha-drop bug)
+* ✅ Sympathy-class occasion taxonomy: 4 new occasions (sympathy / condolence / miscarriage / pet_loss), 4 restrained templates, 20 hand-curated sentiment files with explicit voice gating (witty + irreverent never ship for grief contexts; devotional limited to adult-loss). Completes the panel's L2 prerequisite for the L3 hard-rails (consensus-ai-feature.md:109)
+* ✅ Microsite Celebrations / Sympathy category split — sympathy cards no longer interleaved with cake-and-balloons cards
 * ⏳ Illustrator commission: ~30 hand-drawn SVG path assets (Leapfrog 2 final slice — needs a human)
 * ⏳ Italic font variants (extends Markdown mode beyond bold)
 * ⏳ Multi-panel spill for long Markdown letters
-* ⏳ Father's Day + sympathy templates (calendar-driven SKU expansion)
+* ⏳ Father's Day templates (calendar-driven SKU expansion)
 * ❌ AI-native authoring (Leapfrog 3) — explicitly deferred per the AI-feature consensus doc until the curation moat is wider
 
 ## Architecture
