@@ -24,7 +24,6 @@ from holiday_card.core.models import (
     CircleClipMask,
     EllipseClipMask,
     FoldType,
-    HeartClipMask,
     ImageEffects,
     ImageElement,
     OccasionType,
@@ -33,7 +32,6 @@ from holiday_card.core.models import (
     PhotoFrameStyle,
     RectangleClipMask,
     StarClipMask,
-    SVGPathClipMask,
 )
 from holiday_card.core.render_ir import (
     BeginClip,
@@ -185,25 +183,6 @@ class TestClipMaskConversion:
         assert isinstance(clips[0].geometry, PolygonGeom)
         # 5-pointed star = 10 polygon vertices (alternating outer/inner)
         assert len(clips[0].geometry.points) == 10
-
-    def test_heart_clip_unsupported(self) -> None:
-        img = ImageElement(
-            source_path=str(FIXTURE_IMAGE),
-            x=0.0, y=0.0, width=2.0, height=2.0,
-            clip_mask=HeartClipMask(center_x=1.0, center_y=1.0, size=0.5),
-        )
-        with pytest.raises(UnsupportedFeatureError, match="Heart"):
-            compile_card(_make_card(img))
-
-    def test_svg_path_clip_unsupported(self) -> None:
-        img = ImageElement(
-            source_path=str(FIXTURE_IMAGE),
-            x=0.0, y=0.0, width=2.0, height=2.0,
-            clip_mask=SVGPathClipMask(path_data="M 0 0 L 10 10 Z"),
-        )
-        with pytest.raises(UnsupportedFeatureError, match="SVGPath"):
-            compile_card(_make_card(img))
-
 
 class TestUnsupportedFeatures:
     """ImageElement features deferred to follow-up PRs raise loudly."""

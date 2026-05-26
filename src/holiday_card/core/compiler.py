@@ -16,7 +16,7 @@ dependency ``core.text_fitting`` already has).
 
 **Scope of this PR (Wave 2 Step 2b):** only the structural shell plus
 basic shapes and text. Image elements, gradients, patterns, clip masks,
-SVG paths, and decorative-element expansion are out of scope and will
+and SVG paths are out of scope and will
 raise ``NotImplementedError`` if encountered. This is deliberate — silent
 feature drop would let half-supported templates ship as broken PDFs in
 Step 4. Subsequent PRs lift each feature into the compiler, gated behind
@@ -45,7 +45,6 @@ from holiday_card.core.models import (
     Color,
     EllipseClipMask,
     FoldType,
-    HeartClipMask,
     ImageElement,
     Line,
     Panel,
@@ -54,7 +53,6 @@ from holiday_card.core.models import (
     Star,
     StarClipMask,
     SVGPath,
-    SVGPathClipMask,
     TextElement,
     Triangle,
 )
@@ -161,7 +159,7 @@ def compile_card(card: Card, ctx: CompileContext | None = None) -> list[RenderCo
 
     Raises ``UnsupportedFeatureError`` if the card uses features not yet
     implemented by the compiler (e.g. image elements, gradient fills,
-    clip masks, SVG paths, decorative elements). Step 2b deliberately
+    clip masks, SVG paths). Step 2b deliberately
     refuses rather than silently dropping content.
     """
     ctx = ctx or CompileContext()
@@ -350,8 +348,6 @@ def _emit_panel_border(panel: Panel) -> list[RenderCommand]:
         return []
     border = panel.border
     if border.style == BorderStyle.DECORATIVE:
-        # Decorative borders draw shapes rather than a stroked rect; not
-        # ported yet (would require the decorative library).
         raise UnsupportedFeatureError(
             f"Border style {border.style.value!r} not yet supported by the compiler."
         )
@@ -431,8 +427,7 @@ def _compile_shape(shape: object, panel: Panel) -> list[RenderCommand]:
     if isinstance(shape, SVGPath):
         return _compile_svg_path(shape, panel)
     raise UnsupportedFeatureError(
-        f"Shape type {type(shape).__name__} is not yet supported by the compiler. "
-        f"Track: Wave 2 follow-up PR (decorative elements remain)."
+        f"Shape type {type(shape).__name__} is not yet supported by the compiler."
     )
 
 
@@ -1469,8 +1464,7 @@ def _compile_image(image: ImageElement, panel: Panel) -> list[RenderCommand]:
 
 
 def _clip_mask_to_geom(
-    clip: CircleClipMask | RectangleClipMask | EllipseClipMask | StarClipMask
-    | HeartClipMask | SVGPathClipMask,
+    clip: CircleClipMask | RectangleClipMask | EllipseClipMask | StarClipMask,
     panel: Panel,
 ) -> GeomU:
     """Convert a :class:`ClipMask` discriminated-union member to IR geometry.
@@ -1483,8 +1477,7 @@ def _clip_mask_to_geom(
     template behavior is the load-bearing constraint.
 
     Returns one of ``CircleGeom`` / ``RectGeom`` / ``EllipseGeom`` /
-    ``PolygonGeom``. Heart and SVGPath clip-mask types raise
-    ``UnsupportedFeatureError`` in v1.
+    ``PolygonGeom``.
     """
     import math
 
@@ -1530,12 +1523,6 @@ def _clip_mask_to_geom(
                 y=cy_pt + radius * math.sin(angle),
             ))
         return PolygonGeom(points=tuple(points))
-    if isinstance(clip, (HeartClipMask, SVGPathClipMask)):
-        raise UnsupportedFeatureError(
-            f"ClipMask type {type(clip).__name__} not yet supported by the "
-            f"compiler. Heart needs synthesis to a Path; SVGPath needs the "
-            f"SVG path parser wired to PathGeom. Track: Wave 2 follow-up PR."
-        )
     raise UnsupportedFeatureError(
         f"Unknown ClipMask type {type(clip).__name__}."
     )

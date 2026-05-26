@@ -25,7 +25,6 @@ from holiday_card.core.export_targets import ExportTarget
 from holiday_card.core.models import (
     Card,
     Circle,
-    DecorativeElement,
     Line,
     Panel,
     Rectangle,
@@ -162,16 +161,10 @@ def _scale_text(text: TextElement, scale: float) -> TextElement:
 
 
 def _scale_shape(
-    shape: Rectangle | Circle | Triangle | Star | Line | SVGPath | DecorativeElement,
+    shape: Rectangle | Circle | Triangle | Star | Line | SVGPath,
     scale: float,
-) -> Rectangle | Circle | Triangle | Star | Line | SVGPath | DecorativeElement:
-    """Scale a shape's coordinates and size by ``scale``.
-
-    Falls back to returning the shape unchanged for any type the
-    compiler doesn't yet emit (notably ``DecorativeElement``); the
-    compiler will raise ``UnsupportedFeatureError`` later if it
-    encounters one, so we don't need to handle it here.
-    """
+) -> Rectangle | Circle | Triangle | Star | Line | SVGPath:
+    """Scale a shape's coordinates and size by ``scale``."""
     if isinstance(shape, Rectangle):
         return shape.model_copy(
             update={
@@ -216,4 +209,4 @@ def _scale_shape(
     if isinstance(shape, SVGPath):
         # SVGPath uses a `scale` multiplier; compose.
         return shape.model_copy(update={"scale": shape.scale * scale})
-    return shape  # other shapes (DecorativeElement) pass through; compiler rejects.
+    return shape

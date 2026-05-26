@@ -6,7 +6,6 @@ This module contains all Pydantic models representing the domain entities:
 - TextElement: Text with positioning and styling
 - ImageElement: Image with positioning and scaling
 - Shape: Vector graphics primitives (Rectangle, Circle, Triangle, Star, Line)
-- DecorativeElement: Reusable shape compositions
 - Panel: Card section with content
 - Template: Pre-designed card layout
 - Card: Complete card design
@@ -41,7 +40,6 @@ __all__ = [
     "Star",
     "Line",
     "SVGPath",
-    "DecorativeElement",
     "Shape",
     # Fill styles
     "ColorStop",
@@ -55,8 +53,6 @@ __all__ = [
     "RectangleClipMask",
     "EllipseClipMask",
     "StarClipMask",
-    "SVGPathClipMask",
-    "HeartClipMask",
     "ClipMask",
     # Image effects
     "ImageEffectType",
@@ -218,7 +214,6 @@ class ShapeType(StrEnum):
     STAR = "star"
     LINE = "line"
     SVG_PATH = "svg_path"  # T001: Add SVG_PATH enum value
-    DECORATIVE_ELEMENT = "decorative_element"
 
 
 class PatternType(StrEnum):
@@ -464,39 +459,9 @@ class StarClipMask(BaseModel):
         return v
 
 
-class SVGPathClipMask(BaseModel):
-    """SVG path clipping mask for images.
-
-    Uses SVG path data to define custom clipping shapes.
-    Path must be closed (end with Z command).
-    """
-
-    type: Literal["svg_path"] = "svg_path"
-    path_data: str = Field(min_length=1, description="SVG path data string (must be closed path)")
-    scale: float = Field(default=1.0, gt=0.0, le=10.0, description="Path scale multiplier")
-
-    @field_validator("path_data")
-    @classmethod
-    def validate_closed_path(cls, v: str) -> str:
-        """Ensure path is closed (ends with Z or z)."""
-        v = v.strip()
-        if not (v.endswith('Z') or v.endswith('z')):
-            raise ValueError("SVG path for clipping mask must be closed (end with Z or z)")
-        return v
-
-
-class HeartClipMask(BaseModel):
-    """Heart-shaped clipping mask for images."""
-
-    type: Literal["heart"] = "heart"
-    center_x: float = Field(ge=0.0, description="Center X position in inches (relative to image)")
-    center_y: float = Field(ge=0.0, description="Center Y position in inches (relative to image)")
-    size: float = Field(gt=0.0, description="Heart size (width) in inches")
-
-
 # Discriminated union for clip masks
 ClipMask = Annotated[
-    CircleClipMask | RectangleClipMask | EllipseClipMask | StarClipMask | SVGPathClipMask | HeartClipMask,
+    CircleClipMask | RectangleClipMask | EllipseClipMask | StarClipMask,
     Field(discriminator='type')
 ]
 
@@ -792,27 +757,9 @@ class SVGPath(BaseShape):
         return v
 
 
-class DecorativeElement(BaseModel):
-    """Reusable composition of shapes forming a design unit.
-
-    Examples: Christmas tree, ornament, gift box.
-    Supports position, scale, rotation, and color customization.
-    """
-
-    id: str = Field(default_factory=lambda: str(uuid4()), description="Unique element identifier")
-    type: Literal[ShapeType.DECORATIVE_ELEMENT] = ShapeType.DECORATIVE_ELEMENT
-    name: str = Field(description="Decorative element name (references library)")
-    x: float = Field(ge=0.0, description="Anchor X position in inches")
-    y: float = Field(ge=0.0, description="Anchor Y position in inches")
-    scale: float = Field(default=1.0, gt=0.0, description="Proportional scale multiplier")
-    rotation: float = Field(default=0.0, ge=0.0, lt=360.0, description="Rotation in degrees")
-    color_palette: dict[str, str] | None = Field(default=None, description="Color role overrides")
-    z_index: int = Field(default=0, description="Rendering layer (higher = on top)")
-
-
 # Discriminated union for all shape types
 Shape = Annotated[
-    Rectangle | Circle | Triangle | Star | Line | SVGPath | DecorativeElement,
+    Rectangle | Circle | Triangle | Star | Line | SVGPath,
     Field(discriminator='type')
 ]
 
