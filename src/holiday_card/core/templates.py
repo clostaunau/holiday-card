@@ -14,7 +14,6 @@ from holiday_card.core.models import (
     Circle,
     Color,
     ColorStop,
-    DecorativeElement,
     FoldType,
     ImageElement,
     Line,
@@ -372,7 +371,7 @@ def _parse_fill_style(
 
 def _parse_shape_element(
     data: dict,
-) -> Rectangle | Circle | Triangle | Star | Line | SVGPath | DecorativeElement | None:
+) -> Rectangle | Circle | Triangle | Star | Line | SVGPath | None:
     """Parse shape element data into appropriate Shape object.
 
     Uses Pydantic's discriminated union based on 'type' field.
@@ -381,7 +380,7 @@ def _parse_shape_element(
         data: Raw shape element data from YAML.
 
     Returns:
-        Parsed shape object (Rectangle, Circle, Triangle, Star, Line, or DecorativeElement),
+        Parsed shape object (Rectangle, Circle, Triangle, Star, Line, or SVGPath),
         or None if the shape type is unknown or parsing fails.
     """
     shape_type = data.get("type")
@@ -487,16 +486,6 @@ def _parse_shape_element(
                 stroke_width=data.get("stroke_width", 1),
                 opacity=data.get("opacity", 1.0),
                 z_index=data.get("z_index", 0),
-            )
-        elif shape_type == "decorative_element":
-            return DecorativeElement(
-                name=data["name"],
-                x=data["x"],
-                y=data["y"],
-                scale=data.get("scale", 1.0),
-                rotation=data.get("rotation", 0),
-                z_index=data.get("z_index", 0),
-                color_palette=data.get("color_palette", {}),
             )
         else:
             return None

@@ -211,8 +211,7 @@ mothers-day               mothers-day-photo
 Remaining gaps (out-of-scope features, each raises
 `UnsupportedFeatureError` rather than silently dropping content):
 SVG path **arc** commands (`A`/`a` — no shipped template uses arcs),
-decorative-element expansion, photo `effects` / `frame_style`, Heart
-and SVG-path clip masks. **Fail loud, not silent** is the convention.
+photo `effects` / `frame_style`. **Fail loud, not silent** is the convention.
 
 To support a new feature: extend `core/compiler.py` to lower the
 relevant `Card` field into IR commands, then make sure each backend
@@ -260,23 +259,11 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Known issues (good first tasks for a fresh session)
 
-- **CI smoke job is narrow:** `.github/workflows/ci.yml` renders four
-  template PDFs but doesn't exercise `--voice` end-to-end or validate
-  the CMYK headers on `--export-for moo-a6` output. Both are
-  leapfrog-shipped features without a smoke-level gate.
 - **Out-of-scope compiler features (genuinely deferred, not bugs):**
   SVG path arc commands (`A`/`a` — no shipped template uses arcs),
-  decorative-element expansion (Valentine-era; intentionally not
-  ported to the IR), photo `effects` / `frame_style`, Heart and
-  SVGPath clip masks, and `ImageElement` auto-sizing (width/height =
-  None). All raise `UnsupportedFeatureError` at compile time — the
-  "fail loud, not silent" convention.
-- **Dead model code in `models.py`:** `HeartClipMask`,
-  `DecorativeElement`, and friends were kept around when the
-  Valentine release was deprecated (PR #8) on the theory that the
-  data layer was load-bearing groundwork for a future port. Two-plus
-  releases later they remain unused by any shipped template or
-  compiler path. Removable; left in place is harmless but adds noise.
+  photo `effects` / `frame_style`, and `ImageElement` auto-sizing
+  (width/height = None). All raise `UnsupportedFeatureError` at
+  compile time — the "fail loud, not silent" convention.
 - **L2 illustrator commission is the outstanding strategic item:**
   Not a code task — the panel's recommendation in
   `consensus-general.md` is to commission ~30 hand-illustrated SVG
