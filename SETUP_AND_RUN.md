@@ -77,6 +77,28 @@ holiday-card themes --help
 holiday-card validate --help
 ```
 
+## 6b. (Optional) AI imagery — personal use
+
+AI image generation is an opt-in extra. It bakes one image to disk at
+authoring time (it never runs when you render a card), and is **not
+recommended for cards you intend to sell**.
+
+```bash
+pip install -e ".[ai]"      # or: pip install holiday-card[ai]
+export OPENAI_API_KEY=sk-...
+
+holiday-card ai-asset generate --help
+holiday-card ai-asset generate \
+  --subject "watercolor pine bough border, sage green" \
+  --reference fonts/curated/motif.png \
+  --occasion christmas --export-for moo-a6 \
+  --out assets/ai/border.png --accept-ai-terms
+```
+
+Sympathy / religious-iconography / trademark / likeness prompts refuse
+by default; see the "AI imagery" section of the README for the full
+guardrail list. The base tool works without this extra.
+
 ## 7. Open the output
 
 ```bash

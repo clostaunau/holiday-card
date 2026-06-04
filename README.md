@@ -113,6 +113,50 @@ PR comment. Reviewers see what the change does to the actual cards
 before merging — the "cards-as-code" identity move from Leapfrog 4
 of the panel review.
 
+## AI imagery (optional, personal use)
+
+> **AI image generation is intended for personal use. We do not
+> recommend AI imagery for cards you intend to sell. AI-generated assets
+> may inadvertently contain protected material. You are responsible for
+> what you print and sell.**
+
+AI imagery is an **authoring-time** step that bakes one image to disk —
+it never runs inside the render pipeline, so your cards stay
+reproducible (commit the PNG + its `.license.yaml` sidecar to git).
+Install the extra and set a key:
+
+```bash
+pip install holiday-card[ai]
+export OPENAI_API_KEY=sk-...
+
+holiday-card ai-asset generate \
+  --subject "watercolor pine bough border, sage green and burgundy" \
+  --reference fonts/curated/motif.png \
+  --style watercolor \
+  --occasion christmas \
+  --export-for moo-a6 \
+  --out assets/ai/pine-bough-border.png
+```
+
+Guardrails that ship on by default (see
+`docs/industry-review/consensus-ai-feature.md`):
+
+* **First-use consent** — a one-time acknowledgement recorded under your
+  config dir; pass `--accept-ai-terms` to record it non-interactively.
+* **Image-reference mode default** — `--reference` is required (the
+  style anchor); `--unsafe-no-style-anchor` opts out (discouraged).
+* **POD-aware sizing** — the `--export-for` target's trim+bleed sets the
+  pixel dimensions at 300 DPI, rounded to 16-px multiples. Output is
+  tagged sRGB IEC61966-2.1.
+* **Hard category rails** — sympathy / condolence / miscarriage /
+  pet_loss occasions, religious iconography, trademarked brands, and
+  recognizable-likeness / photo-replacement prompts **refuse by
+  default**. Override with `--i-know-what-im-doing` (it prints every
+  reason first).
+* **Provenance sidecar** — every asset gets a sibling
+  `<asset>.license.yaml` recording the prompt, model, seed, timestamp,
+  cost, and the OpenAI policy URL in force at generation time.
+
 ## What this is not
 
 * **Not a Canva replacement.** If you want a visual editor with 600
@@ -157,7 +201,8 @@ critic breakdowns. Recent work targets the panel's "1-month" and
 * ✅ Bold Markdown for curated editorial serifs — `**bold**` and `***bold-italic***` on `Cormorant` / `PlayfairDisplay` resolve to bundled static Bold + BoldItalic TTFs (instanced from the variable masters at weight=700). Closes the bold-fallback documented limitation for the two editorial-serif families
 * ⏳ Multi-panel spill for long Markdown letters
 * ⏳ Father's Day templates (calendar-driven SKU expansion)
-* ❌ AI-native authoring (Leapfrog 3) — explicitly deferred per the AI-feature consensus doc until the curation moat is wider
+* ✅ AI imagery (Leapfrog 3) — authoring-time `ai-asset generate` subcommand that bakes one image to disk with a provenance sidecar (never runs at render time). Image-reference-mode default, POD-aware sizing (300 DPI / 16-px multiples), sRGB-tagged, first-use consent, trademark blocklist, and hard category rails (sympathy / religious iconography / likeness / photo replacement refuse by default). Opt-in via `pip install holiday-card[ai]` + `OPENAI_API_KEY`. See "AI imagery" below
+* ❌ Render-time AI fill, AI-generated copy, panel/photo replacement — deliberately out of scope per the AI-feature consensus doc
 
 ## Architecture
 

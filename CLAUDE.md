@@ -1,11 +1,12 @@
 # holiday-card — Development Guidelines
 
-Last updated: 2026-05-14. Wave 2 architecture refactor is **complete**.
+Last updated: 2026-06-02. Wave 2 architecture refactor is **complete**.
 Of the five industry-panel leapfrogs, **L1 (POD prepress), L2-engineering
-(curated taste layer), L4 (cards-as-code identity), and L5 (template
-microsite) are shipped**; only L2-illustrator (needs a human contractor)
-and L3 (AI imagery — deferred to Q1 2027) remain. Codebase is at v1.1.0
-with all CI quality gates blocking.
+(curated taste layer), L3 (AI imagery — authoring-time `ai-asset generate`
+in its narrow, hard-railed form), L4 (cards-as-code identity), and L5
+(template microsite) are shipped**; only L2-illustrator (needs a human
+contractor) remains. Codebase is at v1.3.0 with all CI quality gates
+blocking.
 
 ## TL;DR for a fresh session
 
@@ -29,7 +30,7 @@ holiday-card create christmas-classic --inside-message-md letter.md   # Markdown
 holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," --signature "C" --ps "PS hi"   # structured letter
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-pytest                              # all 711 tests, mypy-clean, ruff-clean
+pytest                              # all 831 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -65,6 +66,7 @@ coord system per element.
 - Typer 0.9+ (CLI)
 - PyYAML 6.0+ (template loading)
 - pikepdf 8.0+ (PDF/X-1a post-processing for `--export-for moo-a6`)
+- openai 1.0+ (**optional** `[ai]` extra; only `core/ai_openai.py` imports it)
 
 ## Project layout
 
@@ -85,6 +87,10 @@ src/holiday_card/
     markdown.py         # Tiny Markdown subset for --inside-message-md
     letter.py           # LetterContent model for --salutation/--signoff/--signature/--ps
     color_management.py # sRGB→CMYK conversion + ICC profile path resolution
+    ai_rails.py         # L3 hard category rails (occasion + prompt blocklists)
+    ai_provenance.py    # L3 LicenseRecord sidecar + first-use consent gate
+    ai_assets.py        # L3 POD-aware sizing + generate orchestration (injectable client)
+    ai_openai.py        # L3 OpenAI image-client adapter (only module importing openai)
     validators.py       # Domain validation helpers
   renderers/
     reportlab_backend.py  # IR → PDF (default; sRGB or CMYK mode)
@@ -108,9 +114,11 @@ tests/
                         #   test_measurements, test_font_registry
                         # Curation/POD/markdown additions: test_sentiments, test_export_targets,
                         #   test_per_panel, test_markdown, test_render_changed
+                        # L3 AI imagery: test_ai_rails, test_ai_provenance, test_ai_assets
     __snapshots__/      # JSON snapshots of compile_card() output per template (8 files)
   integration/          # test_full_generation, test_svg_backend, test_png_backend,
-                        #   test_per_panel_output, test_voice_flag, test_md_inside
+                        #   test_per_panel_output, test_voice_flag, test_md_inside,
+                        #   test_ai_asset_cli (L3 ai-asset generate subcommand)
   visual/               # Perceptual-hash regression gate over all 17 shipped templates
                         #   (test_visual_regression.py); baselines in
                         #   fixtures/reference_cards/. Regenerate via
@@ -144,7 +152,7 @@ docs/industry-review/   # Six critic personas + consensus docs that drive the ro
 ```bash
 ruff check src/ tests/ scripts/   # Lint — must be clean
 mypy src/                         # Type-check — must be clean (strict mode)
-pytest                            # All 711 tests pass
+pytest                            # All 831 tests pass
 ```
 
 ### Card generation
@@ -275,6 +283,36 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Recent changes
 
+- **2026-06-02 — L3 AI imagery: authoring-time `ai-asset generate`
+  (narrow, hard-railed form)**: Ships the panel's recommended shape from
+  `consensus-ai-feature.md` — an **authoring-time** subcommand that bakes
+  one image to disk and **never** runs in the render path (preserves the
+  reproducibility moat). Four new `core/ai_*.py` modules, each TDD'd:
+  `ai_rails.py` (the hard category gates: sympathy-class occasions refuse
+  by default via `ai_imagery_allowed`; trademark / religious-iconography /
+  likeness prompt blocklists; `evaluate_rails` returns `RailViolation`s),
+  `ai_provenance.py` (`LicenseRecord` → `<asset>.license.yaml` sidecar +
+  first-use consent gate under `$XDG_CONFIG_HOME/holiday-card/`),
+  `ai_assets.py` (POD-aware `build_ai_request` — trim+2×bleed at 300 DPI
+  rounded to /16; `generate_ai_asset` orchestration over an **injectable**
+  `ImageClient` Protocol, so the whole feature is testable with no network
+  / no `OPENAI_API_KEY`; writes sRGB-tagged PNGs), and `ai_openai.py` (the
+  only module importing `openai`, lazily, behind the `[ai]` extra).
+  CLI: `holiday-card ai-asset generate` (typer sub-app) with `--subject`,
+  `--reference` (required — image-reference mode is the default style
+  anchor; `--unsafe-no-style-anchor` opts out), `--occasion` (drives the
+  rails), `--export-for` (sizes the image), `--i-know-what-im-doing`
+  (override that prints every rail reason first), and `--accept-ai-terms`
+  (non-interactive consent). Refusals: rail-blocked → exit 5, consent
+  missing → exit 3, missing key/extra → exit 4 (clean error, no
+  traceback). New `[ai]` extra (`openai>=1.0`); project stays fully
+  functional without it. README carries the panel's verbatim
+  personal-use positioning paragraph. **What it deliberately does NOT
+  do** (all out-of-scope per the consensus): render-time API calls,
+  AI-generated copy, panel/photo replacement, free text-to-image as the
+  default. 46 new tests (rails 23, provenance 7, assets 9, CLI 7).
+  Completes L3; only the L2 illustrator commission (needs a human)
+  remains of the panel's named leapfrogs.
 - **2026-05-26 — Bold + BoldItalic TTFs for Cormorant + Playfair**:
   Mirrors the italic loop shipped in #48. The two editorial-serif
   families now have full Regular + Bold + Italic + BoldItalic statics
@@ -571,9 +609,13 @@ the panel has already weighed in on most of the obvious moves.
 - `docs/industry-review/consensus-general.md` — overall project
   critique + 5 leapfrog moves the panel jointly endorsed (Q3 2026
   → `--export-for moo-a6`; Q4 → curated taste layer; etc.)
-- `docs/industry-review/consensus-ai-feature.md` — verdict on
-  proposed OpenAI image generation feature (TL;DR: not now; Q1 2027,
-  in a much narrower form, after the prior leapfrogs land)
+- `docs/industry-review/consensus-ai-feature.md` — verdict on the
+  proposed OpenAI image generation feature (TL;DR: not in the broad
+  proposed shape; ship narrowly after the prior leapfrogs land).
+  **Shipped 2026-06-02** as the `ai-asset generate` subcommand in
+  exactly that narrow shape — see the v1.3.0 changelog entry and the
+  four `core/ai_*.py` modules. The doc remains the spec of record for
+  what was deliberately left out.
 - `docs/industry-review/critiques/` — 12 individual persona
   critiques (6 general + 6 AI-feature) with per-persona depth
 
@@ -583,11 +625,14 @@ the panel has already weighed in on most of the obvious moves.
   (the DIY-crafter persona) is well-served by Canva/Cricut. Don't
   pivot to a Canva-clone.
 - **Sequencing: leapfrogs before features.** Bleed/CMYK, illustrator
-  commission, and sentiment library all come BEFORE AI imagery, web
-  preview, or new occasion expansion at the current quality bar.
-- **Hard rails on AI imagery:** sympathy / bereavement / religious
-  iconography / photo-card slots / recognizable likenesses default
-  to refuse with `--i-know-what-im-doing` override.
+  commission, and sentiment library all came BEFORE AI imagery — which
+  is why L1 + L2-engineering shipped first and L3 only landed once they
+  were in place. Hold the same line for any future big feature.
+- **Hard rails on AI imagery (now enforced in code):** sympathy /
+  bereavement / religious iconography / photo-card slots / recognizable
+  likenesses default to refuse with a `--i-know-what-im-doing` override.
+  Implemented in `core/ai_rails.py` (`evaluate_rails`); extend the
+  blocklists there, not in the CLI.
 
 If you want to evaluate a new feature proposal not covered above,
 spin up a fresh panel — the prompts are reproducible. Ask: "spin up

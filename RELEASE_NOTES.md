@@ -1,5 +1,95 @@
 # Holiday Card Generator — Release Notes
 
+## v1.3.0 — "AI as plumbing, hard-railed" — 2026-06-02
+
+L3 ships — the last named leapfrog the panel endorsed, in the narrow
+shape it actually signed off on. AI imagery is an **authoring-time**
+\`ai-asset generate\` subcommand that bakes one image to disk with a
+provenance sidecar and **never** runs in the render path, so cards stay
+reproducible. It is opt-in three layers deep (an \`[ai]\` extras install,
+an \`OPENAI_API_KEY\`, and a logged first-use consent) and refuses by
+default in every category the panel called radioactive. Only the L2
+illustrator commission (a human contractor task) now remains of the
+panel's leapfrogs.
+
+### What's new for users
+
+**\`holiday-card ai-asset generate\`.** An authoring-time subcommand that
+generates one image and writes it to disk as a PNG plus a sibling
+\`<asset>.license.yaml\` provenance sidecar. The card render pipeline
+never calls the model — you commit the asset + sidecar to git and the
+same YAML renders the same card forever.
+
+```bash
+pip install holiday-card[ai]
+export OPENAI_API_KEY=sk-...
+
+holiday-card ai-asset generate \
+  --subject "watercolor pine bough border, sage green and burgundy" \
+  --reference fonts/curated/motif.png --style watercolor \
+  --occasion christmas --export-for moo-a6 --out assets/ai/border.png
+```
+
+**Hard category rails, default-on refusal.** Sympathy / condolence /
+miscarriage / pet_loss occasions, religious iconography, trademarked
+brands, and recognizable-likeness / photo-replacement prompts refuse by
+default. Override with \`--i-know-what-im-doing\` — it prints every reason
+first and records the overridden reasons into the sidecar. Refusals exit
+with distinct codes (rail-blocked 5, consent-missing 3, missing
+key/extra 4 — a clean error, never a traceback).
+
+**Image-reference mode is the default.** \`--reference\` is required (the
+style anchor that keeps output from being voiceless ChatGPT slop);
+\`--unsafe-no-style-anchor\` opts out and is discouraged. AI never renders
+text and never replaces a photo slot or a whole panel.
+
+**POD-aware sizing + sRGB tagging.** The \`--export-for\` target's
+trim+bleed geometry sizes the image at 300 DPI rounded to 16-px
+multiples (so an A6 card gets 1312×1824, not a soft 1024²). Output is
+tagged sRGB IEC61966-2.1.
+
+**First-use consent.** A one-time acknowledgement (OpenAI usage policy,
+IP responsibility, POD-disclosure obligation) logged under
+\`$XDG_CONFIG_HOME/holiday-card/ai-consent.json\`. Record it
+non-interactively with \`--accept-ai-terms\`.
+
+**Personal-use positioning.** Per the panel: *AI image generation is
+intended for personal use. We do not recommend AI imagery for cards you
+intend to sell.* The README carries the full paragraph.
+
+### What's new for the codebase
+
+**Four new \`core/ai_*.py\` modules, each TDD'd.** \`ai_rails.py\` (occasion
+gate + trademark / religious-iconography / likeness prompt blocklists →
+\`RailViolation\` list), \`ai_provenance.py\` (\`LicenseRecord\` sidecar +
+consent gate), \`ai_assets.py\` (POD-aware \`build_ai_request\` +
+\`generate_ai_asset\` orchestration over an **injectable** \`ImageClient\`
+Protocol), and \`ai_openai.py\` (the only module that imports \`openai\`,
+lazily, behind the extra). The injected client is what lets the entire
+feature be tested with no network and no API key.
+
+**New \`[ai]\` optional dependency** (\`openai>=1.0\`). The project remains
+fully functional without it; \`openai\` is never imported on any default
+code path.
+
+**46 new tests** (rails 23, provenance 7, assets 9, CLI 7); suite at
+831 passing, ruff + mypy --strict clean.
+
+### What this release deliberately does NOT ship
+
+Per \`docs/industry-review/consensus-ai-feature.md\`, all out of scope:
+render-time AI fill, AI-generated copy, whole-panel or photo
+replacement, and free text-to-image as a default. AI is plumbing for
+authoring, not a render-path dependency.
+
+### Strategic items remaining
+
+* **L2 illustrator commission** — ~30 hand-drawn SVG path motifs in one
+  opinionated voice. Needs a contractor, not a PR. The last open
+  leapfrog.
+
+---
+
 ## v1.2.0 — "Template library complete + curation layer" — 2026-05-16
 
 If v1.1.0 was the architecture, v1.2.0 fills the artifact. Every

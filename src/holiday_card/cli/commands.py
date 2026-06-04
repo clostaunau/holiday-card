@@ -11,6 +11,7 @@ from pathlib import Path
 import typer
 
 from holiday_card import __version__
+from holiday_card.core.ai_openai import make_image_client
 from holiday_card.core.export_targets import (
     REGISTRY as EXPORT_TARGET_REGISTRY,
 )
@@ -19,7 +20,7 @@ from holiday_card.core.export_targets import (
     get_target,
 )
 from holiday_card.core.generators import CardGenerator
-from holiday_card.core.models import FoldType, ImageElement
+from holiday_card.core.models import FoldType, ImageElement, OccasionType
 from holiday_card.core.sentiments import (
     VOICES,
     SentimentNotFoundError,
@@ -851,6 +852,219 @@ def validate(
     except Exception as e:
         typer.secho(f"Validation error: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(1) from e
+
+
+# ---------------------------------------------------------------------------
+# ai-asset — authoring-time AI imagery (Leapfrog 3)
+# ---------------------------------------------------------------------------
+
+ai_asset_app = typer.Typer(
+    name="ai-asset",
+    help=(
+        "Authoring-time AI imagery (personal use only). Bakes one image "
+        "to disk with a provenance sidecar; never runs at render time. "
+        "Requires `pip install holiday-card\\[ai]` and OPENAI_API_KEY."
+    ),
+)
+app.add_typer(ai_asset_app, name="ai-asset")
+
+
+@ai_asset_app.command("generate")
+def ai_asset_generate(
+    subject: str = typer.Option(
+        ...,
+        "--subject",
+        "--prompt",
+        help="What to generate, e.g. 'watercolor pine bough border, sage green'.",
+    ),
+    out: Path = typer.Option(..., "--out", "-o", help="Output PNG path."),
+    occasion: str = typer.Option(
+        "generic",
+        "--occasion",
+        help=(
+            "Occasion the asset is for. Drives the hard category rails: "
+            "sympathy / condolence / miscarriage / pet_loss refuse AI by "
+            "default."
+        ),
+    ),
+    reference: Path | None = typer.Option(
+        None,
+        "--reference",
+        help=(
+            "Curated reference image to anchor style (image-reference mode, "
+            "the default). Required unless --unsafe-no-style-anchor is set."
+        ),
+    ),
+    unsafe_no_style_anchor: bool = typer.Option(
+        False,
+        "--unsafe-no-style-anchor",
+        help="Allow free text-to-image with no style anchor (discouraged).",
+    ),
+    style: str | None = typer.Option(
+        None, "--style", help="Enumerated style tag recorded in provenance, e.g. 'watercolor'."
+    ),
+    export_for: str = typer.Option(
+        "moo-a6",
+        "--export-for",
+        help="Print target whose trim+bleed geometry sizes the image (300 DPI, /16).",
+    ),
+    seed: int | None = typer.Option(None, "--seed", help="Recorded for reproducibility."),
+    i_know_what_im_doing: bool = typer.Option(
+        False,
+        "--i-know-what-im-doing",
+        help="Override the hard category rails. Prints every reason first.",
+    ),
+    accept_ai_terms: bool = typer.Option(
+        False,
+        "--accept-ai-terms",
+        help="Non-interactively record the one-time AI consent acknowledgement.",
+    ),
+) -> None:
+    """Generate one AI image asset to disk with a provenance sidecar.
+
+    Example:
+
+        holiday-card ai-asset generate \\
+          --subject "watercolor pine bough border, sage green and burgundy" \\
+          --reference fonts/curated/motif.png --style watercolor \\
+          --occasion christmas --export-for moo-a6 --out assets/ai/border.png
+    """
+    from holiday_card.core.ai_assets import (
+        ConsentRequiredError,
+        RailRefusedError,
+        build_ai_request,
+        generate_ai_asset,
+    )
+    from holiday_card.core.ai_provenance import (
+        CONSENT_NOTICE,
+        default_consent_path,
+        has_consented,
+        record_consent,
+    )
+
+    # Validate occasion early.
+    try:
+        occasion_enum = OccasionType(occasion)
+    except ValueError as e:
+        typer.secho(
+            f"Error: unknown occasion {occasion!r}.", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(2) from e
+
+    # Image-reference mode is the default; a missing reference is an error
+    # unless the user explicitly opts into the unsafe no-anchor path.
+    if reference is None and not unsafe_no_style_anchor:
+        typer.secho(
+            "Error: --reference is required (image-reference mode is the "
+            "default style anchor). Pass --unsafe-no-style-anchor to "
+            "generate with no anchor (discouraged: produces voiceless slop).",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(2)
+    if reference is not None and not reference.exists():
+        typer.secho(
+            f"Error: reference image not found: {reference}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(2)
+
+    # First-use consent gate.
+    consent_path = default_consent_path()
+    if not has_consented(consent_path):
+        if accept_ai_terms:
+            record_consent(consent_path)
+            typer.echo(CONSENT_NOTICE.format(path=consent_path))
+        else:
+            typer.secho(
+                "Error: AI imagery requires a one-time consent "
+                "acknowledgement. Re-run with --accept-ai-terms after "
+                "reading the notice below.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            typer.echo(CONSENT_NOTICE.format(path=consent_path), err=True)
+            raise typer.Exit(3)
+
+    # Resolve print geometry → pixel dims.
+    try:
+        target = get_target(export_for)
+    except ExportTargetNotFoundError as e:
+        typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from e
+    geom = target.geometry
+    if geom is None:
+        typer.secho(
+            f"Error: --export-for {export_for!r} has no fixed geometry to "
+            "size against. Use a target with a defined trim (e.g. moo-a6).",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(2)
+
+    request = build_ai_request(
+        prompt=subject,
+        trim_width_in=geom.trim_width_in,
+        trim_height_in=geom.trim_height_in,
+        bleed_in=geom.bleed_in,
+        reference_path=str(reference) if reference else None,
+    )
+
+    if i_know_what_im_doing:
+        from holiday_card.core.ai_rails import evaluate_rails
+
+        violations = evaluate_rails(occasion_enum, subject)
+        if violations:
+            typer.secho(
+                "WARNING: overriding hard category rails:", fg=typer.colors.YELLOW
+            )
+            for v in violations:
+                typer.secho(f"  [{v.category}] {v.reason}", fg=typer.colors.YELLOW)
+
+    from holiday_card.core.ai_openai import AIDependencyError
+
+    try:
+        client = make_image_client()
+    except AIDependencyError as e:
+        typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(4) from e
+
+    try:
+        result = generate_ai_asset(
+            prompt=subject,
+            occasion=occasion_enum,
+            out_path=out,
+            request=request,
+            client=client,
+            consent_path=consent_path,
+            timestamp=datetime.now().isoformat(),
+            style=style,
+            seed=seed,
+            override=i_know_what_im_doing,
+        )
+    except ConsentRequiredError as e:
+        typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(3) from e
+    except RailRefusedError as e:
+        typer.secho("Error: AI imagery refused by hard category rails:", fg=typer.colors.RED, err=True)
+        for v in e.violations:
+            typer.secho(f"  [{v.category}] {v.reason}", fg=typer.colors.RED, err=True)
+        typer.echo(
+            "\nThese categories default to refuse. If you are certain, "
+            "re-run with --i-know-what-im-doing.",
+            err=True,
+        )
+        raise typer.Exit(5) from e
+
+    typer.secho(f"AI asset written: {result.asset_path}", fg=typer.colors.GREEN)
+    typer.echo(f"  Provenance: {result.sidecar_path.name}")
+    typer.echo(f"  Size: {request.width_px}x{request.height_px}px @ {request.dpi} DPI (sRGB)")
+    typer.echo(f"  Cost: ${result.cost_usd:.2f}")
+    typer.echo("  OpenAI policy: https://openai.com/policies/usage-policies")
+    typer.echo(
+        "  Personal use only — AI imagery is not recommended for cards you sell."
+    )
 
 
 def _open_in_default_viewer(path: Path) -> None:
