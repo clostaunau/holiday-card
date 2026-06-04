@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "holiday-card"
-version = "1.2.0"
+version = "1.3.0"
 description = "CLI application for creating printable holiday greeting cards"
 readme = "README.md"
 license = "MIT"
@@ -35,6 +35,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# AI imagery (Leapfrog 3). Opt-in only — the project is fully functional
+# without it. See `holiday-card ai-asset generate` and
+# docs/industry-review/consensus-ai-feature.md.
+ai = [
+    "openai>=1.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -118,6 +124,7 @@ module = [
     "yaml.*",
     "PIL.*",
     "pikepdf.*",
+    "openai.*",
 ]
 ignore_missing_imports = true
 
