@@ -5,11 +5,11 @@ available themes in the themes directory.
 """
 
 import logging
-import os
 from pathlib import Path
 
 import yaml
 
+from holiday_card.core.data_paths import data_path
 from holiday_card.core.models import Color, OccasionType, Theme
 
 logger = logging.getLogger(__name__)
@@ -28,27 +28,8 @@ class ThemeLoadError(Exception):
 
 
 def get_themes_dir() -> Path:
-    """Get the path to the themes directory.
-
-    Returns:
-        Path to themes directory.
-    """
-    # Check environment variable first
-    env_path = os.environ.get("HOLIDAY_CARD_THEMES")
-    if env_path:
-        return Path(env_path)
-
-    # Default to themes/ in project root
-    # Walk up from this file to find project root
-    current = Path(__file__).parent
-    while current != current.parent:
-        themes_path = current / "themes"
-        if themes_path.exists():
-            return themes_path
-        current = current.parent
-
-    # Fallback to relative path from cwd
-    return Path("themes")
+    """Return the themes directory (bundled, or ``HOLIDAY_CARD_THEMES``)."""
+    return data_path("themes")
 
 
 def discover_themes(themes_dir: Path | None = None) -> list[dict[str, str]]:

@@ -81,6 +81,19 @@ class TestTemplatesCommand:
         assert result.exit_code == 0
         assert "No templates found" in result.stdout
 
+    def test_templates_empty_catalog_exits_one_with_error_on_stderr(
+        self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # An empty bundled catalog means a broken install (D4: fail loud).
+        monkeypatch.setenv("HOLIDAY_CARD_TEMPLATES", str(tmp_path))
+        result = runner.invoke(app, ["templates"])
+        assert result.exit_code == 1
+        assert (
+            f"Error: no templates found in {tmp_path} — "
+            "installation is missing bundled data"
+        ) in result.stderr
+        assert result.stdout == ""
+
 
 # ---------------------------------------------------------------------------
 # themes
@@ -102,6 +115,18 @@ class TestThemesCommand:
         payload = json.loads(result.stdout)
         assert len(payload["themes"]) > 0
         assert all(t["occasion"] == "christmas" for t in payload["themes"])
+
+    def test_themes_empty_catalog_exits_one_with_error_on_stderr(
+        self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("HOLIDAY_CARD_THEMES", str(tmp_path))
+        result = runner.invoke(app, ["themes"])
+        assert result.exit_code == 1
+        assert (
+            f"Error: no themes found in {tmp_path} — "
+            "installation is missing bundled data"
+        ) in result.stderr
+        assert result.stdout == ""
 
 
 # ---------------------------------------------------------------------------

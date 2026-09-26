@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from holiday_card.core.data_paths import data_path
 from holiday_card.renderers.font_registry import (
     CURATED_FONT_DIR,
     CURATED_FONTS,
@@ -22,12 +23,18 @@ from holiday_card.renderers.font_registry import (
 )
 
 
+def test_font_dir_is_bundled_package_data() -> None:
+    """Fonts ship inside the wheel under ``holiday_card/data/fonts``."""
+    assert data_path("fonts") == FONT_DIR
+    assert data_path("fonts") / "curated" == CURATED_FONT_DIR
+
+
 def test_font_dir_exists_and_contains_ttfs() -> None:
     """Without the TTFs on disk, every backend silently falls back to
     the bitmap default. This test catches the case where the fonts/
     directory was removed or never installed.
     """
-    assert FONT_DIR.exists(), f"fonts/ directory missing at {FONT_DIR}"
+    assert FONT_DIR.exists(), f"data/fonts/ directory missing at {FONT_DIR}"
     ttfs = list(FONT_DIR.glob("*.ttf"))
     assert len(ttfs) >= 12, (
         f"Expected at least 12 Liberation TTFs in {FONT_DIR}, found {len(ttfs)}"
@@ -140,7 +147,7 @@ _EXPECTED_CURATED_FONT_IDS = {
 class TestCuratedFonts:
     def test_curated_dir_exists(self) -> None:
         assert CURATED_FONT_DIR.exists(), (
-            f"fonts/curated/ missing at {CURATED_FONT_DIR}"
+            f"data/fonts/curated/ missing at {CURATED_FONT_DIR}"
         )
 
     def test_curated_map_covers_expected_families(self) -> None:

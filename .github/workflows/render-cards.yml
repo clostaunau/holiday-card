@@ -14,10 +14,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "templates/**"
-      - "sentiments/**"
-      - "fonts/**"
-      - "themes/**"
+      # Bundled templates/sentiments/fonts/themes live under src/holiday_card/data/.
       - "src/**"
       - ".github/workflows/render-cards.yml"
       - "scripts/render_changed_templates.py"

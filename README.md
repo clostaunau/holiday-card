@@ -89,7 +89,27 @@ holiday-card create birthday-balloons --inside-message-md letter.md
 | **Photo cards** | `ImageElement` + circle / rectangle / ellipse / star clip masks; render a portrait into a styled frame |
 | **POD targets** | `letter` (single imposed sheet), `per-panel-pdf` (native trim per panel), `moo-a6` (A6 with content scaled to fit + DeviceCMYK PDF/X-1a:2003 + GRACoL2013 ICC) |
 | **Output formats** | PDF (default), SVG, PNG |
-| **Quality gates** | ruff + mypy strict + 837 tests + visual-regression perceptual-hash gate across all 21 templates + smoke job covering each voice and the CMYK export |
+| **Quality gates** | ruff + mypy strict + 878 tests + visual-regression perceptual-hash gate across all 21 templates + a smoke job that installs the built wheel and runs it outside any checkout, covering each voice and the CMYK export |
+
+### Where data lives / env overrides
+
+Templates, themes, sentiments, fonts, and the GRACoL2013 ICC profile
+ship **inside the package** under `src/holiday_card/data/` (installed as
+`holiday_card/data/`), so a plain `pipx install holiday-card` works from
+any directory. Three catalogs can be swapped out with an environment
+variable, which **replaces** the bundled directory (it does not merge
+with it):
+
+| Variable | Replaces |
+|---|---|
+| `HOLIDAY_CARD_TEMPLATES` | `holiday_card/data/templates/` |
+| `HOLIDAY_CARD_THEMES` | `holiday_card/data/themes/` |
+| `HOLIDAY_CARD_SENTIMENTS` | `holiday_card/data/sentiments/` |
+
+An override that isn't an existing directory is an error. If
+`holiday-card templates` or `holiday-card themes` (with no filter) finds
+nothing, it exits 1 with `installation is missing bundled data` rather
+than printing an empty list.
 
 ## Hacking on it
 
@@ -98,7 +118,7 @@ git clone https://github.com/clostaunau/holiday-card.git
 cd holiday-card
 uv sync --extra dev            # locked deps from uv.lock (or: pip install -e ".[dev]")
 
-uv run pytest                            # 837 tests, runs in ~30s
+uv run pytest                            # 878 tests, runs in ~30s
 uv run ruff check src/ tests/ scripts/   # lint (zero warnings)
 uv run mypy src/                         # strict-mode type-check (zero errors)
 
@@ -171,7 +191,7 @@ Guardrails that ship on by default (see
 * **Not a Canva replacement.** If you want a visual editor with 600
   fonts and a drag-and-drop photo crop, use Canva. Canva is good at
   what it does. This project is for people who want to commit
-  `templates/christmas/family-2026.yaml`, push to GitHub, and have CI
+  a `family-2026.yaml` template, push to GitHub, and have CI
   render the same card every time.
 * **Not a Canva-style preview tool.** Output is print artifacts (PDF /
   SVG / PNG previews), not an interactive editor. The browser-openable
@@ -223,6 +243,8 @@ walkthrough.
 
 ## License
 
-MIT (see [pyproject.toml](pyproject.toml)). Bundled fonts in
-`fonts/curated/` are SIL OFL 1.1 — the OFL.txt for each ships next
-to the TTFs.
+MIT (see [LICENSE](LICENSE)). Bundled fonts in
+`src/holiday_card/data/fonts/curated/` are SIL OFL 1.1 — the license for
+each family ships next to its TTFs (`*-LICENSE.txt`); the Liberation
+fonts' `LICENSE` and `AUTHORS` ship in `data/fonts/`. The GRACoL2013 ICC
+profile's redistribution terms are in `data/icc/NOTICE`.

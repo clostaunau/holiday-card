@@ -8,6 +8,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from holiday_card.core.data_paths import data_path
 from holiday_card.core.models import OccasionType
 from holiday_card.core.sentiments import (
     ROLES,
@@ -143,9 +144,17 @@ class TestLoadSentimentFile:
 
 
 class TestSentimentsDirDiscovery:
-    def test_env_override_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("HOLIDAY_CARD_SENTIMENTS", "/tmp/custom-sentiments")
-        assert get_sentiments_dir() == Path("/tmp/custom-sentiments")
+    def test_env_override_wins(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("HOLIDAY_CARD_SENTIMENTS", str(tmp_path))
+        assert get_sentiments_dir() == tmp_path
+
+    def test_default_is_bundled_package_data(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("HOLIDAY_CARD_SENTIMENTS", raising=False)
+        assert get_sentiments_dir() == data_path("sentiments")
 
 
 # ---------------------------------------------------------------------------

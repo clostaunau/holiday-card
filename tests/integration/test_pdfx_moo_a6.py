@@ -31,9 +31,11 @@ import pytest
 
 from holiday_card.core.color_management import (
     DEFAULT_CMYK_PROFILE_FILENAME,
+    ICCProfileNotFoundError,
     default_cmyk_icc_path,
     rgb_to_cmyk,
 )
+from holiday_card.core.data_paths import data_path
 from holiday_card.core.generators import CardGenerator
 from holiday_card.renderers.pdfx_postprocess import (
     PDFXVersionError,
@@ -180,6 +182,20 @@ class TestIccProfile:
         # ICC v4 header has 'acsp' magic at byte offset 36.
         head = path.read_bytes()[:128]
         assert head[36:40] == b"acsp", "Bundled file is not an ICC profile"
+
+    def test_default_path_is_bundled_package_data(self) -> None:
+        assert default_cmyk_icc_path() == (
+            data_path("icc") / DEFAULT_CMYK_PROFILE_FILENAME
+        )
+
+    def test_missing_profile_raises_icc_not_found(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import holiday_card.core.color_management as cm
+
+        monkeypatch.setattr(cm, "data_path", lambda _kind: tmp_path)
+        with pytest.raises(ICCProfileNotFoundError, match=str(tmp_path)):
+            default_cmyk_icc_path()
 
 
 class TestPdfxPostprocessGuards:

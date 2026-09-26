@@ -24,20 +24,22 @@ class TestTemplateIdFromPath:
     """Path → template-id resolution mirrors discover_templates()."""
 
     def test_christmas_classic(self) -> None:
-        assert _template_id_from_path("templates/christmas/classic.yaml") == "christmas-classic"
+        assert _template_id_from_path("src/holiday_card/data/templates/christmas/classic.yaml") == "christmas-classic"
 
     def test_birthday_balloons(self) -> None:
-        assert _template_id_from_path("templates/birthday/balloons.yaml") == "birthday-balloons"
+        assert _template_id_from_path("src/holiday_card/data/templates/birthday/balloons.yaml") == "birthday-balloons"
 
     def test_mothers_day_classic_special_cases_to_mothers_day(self) -> None:
         # mothers_day/classic.yaml ships with id="mothers-day", not
         # "mothers_day-classic". Discovery code does the same special-case.
-        assert _template_id_from_path("templates/mothers_day/classic.yaml") == "mothers-day"
+        assert _template_id_from_path("src/holiday_card/data/templates/mothers_day/classic.yaml") == "mothers-day"
 
     def test_non_template_path_returns_none(self) -> None:
         assert _template_id_from_path("src/holiday_card/foo.py") is None
         assert _template_id_from_path("README.md") is None
-        assert _template_id_from_path("templates/christmas") is None  # missing yaml stem
+        assert _template_id_from_path("src/holiday_card/data/templates/christmas") is None  # missing yaml stem
+        # The pre-#55 repo-root location no longer holds templates.
+        assert _template_id_from_path("templates/christmas/classic.yaml") is None
 
 
 class TestDetectAffected:
@@ -48,13 +50,13 @@ class TestDetectAffected:
         assert detect_affected_templates(["docs/foo.md", "tests/test_x.py"]) == []
 
     def test_direct_template_change_renders_only_that(self) -> None:
-        affected = detect_affected_templates(["templates/christmas/classic.yaml"])
+        affected = detect_affected_templates(["src/holiday_card/data/templates/christmas/classic.yaml"])
         assert affected == ["christmas-classic"]
 
     def test_multiple_direct_changes_render_each(self) -> None:
         affected = detect_affected_templates([
-            "templates/christmas/classic.yaml",
-            "templates/birthday/balloons.yaml",
+            "src/holiday_card/data/templates/christmas/classic.yaml",
+            "src/holiday_card/data/templates/birthday/balloons.yaml",
             "docs/something.md",  # ignored
         ])
         assert set(affected) == {"christmas-classic", "birthday-balloons"}
@@ -64,15 +66,15 @@ class TestDetectAffected:
         assert set(affected) == set(SHIPPING_TEMPLATES)
 
     def test_fonts_change_triggers_full_shipping_set(self) -> None:
-        affected = detect_affected_templates(["fonts/curated/Lato-Regular.ttf"])
+        affected = detect_affected_templates(["src/holiday_card/data/fonts/curated/Lato-Regular.ttf"])
         assert set(affected) == set(SHIPPING_TEMPLATES)
 
     def test_sentiments_change_triggers_full_shipping_set(self) -> None:
-        affected = detect_affected_templates(["sentiments/christmas/warm/cover.yaml"])
+        affected = detect_affected_templates(["src/holiday_card/data/sentiments/christmas/warm/cover.yaml"])
         assert set(affected) == set(SHIPPING_TEMPLATES)
 
     def test_themes_change_triggers_full_shipping_set(self) -> None:
-        affected = detect_affected_templates(["themes/christmas-red-green.yaml"])
+        affected = detect_affected_templates(["src/holiday_card/data/themes/christmas.yaml"])
         assert set(affected) == set(SHIPPING_TEMPLATES)
 
     def test_indirect_change_unions_with_explicit_direct(self) -> None:
@@ -80,7 +82,7 @@ class TestDetectAffected:
         appear, the affected list starts with the direct one and then
         adds the rest of the shipping set in order."""
         affected = detect_affected_templates([
-            "templates/christmas/classic.yaml",
+            "src/holiday_card/data/templates/christmas/classic.yaml",
             "src/holiday_card/core/compiler.py",
         ])
         # christmas-classic appears first (direct); the rest are the
@@ -95,7 +97,7 @@ class TestDetectAffected:
         affected = detect_affected_templates([
             "",
             "   ",
-            "templates/christmas/classic.yaml",
+            "src/holiday_card/data/templates/christmas/classic.yaml",
             "",
         ])
         assert affected == ["christmas-classic"]
@@ -105,7 +107,7 @@ class TestDetectAffected:
         gradient/pattern demo) is still listed — the rendering step
         handles the failure gracefully."""
         affected = detect_affected_templates([
-            "templates/christmas/holly-wreath.yaml",
+            "src/holiday_card/data/templates/christmas/holly-wreath.yaml",
         ])
         assert affected == ["christmas-holly-wreath"]
 

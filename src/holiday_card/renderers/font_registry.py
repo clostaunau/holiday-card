@@ -25,6 +25,8 @@ from pathlib import Path
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
+from holiday_card.core.data_paths import data_path
+
 __all__ = [
     "FONT_DIR",
     "CURATED_FONT_DIR",
@@ -37,9 +39,8 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-# Repo-relative fonts directory. Resolved at import time.
-# src/holiday_card/renderers/font_registry.py → ../../../fonts/
-FONT_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent / "fonts"
+# Bundled fonts directory (holiday_card/data/fonts). Resolved at import time.
+FONT_DIR: Path = data_path("fonts")
 CURATED_FONT_DIR: Path = FONT_DIR / "curated"
 
 # IR font_id (matches PDF base-14 conventional names) → (TTF filename, registered name).

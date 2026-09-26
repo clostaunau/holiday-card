@@ -31,7 +31,7 @@ holiday-card create christmas-classic --inside-message-md letter.md   # Markdown
 holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," --signature "C" --ps "PS hi"   # structured letter
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-uv run pytest                       # all 837 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 878 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -88,6 +88,7 @@ src/holiday_card/
     markdown.py         # Tiny Markdown subset for --inside-message-md
     letter.py           # LetterContent model for --salutation/--signoff/--signature/--ps
     color_management.py # sRGB→CMYK conversion + ICC profile path resolution
+    data_paths.py       # data_path(kind): the ONE resolver for bundled data (+ env overrides)
     ai_rails.py         # L3 hard category rails (occasion + prompt blocklists)
     ai_provenance.py    # L3 LicenseRecord sidecar + first-use consent gate
     ai_assets.py        # L3 POD-aware sizing + generate orchestration (injectable client)
@@ -99,8 +100,24 @@ src/holiday_card/
     png_backend.py        # IR → PNG (powers `preview` command)
     pdfx_postprocess.py   # pikepdf-based PDF/X-1a:2003 upgrade
     image_effects.py      # Pillow effects (sepia/grayscale/vignette/blur)
-assets/icc/             # Bundled ICC profiles
-  GRACoL2013_CRPC6.icc  # 3.4MB; OutputIntent for --export-for moo-a6
+  data/                 # Package data shipped in the wheel (no __init__.py);
+                        #   resolved only via core/data_paths.data_path()
+    templates/          # YAML card templates (21)
+      christmas/        # 11 templates, all compile cleanly: classic, geometric, modern,
+                        #   artist, festive-stripes, holiday-masterpiece, holly-wreath,
+                        #   metallic-ornaments, photo-ornament, winter-sky, family-photo
+      birthday/         # balloons + photo
+      mothers_day/      # classic + photo
+      hanukkah/, generic/   # 1 template each
+      sympathy/, condolence/, miscarriage/, pet_loss/   # 1 "-spare" template each
+    themes/             # Color theme YAML (4)
+    sentiments/         # Curated greeting copy: {occasion}/{voice}/{role}.yaml — 70 files
+                        #   covering 9 occasions × up-to-5 voices × 2 roles
+    fonts/              # Liberation default font chain (PDF base-14 substitutes) + LICENSE, AUTHORS
+      curated/          # 6 curated OFL fonts (Cormorant, Playfair, Lato, Inter, Caveat,
+                        #   Comfortaa) + *-LICENSE.txt per family
+    icc/                # GRACoL2013_CRPC6.icc (3.4MB; OutputIntent for --export-for moo-a6)
+                        #   + NOTICE (verbatim redistribution terms)
   cli/
     commands.py         # Typer CLI: create, preview, templates, themes, validate
   utils/
@@ -124,22 +141,11 @@ tests/
                         #   (test_visual_regression.py); baselines in
                         #   fixtures/reference_cards/. Regenerate via
                         #   scripts/regenerate_visual_baselines.py.
-templates/              # YAML card templates
-  christmas/            # 11 templates, all compile cleanly: classic, geometric, modern,
-                        #   artist, festive-stripes, holiday-masterpiece, holly-wreath,
-                        #   metallic-ornaments, photo-ornament, winter-sky, family-photo
-  birthday/             # balloons + photo
-  mothers_day/          # classic + photo
-  hanukkah/, generic/   # 1 template each, all compile cleanly
-themes/                 # Color theme YAML
-sentiments/             # Curated greeting copy: {occasion}/{voice}/{role}.yaml — 50 files
-                        #   covering 5 occasions × 5 voices × 2 roles, ~250 lines total
-fonts/                  # Liberation default font chain (PDF base-14 substitutes)
-  curated/              # 6 curated open-source fonts (Cormorant, Playfair, Lato, Inter, Caveat, Comfortaa)
+LICENSE                 # MIT
 scripts/                # Stand-alone helpers used by CI/Actions
                         #   render_changed_templates.py — powers .github/workflows/render-cards.yml
                         #   build_microsite.py — Leapfrog 5 template-gallery generator
-.github/workflows/      # CI: ci.yml (lint/type/test/smoke/build matrix)
+.github/workflows/      # CI: ci.yml (lint/type/test → build → smoke of the installed wheel)
                         #     render-cards.yml (PR-comment card previews)
                         #     microsite.yml (build + deploy gallery to GitHub Pages)
 specs/                  # Historical spec-kit feature plans (001-004; some describe deleted features)
@@ -155,7 +161,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 837 tests pass
+uv run pytest                            # All 878 tests pass
 ```
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit
@@ -176,7 +182,7 @@ holiday-card create christmas-classic --format svg      # SVG (opens in browser)
 holiday-card create christmas-classic -o out/card.svg   # auto-detect from extension
 holiday-card preview christmas-classic                  # 144 DPI PNG, opens in viewer
 holiday-card preview christmas-classic --dpi 300 --no-open -o p.png
-holiday-card validate templates/christmas/classic.yaml  # validate a template
+holiday-card validate src/holiday_card/data/templates/christmas/classic.yaml  # validate a template
 
 # Per-panel POD output: --export-for emits one file per panel
 holiday-card create christmas-classic --export-for moo-a6 -o out/moo-card/
@@ -292,6 +298,33 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-26 — Ship bundled data inside the wheel + smoke the installed
+  wheel (expert-panel §P1 / D1, issue #55)**: `pipx install holiday-card`
+  was completely broken — the wheel carried only the ICC profile, so
+  `templates`/`themes` printed nothing (exit 0) and `create` died on
+  `No such file or directory: 'templates'`. `templates/`, `themes/`,
+  `sentiments/`, `fonts/` and `assets/icc/` were `git mv`-ed to
+  `src/holiday_card/data/` (plain package data, no `__init__.py`); the
+  hatch `force-include` table and `assets/` are gone. New
+  `core/data_paths.py` is the single resolver: `data_path(kind)` honors
+  `HOLIDAY_CARD_{TEMPLATES,THEMES,SENTIMENTS}` (replaces the bundled dir;
+  a non-directory raises `DataPathError`), else
+  `importlib.resources.files("holiday_card") / "data" / kind`. No
+  `__file__` walking, no cwd fallback. `get_*_dir`, `FONT_DIR` and
+  `default_cmyk_icc_path` all delegate to it. `templates` / `themes`
+  with no filter and an empty catalog now exit 1 with `Error: no …
+  found in <dir> — installation is missing bundled data` on stderr
+  (a filter that matches nothing still exits 0). Added root `LICENSE`
+  (MIT) and `data/icc/NOTICE` (verbatim ICC-registry terms). CI now runs
+  `lint/type-check/test → build → smoke`; `smoke` has **no checkout**:
+  it installs `dist/*.whl` into a fresh venv, checks the wheel listing
+  (≥21 templates, ≥70 sentiments, ≥25 TTFs, LICENSE, ICC), and runs the
+  CLI from `$RUNNER_TEMP`. Its grep calls read from files, because
+  `cli | grep -q` makes the CLI die of EPIPE under `pipefail`.
+  `scripts/render_changed_templates.py` now treats
+  `src/holiday_card/data/templates/**.yaml` as direct hits. Guarded by
+  `tests/unit/test_data_paths.py` plus CLI / ICC / font-registry tests.
 
 - **2026-09-26 — Locked dependencies with `uv.lock` + green mypy gate
   (expert-panel §P2, issue #54)**: Committed a universal `uv.lock`; CI's

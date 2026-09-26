@@ -19,15 +19,17 @@ Two responsibilities:
 
 2. **ICC profile path resolution.** Locating the bundled
    ``GRACoL2013_CRPC6.icc`` so the post-processor and other callers
-   don't have to know the asset layout. Resolves both source-tree
-   (``assets/icc/``) and wheel-installed (``holiday_card/_assets/icc/``)
-   locations so the same code works in editable installs and pipx
-   installs.
+   don't have to know the asset layout. The profile ships as package
+   data under ``holiday_card/data/icc/`` and is located via
+   :func:`holiday_card.core.data_paths.data_path`, so editable and
+   wheel (pipx) installs resolve it the same way.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+
+from holiday_card.core.data_paths import data_path
 
 __all__ = [
     "DEFAULT_CMYK_PROFILE_FILENAME",
@@ -78,35 +80,21 @@ def rgb_to_cmyk(r: float, g: float, b: float) -> tuple[float, float, float, floa
 def default_cmyk_icc_path() -> Path:
     """Return the absolute filesystem path to the bundled CMYK ICC profile.
 
-    Searches three locations in order:
+    The profile ships at ``holiday_card/data/icc/GRACoL2013_CRPC6.icc``.
+    It is GRACoL2013_CRPC6 (US commercial coated), the ICC's CGATS21
+    reference profile that MOO and most US POD services expect. Override
+    by passing an explicit path to callers that accept one.
 
-    1. ``<repo root>/assets/icc/GRACoL2013_CRPC6.icc`` — editable install
-       (``pip install -e .``) where ``assets/`` is alongside ``src/``.
-    2. ``<package dir>/_assets/icc/GRACoL2013_CRPC6.icc`` — wheel install
-       where ``hatch.build.targets.wheel.force-include`` has copied
-       ``assets/`` into the package as ``_assets/``.
-    3. Raises ``ICCProfileNotFoundError`` with a recovery hint.
-
-    The bundled profile is GRACoL2013_CRPC6 (US commercial coated), the
-    ICC's CGATS21 reference profile that MOO and most US POD services
-    expect. Override by passing an explicit path to callers that accept
-    one.
+    Raises:
+        ICCProfileNotFoundError: the bundled profile file is missing.
     """
-    package_dir = Path(__file__).resolve().parent.parent  # …/src/holiday_card
-    repo_root_candidate = package_dir.parent.parent  # …/<repo>
-    candidates = (
-        repo_root_candidate / "assets" / "icc" / DEFAULT_CMYK_PROFILE_FILENAME,
-        package_dir / "_assets" / "icc" / DEFAULT_CMYK_PROFILE_FILENAME,
-    )
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate
-    raise ICCProfileNotFoundError(
-        f"Bundled CMYK ICC profile {DEFAULT_CMYK_PROFILE_FILENAME!r} not found. "
-        f"Looked in: {', '.join(str(c) for c in candidates)}. "
-        "If you installed from a wheel that excluded assets/, "
-        "reinstall from source or supply --icc-profile explicitly."
-    )
+    path = data_path("icc") / DEFAULT_CMYK_PROFILE_FILENAME
+    if not path.is_file():
+        raise ICCProfileNotFoundError(
+            f"Bundled CMYK ICC profile {DEFAULT_CMYK_PROFILE_FILENAME!r} not "
+            f"found at {path}; the installation is missing bundled data."
+        )
+    return path
 
 
 def _clamp01(v: float) -> float:
