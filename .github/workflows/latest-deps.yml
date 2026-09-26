@@ -1,0 +1,45 @@
+name: Latest deps
+
+# Weekly canary: install the newest release of every dependency, ignoring
+# uv.lock and the `[tool.uv] constraint-dependencies` pins, and run the same
+# quality gates as CI. Feature PRs install from the lock, so upstream breakage
+# lands here first. A red run is the signal to bump the lock or lift a
+# constraint — it is allowed to fail (spec D4: no continue-on-error).
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  latest:
+    name: Latest deps (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Fresh venv with unpinned latest deps
+        # `uv pip` never reads uv.lock or [tool.uv] constraints.
+        run: |
+          uv venv .latest-venv
+          echo "VIRTUAL_ENV=$PWD/.latest-venv" >> "$GITHUB_ENV"
+          echo "$PWD/.latest-venv/bin" >> "$GITHUB_PATH"
+      - run: uv pip install --upgrade -e ".[dev]"
+      - name: Installed versions
+        run: uv pip list
+      - name: ruff check
+        run: ruff check src/ tests/ scripts/
+      - name: mypy
+        run: mypy src/
+      - name: pytest
+        run: pytest -v

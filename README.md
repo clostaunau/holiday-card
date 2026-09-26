@@ -45,7 +45,9 @@ This project is the third option:
 
 ```bash
 pipx install holiday-card        # the canonical install
-# or, for development:
+# or, for development (installs the exact locked versions from uv.lock):
+uv sync --extra dev
+# plain pip still works, but resolves unpinned latest versions:
 pip install -e ".[dev]"
 ```
 
@@ -87,21 +89,28 @@ holiday-card create birthday-balloons --inside-message-md letter.md
 | **Photo cards** | `ImageElement` + circle / rectangle / ellipse / star clip masks; render a portrait into a styled frame |
 | **POD targets** | `letter` (single imposed sheet), `per-panel-pdf` (native trim per panel), `moo-a6` (A6 with content scaled to fit + DeviceCMYK PDF/X-1a:2003 + GRACoL2013 ICC) |
 | **Output formats** | PDF (default), SVG, PNG |
-| **Quality gates** | ruff + mypy strict + 744 tests + visual-regression perceptual-hash gate across all 21 templates + smoke job covering each voice and the CMYK export |
+| **Quality gates** | ruff + mypy strict + 836 tests + visual-regression perceptual-hash gate across all 21 templates + smoke job covering each voice and the CMYK export |
 
 ## Hacking on it
 
 ```bash
 git clone https://github.com/clostaunau/holiday-card.git
 cd holiday-card
-pip install -e ".[dev]"
+uv sync --extra dev            # locked deps from uv.lock (or: pip install -e ".[dev]")
 
-pytest                         # 744 tests, runs in ~25s
-ruff check src/ tests/         # lint (zero warnings)
-mypy src/                      # strict-mode type-check (zero errors)
+uv run pytest                            # 836 tests, runs in ~30s
+uv run ruff check src/ tests/ scripts/   # lint (zero warnings)
+uv run mypy src/                         # strict-mode type-check (zero errors)
 
-holiday-card create christmas-classic --voice warm
+uv run holiday-card create christmas-classic --voice warm
 ```
+
+CI installs from the committed `uv.lock` (`uv sync --locked`), so every
+run tests the same dependency versions. After editing dependencies in
+`pyproject.toml`, run `uv lock` and commit the updated lockfile — CI's
+`uv lock --check` fails otherwise. A weekly `latest-deps` workflow
+ignores the lock and tests the newest release of everything, so
+upstream breakage shows up there rather than in feature PRs.
 
 CI runs all three gates on every push across Python 3.11/3.12/3.13 ×
 Ubuntu/macOS, plus a smoke job that renders one template per occasion.
