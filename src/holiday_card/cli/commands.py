@@ -7,6 +7,7 @@ All commands support both human-readable and JSON output formats.
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import NoReturn
 
 import typer
 
@@ -30,9 +31,10 @@ from holiday_card.core.templates import (
     TemplateLoadError,
     TemplateNotFoundError,
     discover_templates,
+    get_templates_dir,
     load_template_from_file,
 )
-from holiday_card.core.themes import discover_themes
+from holiday_card.core.themes import discover_themes, get_themes_dir
 from holiday_card.renderers.reportlab_backend import IRReportLabRenderer
 from holiday_card.renderers.svg_backend import SVGRenderer
 from holiday_card.utils.validators import ValidationError, validate_image_format
@@ -87,6 +89,8 @@ def templates(
     """List available card templates."""
     try:
         templates_list = discover_templates()
+        if not templates_list and not (occasion or fold_type):
+            _fail_empty_catalog("templates", get_templates_dir())
 
         # Filter by occasion if specified
         if occasion:
@@ -134,6 +138,15 @@ def templates(
         raise typer.Exit(1) from e
 
 
+def _fail_empty_catalog(kind: str, directory: Path) -> NoReturn:
+    # An unfiltered empty catalog means a broken install (D4: fail loud).
+    typer.echo(
+        f"Error: no {kind} found in {directory} — installation is missing bundled data",
+        err=True,
+    )
+    raise typer.Exit(1)
+
+
 @app.command(name="themes")
 def list_themes(
     occasion: str | None = typer.Option(
@@ -146,6 +159,8 @@ def list_themes(
     """List available color themes."""
     try:
         themes_list = discover_themes()
+        if not themes_list and not occasion:
+            _fail_empty_catalog("themes", get_themes_dir())
 
         # Filter by occasion if specified
         if occasion:

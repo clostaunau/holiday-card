@@ -15,10 +15,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "templates/**"
-      - "sentiments/**"
-      - "fonts/**"
-      - "themes/**"
+      # Bundled templates/sentiments/fonts/themes live under src/holiday_card/data/.
       - "src/**"
       - "scripts/build_microsite.py"
       - ".github/workflows/microsite.yml"

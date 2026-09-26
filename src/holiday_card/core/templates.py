@@ -5,11 +5,11 @@ available templates in the templates directory.
 """
 
 import logging
-import os
 from pathlib import Path
 
 import yaml
 
+from holiday_card.core.data_paths import data_path
 from holiday_card.core.models import (
     Circle,
     Color,
@@ -49,27 +49,8 @@ class TemplateLoadError(Exception):
 
 
 def get_templates_dir() -> Path:
-    """Get the path to the templates directory.
-
-    Returns:
-        Path to templates directory.
-    """
-    # Check environment variable first
-    env_path = os.environ.get("HOLIDAY_CARD_TEMPLATES")
-    if env_path:
-        return Path(env_path)
-
-    # Default to templates/ in project root
-    # Walk up from this file to find project root
-    current = Path(__file__).parent
-    while current != current.parent:
-        templates_path = current / "templates"
-        if templates_path.exists():
-            return templates_path
-        current = current.parent
-
-    # Fallback to relative path from cwd
-    return Path("templates")
+    """Return the templates directory (bundled, or ``HOLIDAY_CARD_TEMPLATES``)."""
+    return data_path("templates")
 
 
 def discover_templates(templates_dir: Path | None = None) -> list[dict[str, str]]:

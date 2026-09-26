@@ -64,65 +64,10 @@ jobs:
           name: coverage-xml
           path: coverage.xml
 
-  smoke:
-    name: Smoke (entry point + render)
-    runs-on: ubuntu-latest
-    needs: [lint, type-check, test]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install -e .
-      - name: console entry point exists
-        run: holiday-card --version
-      - name: list templates
-        run: holiday-card templates
-      - name: render one template per occasion
-        run: |
-          mkdir -p out
-          holiday-card create christmas-classic    -o out/christmas.pdf
-          holiday-card create birthday-balloons    -o out/birthday.pdf
-          holiday-card create hanukkah-menorah     -o out/hanukkah.pdf
-          holiday-card create generic-celebration  -o out/generic.pdf
-          ls -la out/
-          test -s out/christmas.pdf
-          test -s out/birthday.pdf
-          test -s out/hanukkah.pdf
-          test -s out/generic.pdf
-      - name: every --voice resolves and renders
-        # Catches packaging regressions on the sentiment library and
-        # the --voice CLI wiring. Deep voice-resolution behavior is
-        # covered by tests/integration/test_voice_flag.py.
-        run: |
-          mkdir -p out/voices
-          for voice in warm witty spare devotional irreverent; do
-            holiday-card create christmas-classic --voice "$voice" --seed 42 \
-              -o "out/voices/$voice.pdf"
-            test -s "out/voices/$voice.pdf"
-          done
-          ls -la out/voices/
-      - name: --export-for moo-a6 emits four panel PDFs at PDF/X-1a header
-        # Catches packaging regressions on the pikepdf-based PDF/X-1a
-        # post-processor and the moo-a6 export target. Deep PDF/X-1a
-        # conformance is covered by tests/integration/test_pdfx_moo_a6.py;
-        # the cheap header check here confirms the post-processor
-        # actually ran (default PDFs are 1.7; only the moo-a6 path
-        # rewrites the header down to 1.4).
-        run: |
-          mkdir -p out/moo
-          holiday-card create christmas-classic --export-for moo-a6 -o out/moo/
-          ls -la out/moo/
-          for panel in front back inside-left inside-right; do
-            test -s "out/moo/$panel.pdf"
-          done
-          head -c 8 out/moo/front.pdf | grep -q '%PDF-1.4'
-
   build:
     name: Build sdist + wheel
     runs-on: ubuntu-latest
-    needs: [smoke]
+    needs: [lint, type-check, test]
 
     steps:
       - uses: actions/checkout@v4
@@ -136,3 +81,70 @@ jobs:
         with:
           name: dist
           path: dist/
+
+  smoke:
+    # Installs the *built wheel* into a clean venv and runs it from outside
+    # any checkout, so missing package data (templates, themes, sentiments,
+    # fonts, ICC profile) fails here instead of in a user's pipx install.
+    # Deliberately no actions/checkout: nothing may resolve from the repo.
+    name: Smoke (installed wheel, no checkout)
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install the wheel into a clean venv
+        run: |
+          python -m venv "$RUNNER_TEMP/v"
+          "$RUNNER_TEMP/v/bin/pip" install dist/*.whl
+          echo "$RUNNER_TEMP/v/bin" >> "$GITHUB_PATH"
+      - name: wheel ships the bundled data and licenses
+        run: |
+          set -euo pipefail
+          python -m zipfile -l dist/*.whl > wheel.txt
+          check() {  # check <label> <min> <regex>
+            n=$(grep -cE "$3" wheel.txt || true)
+            echo "$1: $n (need >= $2)"
+            [ "$n" -ge "$2" ]
+          }
+          check templates  21 'holiday_card/data/templates/.+\.yaml'
+          check sentiments 70 'holiday_card/data/sentiments/.+\.yaml'
+          check ttf        25 'holiday_card/data/fonts/.+\.ttf'
+          check LICENSE     1 'dist-info/licenses/LICENSE'
+          check icc         1 'holiday_card/data/icc/GRACoL2013_CRPC6\.icc'
+          if grep -q '_assets/' wheel.txt; then echo "stale _assets/ in wheel"; exit 1; fi
+      - name: run the installed CLI outside any checkout
+        working-directory: ${{ runner.temp }}
+        # Output goes to a file before grep: `cmd | grep -q` closes the
+        # pipe on first match and the CLI would die of EPIPE under pipefail.
+        run: |
+          set -euo pipefail
+          mkdir smoke && cd smoke
+          # No override may mask missing bundled data.
+          if env | grep '^HOLIDAY_CARD_'; then exit 1; fi
+          holiday-card --version
+          holiday-card templates > templates.txt
+          grep -q christmas templates.txt
+          holiday-card themes > themes.txt
+          grep -q christmas themes.txt
+          for t in christmas-classic birthday-balloons hanukkah-menorah generic-celebration; do
+            holiday-card create "$t" -o "$t.pdf"
+            test -s "$t.pdf"
+          done
+          # Every --voice resolves against the bundled sentiment library.
+          for voice in warm witty spare devotional irreverent; do
+            holiday-card create christmas-classic --voice "$voice" --seed 42 -o "voice-$voice.pdf"
+            test -s "voice-$voice.pdf"
+          done
+          # moo-a6 needs the bundled ICC profile; only the PDF/X-1a
+          # post-processor rewrites the header down to 1.4.
+          holiday-card create christmas-classic --export-for moo-a6 -o moo/
+          for panel in front back inside-left inside-right; do
+            test -s "moo/$panel.pdf"
+          done
+          head -c 8 moo/front.pdf | grep -q '%PDF-1.4'

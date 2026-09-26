@@ -1,0 +1,23 @@
+GRACoL2013_CRPC6.icc
+====================
+
+This directory bundles the GRACoL2013_CRPC6 CMYK output profile, used as
+the PDF/X-1a OutputIntent for `holiday-card create --export-for moo-a6`.
+It is redistributed unmodified.
+
+Source: International Color Consortium (ICC) Profile Registry
+        https://www.color.org/registry/GRACoL2013_CRPC6.xalter
+Download: https://www.color.org/registry/profiles/GRACoL2013_CRPC6.icc
+Characterization data: CGATS21-2-CRPC6 (ISO DIS 15339-2, CGATS.21-2)
+Profile ID: 978f11fd 9202f7de 7acf16ac c355750a
+            (matches the bundled file, header bytes 84-99)
+
+Terms, copied verbatim from the source page above (retrieved 2026-09-26):
+
+    Profile Name: GRACoL2013_CRPC6.icc
+    Profile Provider: Idealliance
+    Copyright:  X-Rite, Inc
+    This profile is made available by IDEAlliance, with permission of
+    X-Rite, Inc., and may be used, embedded, exchanged, and shared without
+    restriction. It may not be altered, or sold without written permission
+    of IDEAlliance.

@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from holiday_card.core.data_paths import data_path
+
 
 @pytest.fixture
 def fixtures_dir() -> Path:
@@ -39,12 +41,12 @@ def project_root() -> Path:
 
 
 @pytest.fixture
-def templates_dir(project_root: Path) -> Path:
-    """Return path to templates directory."""
-    return project_root / "templates"
+def templates_dir() -> Path:
+    """Return path to the bundled templates directory."""
+    return data_path("templates")
 
 
 @pytest.fixture
-def themes_dir(project_root: Path) -> Path:
-    """Return path to themes directory."""
-    return project_root / "themes"
+def themes_dir() -> Path:
+    """Return path to the bundled themes directory."""
+    return data_path("themes")

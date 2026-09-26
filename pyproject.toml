@@ -64,9 +64,6 @@ holiday-card = "holiday_card.cli:app"
 [tool.hatch.build.targets.wheel]
 packages = ["src/holiday_card"]
 
-[tool.hatch.build.targets.wheel.force-include]
-"assets" = "holiday_card/_assets"
-
 [tool.uv]
 # numpy arrives transitively (imagehash, Pillow's typing). numpy 2.5 ships
 # stubs using the PEP 695 `type` statement, which mypy rejects while

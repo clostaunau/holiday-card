@@ -5,10 +5,10 @@ exposes :func:`pick_sentiment` for the CLI's ``--voice`` flag. Each
 file is a list of greeting copy in a particular voice and role; the
 resolver picks one (random by default, deterministic with ``seed=N``).
 
-The library directory is auto-discovered the same way templates are
-(walk up from the package source until ``sentiments/`` appears, fall
-back to ``./sentiments``). Override via ``HOLIDAY_CARD_SENTIMENTS`` for
-testing or vendor-managed installs.
+The library ships as package data under ``holiday_card/data/sentiments``
+and is located via :func:`holiday_card.core.data_paths.data_path`.
+Override via ``HOLIDAY_CARD_SENTIMENTS`` for testing or vendor-managed
+installs.
 
 This module is intentionally read-only at import time: files are
 loaded on first ``pick_sentiment`` call and cached. Tests that need a
@@ -17,7 +17,6 @@ fresh load can call :func:`reset_cache`.
 
 from __future__ import annotations
 
-import os
 import random
 from pathlib import Path
 from typing import Literal
@@ -25,6 +24,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from holiday_card.core.data_paths import data_path
 from holiday_card.core.models import OccasionType
 
 __all__ = [
@@ -83,24 +83,8 @@ class Sentiment(BaseModel):
 
 
 def get_sentiments_dir() -> Path:
-    """Locate the ``sentiments/`` directory.
-
-    Override via ``HOLIDAY_CARD_SENTIMENTS`` env var (used by tests).
-    Otherwise walk up from this file looking for ``sentiments/`` in the
-    project root, then fall back to a relative path.
-    """
-    env = os.environ.get("HOLIDAY_CARD_SENTIMENTS")
-    if env:
-        return Path(env)
-
-    current = Path(__file__).parent
-    while current != current.parent:
-        candidate = current / "sentiments"
-        if candidate.exists() and candidate.is_dir():
-            return candidate
-        current = current.parent
-
-    return Path("sentiments")
+    """Return the sentiments directory (bundled, or ``HOLIDAY_CARD_SENTIMENTS``)."""
+    return data_path("sentiments")
 
 
 # ---------------------------------------------------------------------------

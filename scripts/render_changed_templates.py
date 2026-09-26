@@ -22,11 +22,11 @@ Output:
 "Affected" rules (kept simple — a noisier rule would re-render the
 whole shipping set on every typo PR):
 
-* Direct: any ``templates/**/*.yaml`` in the changed list → render
-  exactly that template.
-* Indirect: any change to ``src/``, ``fonts/``, ``sentiments/``, or
-  ``themes/`` → render the canonical shipping set (the same eight
-  templates the snapshot tests cover).
+* Direct: any ``src/holiday_card/data/templates/**/*.yaml`` in the
+  changed list → render exactly that template.
+* Indirect: any other change under ``src/`` (code, fonts, sentiments,
+  themes — all bundled data lives in ``src/holiday_card/data/``) →
+  render the canonical shipping set.
 * Pure test / docs / CI changes → render nothing (exits 0 with no
   output; the workflow will skip the PR comment).
 """
@@ -41,7 +41,7 @@ from pathlib import Path
 # Used by the L4 PR-preview workflow on shared-infra changes (e.g.,
 # someone edits src/ or fonts/ → render the whole library so reviewers
 # see what moved). Keep in sync with the list of compileable templates
-# under ``templates/`` — when a new template ships, add it here.
+# under ``src/holiday_card/data/templates/`` — when a new template ships, add it here.
 # ``tests/unit/test_compiler.py``'s ``SUPPORTED_SNAPSHOT_TEMPLATES`` is
 # a strict subset (excludes the photo templates whose IR carries
 # machine-absolute paths and can't be committed as snapshots).
@@ -65,15 +65,12 @@ SHIPPING_TEMPLATES: tuple[str, ...] = (
     "mothers-day-photo",
 )
 
-# Top-level directories whose changes invalidate every template.
-# A change to any file under one of these prefixes triggers a full
-# re-render of the shipping set.
-_INDIRECT_PREFIXES: tuple[str, ...] = (
-    "src/",
-    "fonts/",
-    "sentiments/",
-    "themes/",
-)
+# Repo-relative location of the bundled template YAMLs.
+_TEMPLATES_PREFIX = "src/holiday_card/data/templates/"
+
+# Directories whose changes invalidate every template. ``src/`` covers
+# the code and every bundled data directory (fonts, sentiments, themes).
+_INDIRECT_PREFIXES: tuple[str, ...] = ("src/",)
 
 
 def detect_affected_templates(changed_files: list[str]) -> list[str]:
@@ -89,10 +86,8 @@ def detect_affected_templates(changed_files: list[str]) -> list[str]:
         if not path:
             continue
         # Direct template change → resolve the template id from the
-        # path. templates/{occasion}/{stem}.yaml → "{occasion}-{stem}"
-        # for everything except mothers_day where the convention is
-        # the directory name (see core/templates.py discovery logic).
-        if path.startswith("templates/") and path.endswith(".yaml"):
+        # YAML's ``id:`` field (see _template_id_from_path).
+        if path.startswith(_TEMPLATES_PREFIX) and path.endswith(".yaml"):
             tid = _template_id_from_path(path)
             if tid is not None and tid not in direct:
                 direct.append(tid)
@@ -126,8 +121,7 @@ def _template_id_from_path(path: str) -> str | None:
     import yaml  # PyYAML is already a project dependency
 
     p = Path(path)
-    parts = p.parts
-    if len(parts) < 3 or parts[0] != "templates" or p.suffix != ".yaml":
+    if not path.startswith(_TEMPLATES_PREFIX) or p.suffix != ".yaml":
         return None
     try:
         with open(p) as f:
