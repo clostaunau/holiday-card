@@ -1,18 +1,21 @@
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+  # ruff and mypy run from the uv lock so their versions never drift from CI.
+  - repo: local
     hooks:
       - id: ruff
-        args: [--fix]
-
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.2
-    hooks:
+        name: ruff
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
+        # Same paths as the CI lint gate.
+        files: ^(src|tests|scripts)/
       - id: mypy
+        name: mypy
+        entry: uv run mypy src/
+        language: system
+        types: [python]
         files: ^src/
-        additional_dependencies:
-          - pydantic>=2.0
-          - types-PyYAML
+        pass_filenames: false
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0

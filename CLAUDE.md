@@ -1,6 +1,6 @@
 # holiday-card — Development Guidelines
 
-Last updated: 2026-06-02. Wave 2 architecture refactor is **complete**.
+Last updated: 2026-09-26. Wave 2 architecture refactor is **complete**.
 Of the five industry-panel leapfrogs, **L1 (POD prepress), L2-engineering
 (curated taste layer), L3 (AI imagery — authoring-time `ai-asset generate`
 in its narrow, hard-railed form), L4 (cards-as-code identity), and L5
@@ -22,7 +22,8 @@ Three renderers consume the same IR: `IRReportLabRenderer` (PDF, default),
 `SVGRenderer`, `PNGRenderer`. Adding a fourth backend is the same pattern.
 
 ```bash
-pipx install holiday-card           # canonical user install (or `pip install -e ".[dev]"` for hacking)
+pipx install holiday-card           # canonical user install
+uv sync --extra dev                 # hacking: locked deps from uv.lock (`pip install -e ".[dev]"` still works, unpinned)
 holiday-card create christmas-classic -m "Merry Christmas!"     # writes a PDF
 holiday-card create christmas-classic --format svg              # writes an SVG
 holiday-card create christmas-classic --voice warm --seed 42    # picked-sentiment cover + inside
@@ -30,7 +31,7 @@ holiday-card create christmas-classic --inside-message-md letter.md   # Markdown
 holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," --signature "C" --ps "PS hi"   # structured letter
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-pytest                              # all 831 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 836 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -150,10 +151,19 @@ docs/industry-review/   # Six critic personas + consensus docs that drive the ro
 ### Quality gates (run all of these — they're the CI blocking gates too)
 
 ```bash
-ruff check src/ tests/ scripts/   # Lint — must be clean
-mypy src/                         # Type-check — must be clean (strict mode)
-pytest                            # All 831 tests pass
+uv sync --extra dev                      # Install locked deps (uv.lock); `pip install -e ".[dev]"` still works
+uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
+uv run ruff check src/ tests/ scripts/   # Lint — must be clean
+uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
+uv run pytest                            # All 836 tests pass
 ```
+
+After changing dependencies in `pyproject.toml`, run `uv lock` and commit
+`uv.lock`. `[tool.uv] constraint-dependencies` pins `numpy<2.5` because
+numpy 2.5's stubs use the Python 3.12 `type` statement, which mypy rejects
+while `python_version = "3.11"`. The weekly `latest-deps.yml` workflow
+ignores the lock and the constraint; a red run means bump the lock or lift
+a constraint.
 
 ### Card generation
 
@@ -283,6 +293,23 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Recent changes
 
+- **2026-09-26 — Locked dependencies with `uv.lock` + green mypy gate
+  (expert-panel §P2, issue #54)**: Committed a universal `uv.lock`; CI's
+  lint / type-check / test jobs and the render-cards + microsite
+  workflows now install with `uv sync --locked` and run tools via
+  `uv run`, and the lint job runs `uv lock --check`. Root cause of the red
+  mypy job: on py3.12 the resolver pulled numpy 2.5.3 (via imagehash),
+  whose stubs use the `type` statement that mypy rejects under
+  `python_version = "3.11"`. Fixed with `[tool.uv] constraint-dependencies
+  = ["numpy<2.5"]` and by running `type-check` on Python 3.11. Floors
+  raised: `Pillow>=10.3.0` (CVE-2024-28219), `typer>=0.12` (dropped the
+  removed `[all]` extra). New weekly `.github/workflows/latest-deps.yml`
+  tests unpinned latest deps on 3.11 + 3.13 (allowed to go red). Pre-commit
+  ruff/mypy are now `repo: local` hooks running `uv run …`, so they use the
+  locked versions. A `[dependency-groups] dev` group re-exports the `dev`
+  extra so bare `uv run pytest` keeps the dev tools installed. Added
+  `.python-version` (3.12). Guarded by `tests/unit/test_dependency_policy.py`
+  (5 tests).
 - **2026-06-02 — L3 AI imagery: authoring-time `ai-asset generate`
   (narrow, hard-railed form)**: Ships the panel's recommended shape from
   `consensus-ai-feature.md` — an **authoring-time** subcommand that bakes

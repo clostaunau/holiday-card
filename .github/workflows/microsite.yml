@@ -45,20 +45,20 @@ jobs:
       - name: Check out
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-          cache: pip
+          enable-cache: true
 
       - name: Install holiday-card
-        run: pip install -e .
+        run: uv sync --locked
 
       - name: Build static site
         run: |
           # ``_site`` is the path actions/upload-pages-artifact expects
           # by default; using it keeps the next step zero-config.
-          python scripts/build_microsite.py --output _site
+          uv run python scripts/build_microsite.py --output _site
           echo "::group::Built tree"
           find _site -maxdepth 3 -type f | sort
           echo "::endgroup::"
