@@ -616,6 +616,11 @@ the panel has already weighed in on most of the obvious moves.
   exactly that narrow shape — see the v1.3.0 changelog entry and the
   four `core/ai_*.py` modules. The doc remains the spec of record for
   what was deliberately left out.
+- `docs/specs/2026-09-26-expert-panel-remediation.md` — the
+  **engineering** panel's findings (packaging, loader, imposition,
+  PDF/X, backend parity, CLI) + standing decisions D1–D17. It is the
+  spec of record for the `expert-panel` GitHub issues; read the
+  relevant §P section before working one of them.
 - `docs/industry-review/critiques/` — 12 individual persona
   critiques (6 general + 6 AI-feature) with per-persona depth
 
