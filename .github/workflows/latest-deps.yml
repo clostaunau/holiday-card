@@ -29,12 +29,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Fresh venv with unpinned latest deps
-        # `uv pip` never reads uv.lock or [tool.uv] constraints.
         run: |
           uv venv .latest-venv
           echo "VIRTUAL_ENV=$PWD/.latest-venv" >> "$GITHUB_ENV"
           echo "$PWD/.latest-venv/bin" >> "$GITHUB_PATH"
-      - run: uv pip install --upgrade -e ".[dev]"
+      - name: Install newest deps
+        # --no-config: inside the project, `uv pip` otherwise applies
+        # [tool.uv] constraint-dependencies (numpy<2.5) and the canary would
+        # never see the releases it exists to catch. uv.lock is never read.
+        run: uv pip install --no-config --upgrade -e ".[dev]"
       - name: Installed versions
         run: uv pip list
       - name: ruff check
