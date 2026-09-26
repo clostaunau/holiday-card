@@ -65,6 +65,7 @@ Section IDs (§P1 …) are what issues cite.
 - Baseline on 2026-09-26 (py3.12, fresh venv): **831 passed, 1 skipped, 57.7 s**; ruff clean; branch coverage 79%.
 
 ### §P3 Template loader silently drops data [verified] — ARCH F1, UX F6
+- **Status (2026-09-26): loader bullets addressed by #56.** Templates load via `Template.model_validate` with `extra="forbid"` on every domain model; the hand parsers are deleted; holly-wreath / holiday-masterpiece path coordinates fixed. The `validate` UX / schema bullets remain with #57.
 - `core/templates.py:452-462` builds `SVGPath(...)` without `x`/`y` → default 0.0, although `templates/christmas/holly-wreath.yaml:41-42` sets `x: 2.125, y: 4.6`. Committed snapshot `tests/unit/__snapshots__/compile_card__christmas-holly-wreath.json` shows every leaf at `move (370.8, 12.96)` (bottom-left corner of front panel). `christmas-holiday-masterpiece` reportedly same (unverified). Snapshot **and** visual baseline have locked the bug in.
 - `templates.py:491-494` catches `KeyError/ValueError/TypeError`, logs, returns `None` → shape silently vanishes (`:234`). Unknown shape `type` → `None`. `Line` branch drops `rotation` and `fill`.
 - No model forbids extra keys: a YAML with `colr:`, `font_famly:`, `font_family: NotAFont`, `x: 99` passes `holiday-card validate` as "Template valid"; `create` then fails `Error creating card: 'NotAFont'`.

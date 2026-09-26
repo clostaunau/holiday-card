@@ -30,7 +30,6 @@ from holiday_card.core.models import (
     ColorStop,
     FoldType,
     LinearGradientFill,
-    OccasionType,
     Panel,
     PanelPosition,
     PatternFill,
@@ -52,7 +51,6 @@ def _shape_card(rect: Rectangle) -> Card:
     return Card(
         name="t",
         template_id="t",
-        occasion=OccasionType.GENERIC,
         fold_type=FoldType.HALF_FOLD,
         panels=[panel],
     )

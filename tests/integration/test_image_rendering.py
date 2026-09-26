@@ -29,7 +29,6 @@ from holiday_card.core.models import (
     CircleClipMask,
     FoldType,
     ImageElement,
-    OccasionType,
     Panel,
     PanelPosition,
 )
@@ -56,7 +55,6 @@ def image_card() -> Card:
     return Card(
         name="image test",
         template_id="t",
-        occasion=OccasionType.GENERIC,
         fold_type=FoldType.HALF_FOLD,
         panels=[panel],
     )
