@@ -31,7 +31,7 @@ holiday-card create christmas-classic --inside-message-md letter.md   # Markdown
 holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," --signature "C" --ps "PS hi"   # structured letter
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-uv run pytest                       # all 878 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 882 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -161,7 +161,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 878 tests pass
+uv run pytest                            # All 882 tests pass
 ```
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit
@@ -299,6 +299,19 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Recent changes
 
+- **2026-09-26 — A closed stdout pipe exits 0 quietly (issue #92)**:
+  `holiday-card themes | grep -q x` used to print `Error listing themes:
+  [Errno 32] Broken pipe` plus interpreter flush noise and exit 1, which
+  broke `pipefail` pipelines at random. The root group is now `_CLIGroup`
+  (`typer.Typer(cls=…)` in `cli/commands.py`). It catches
+  `BrokenPipeError` from any command or subcommand, points fd 1 at
+  `/dev/null` and exits 0. The eager `--version` callback uses the same
+  helper, and the per-command re-raise clauses are now `except
+  (typer.Exit, BrokenPipeError)`. **A new command with an `except
+  Exception` block must let `BrokenPipeError` through the same way.** The
+  CI smoke job uses `cli | grep -q` again. Guarded by
+  `tests/integration/test_cli_broken_pipe.py`, which gives the subprocess
+  a pipe whose read end is already closed, so EPIPE happens every time.
 - **2026-09-26 — Ship bundled data inside the wheel + smoke the installed
   wheel (expert-panel §P1 / D1, issue #55)**: `pipx install holiday-card`
   was completely broken — the wheel carried only the ICC profile, so

@@ -89,7 +89,7 @@ holiday-card create birthday-balloons --inside-message-md letter.md
 | **Photo cards** | `ImageElement` + circle / rectangle / ellipse / star clip masks; render a portrait into a styled frame |
 | **POD targets** | `letter` (single imposed sheet), `per-panel-pdf` (native trim per panel), `moo-a6` (A6 with content scaled to fit + DeviceCMYK PDF/X-1a:2003 + GRACoL2013 ICC) |
 | **Output formats** | PDF (default), SVG, PNG |
-| **Quality gates** | ruff + mypy strict + 878 tests + visual-regression perceptual-hash gate across all 21 templates + a smoke job that installs the built wheel and runs it outside any checkout, covering each voice and the CMYK export |
+| **Quality gates** | ruff + mypy strict + 882 tests + visual-regression perceptual-hash gate across all 21 templates + a smoke job that installs the built wheel and runs it outside any checkout, covering each voice and the CMYK export |
 
 ### Where data lives / env overrides
 
@@ -118,7 +118,7 @@ git clone https://github.com/clostaunau/holiday-card.git
 cd holiday-card
 uv sync --extra dev            # locked deps from uv.lock (or: pip install -e ".[dev]")
 
-uv run pytest                            # 878 tests, runs in ~30s
+uv run pytest                            # 882 tests, runs in ~30s
 uv run ruff check src/ tests/ scripts/   # lint (zero warnings)
 uv run mypy src/                         # strict-mode type-check (zero errors)
 
