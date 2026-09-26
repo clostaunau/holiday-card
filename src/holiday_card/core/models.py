@@ -69,7 +69,16 @@ from pathlib import Path
 from typing import Annotated, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, PrivateAttr, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from holiday_card.core.letter import LetterContent
 from holiday_card.core.markdown import RichTextContent
@@ -80,6 +89,8 @@ class Color(BaseModel):
 
     All color components must be in range 0.0 to 1.0.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     r: float = Field(ge=0.0, le=1.0, description="Red component (0.0-1.0)")
     g: float = Field(ge=0.0, le=1.0, description="Green component (0.0-1.0)")
@@ -244,6 +255,8 @@ class Border(BaseModel):
     All dimensions are in points for ReportLab compatibility.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     style: BorderStyle = Field(default=BorderStyle.SOLID, description="Border style")
     width: float = Field(default=1.0, ge=0.0, le=10.0, description="Border width in points")
     color: Color = Field(default_factory=lambda: Color(r=0.0, g=0.0, b=0.0), description="Border color")
@@ -288,6 +301,8 @@ class ColorStop(BaseModel):
     Defines a color at a specific position along the gradient.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     position: float = Field(ge=0.0, le=1.0, description="Position along gradient (0.0=start, 1.0=end)")
     color: str = Field(description="Color as hex string (#RRGGBB)")
 
@@ -308,6 +323,8 @@ class ColorStop(BaseModel):
 
 class SolidFill(BaseModel):
     """Solid color fill."""
+
+    model_config = ConfigDict(extra="forbid")
 
     type: Literal["solid"] = "solid"
     color: str = Field(description="Fill color as hex string (#RRGGBB)")
@@ -333,6 +350,8 @@ class LinearGradientFill(BaseModel):
     Gradient transitions smoothly between color stops along a line
     defined by the angle parameter.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     type: Literal["linear_gradient"] = "linear_gradient"
     angle: float = Field(default=0.0, ge=0.0, lt=360.0, description="Gradient angle in degrees (0=horizontal right)")
@@ -362,6 +381,8 @@ class RadialGradientFill(BaseModel):
     that way.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     type: Literal["radial_gradient"] = "radial_gradient"
     center_x: float = Field(default=0.0, ge=0.0, description="Center X position in inches (panel-relative)")
     center_y: float = Field(default=0.0, ge=0.0, description="Center Y position in inches (panel-relative)")
@@ -384,12 +405,20 @@ class PatternFill(BaseModel):
     Creates decorative repeating patterns like stripes, dots, grid, or checkerboard.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     type: Literal["pattern"] = "pattern"
     pattern_type: PatternType = Field(description="Pattern type (stripes, dots, grid, checkerboard)")
     colors: list[str] = Field(min_length=1, max_length=4, description="Pattern colors as hex strings")
     spacing: float = Field(default=0.25, gt=0.0, le=2.0, description="Pattern spacing in inches")
     scale: float = Field(default=1.0, gt=0.0, le=5.0, description="Pattern scale multiplier")
-    rotation: float = Field(default=0.0, ge=0.0, lt=360.0, description="Pattern rotation in degrees")
+    rotation: float = Field(
+        default=0.0,
+        ge=0.0,
+        lt=360.0,
+        validation_alias=AliasChoices("rotation", "angle"),
+        description="Pattern rotation in degrees",
+    )
 
     @field_validator("colors")
     @classmethod
@@ -421,6 +450,8 @@ FillStyle = Annotated[
 class CircleClipMask(BaseModel):
     """Circular clipping mask for images."""
 
+    model_config = ConfigDict(extra="forbid")
+
     type: Literal["circle"] = "circle"
     center_x: float = Field(ge=0.0, description="Center X position in inches (relative to image)")
     center_y: float = Field(ge=0.0, description="Center Y position in inches (relative to image)")
@@ -429,6 +460,8 @@ class CircleClipMask(BaseModel):
 
 class RectangleClipMask(BaseModel):
     """Rectangular clipping mask for images."""
+
+    model_config = ConfigDict(extra="forbid")
 
     type: Literal["rectangle"] = "rectangle"
     x: float = Field(ge=0.0, description="X position in inches (relative to image)")
@@ -440,6 +473,8 @@ class RectangleClipMask(BaseModel):
 class EllipseClipMask(BaseModel):
     """Elliptical clipping mask for images."""
 
+    model_config = ConfigDict(extra="forbid")
+
     type: Literal["ellipse"] = "ellipse"
     center_x: float = Field(ge=0.0, description="Center X position in inches (relative to image)")
     center_y: float = Field(ge=0.0, description="Center Y position in inches (relative to image)")
@@ -449,6 +484,8 @@ class EllipseClipMask(BaseModel):
 
 class StarClipMask(BaseModel):
     """Star-shaped clipping mask for images."""
+
+    model_config = ConfigDict(extra="forbid")
 
     type: Literal["star"] = "star"
     center_x: float = Field(ge=0.0, description="Center X position in inches (relative to image)")
@@ -485,6 +522,8 @@ class ImageEffectType(StrEnum):
 class ImageEffects(BaseModel):
     """Collection of effects to apply to an image."""
 
+    model_config = ConfigDict(extra="forbid")
+
     grayscale: bool = Field(default=False, description="Convert to grayscale")
     sepia: bool = Field(default=False, description="Apply sepia tone")
     vignette: float = Field(default=0.0, ge=0.0, le=1.0, description="Vignette intensity (0=none, 1=max)")
@@ -506,6 +545,8 @@ class ImageElement(BaseModel):
 
     Positions are relative to the panel, in inches.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     id: str = Field(default_factory=lambda: str(uuid4()))
     source_path: str = Field(description="Path to source image file")
@@ -545,6 +586,8 @@ class TextElement(BaseModel):
     different compiler layout passes). A model-level validator
     enforces this.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     id: str = Field(default_factory=lambda: str(uuid4()))
     content: str = Field(
@@ -646,6 +689,8 @@ class BaseShape(BaseModel):
     All measurements in inches except stroke_width (points).
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     id: str = Field(default_factory=lambda: str(uuid4()), description="Unique shape identifier")
     type: ShapeType = Field(description="Shape type discriminator")
     z_index: int = Field(default=0, description="Rendering layer (higher = on top)")
@@ -727,10 +772,26 @@ class Line(BaseShape):
     """Line shape with start and end points."""
 
     type: Literal[ShapeType.LINE] = ShapeType.LINE
-    start_x: float = Field(ge=0.0, description="Start X position in inches")
-    start_y: float = Field(ge=0.0, description="Start Y position in inches")
-    end_x: float = Field(ge=0.0, description="End X position in inches")
-    end_y: float = Field(ge=0.0, description="End Y position in inches")
+    start_x: float = Field(
+        ge=0.0,
+        validation_alias=AliasChoices("start_x", "x1"),
+        description="Start X position in inches",
+    )
+    start_y: float = Field(
+        ge=0.0,
+        validation_alias=AliasChoices("start_y", "y1"),
+        description="Start Y position in inches",
+    )
+    end_x: float = Field(
+        ge=0.0,
+        validation_alias=AliasChoices("end_x", "x2"),
+        description="End X position in inches",
+    )
+    end_y: float = Field(
+        ge=0.0,
+        validation_alias=AliasChoices("end_y", "y2"),
+        description="End Y position in inches",
+    )
 
 
 class SVGPath(BaseShape):
@@ -778,6 +839,8 @@ class Panel(BaseModel):
     Positions are in inches from the page origin (bottom-left).
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     id: str = Field(default_factory=lambda: str(uuid4()))
     position: PanelPosition = Field(description="Panel position identifier")
     x: float = Field(ge=0.0, description="X position in inches from page left")
@@ -808,6 +871,8 @@ class Template(BaseModel):
 
     Templates define the structure and default content for a card design.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     id: str = Field(description="Unique template identifier")
     name: str = Field(min_length=1, max_length=50, description="Display name")
@@ -861,6 +926,8 @@ class Card(BaseModel):
     A card is created from a template and can be customized with
     different themes, messages, and images.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     id: str = Field(default_factory=lambda: str(uuid4()))
     name: str = Field(min_length=1, max_length=100, description="User-friendly card name")

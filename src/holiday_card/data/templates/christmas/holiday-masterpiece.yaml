@@ -113,7 +113,7 @@ panels:
         stroke_color: "#1A3009"
         stroke_width: 0.5
         scale: 0.012
-        x: 3.7
+        x: 2.55  # mirrors the x: 0.5 leaf about the panel centre
         y: 2.5
         rotation: 90
         z_index: 5
@@ -366,7 +366,7 @@ panels:
         stroke_color: "#1A3009"
         stroke_width: 0.5
         scale: 0.008
-        x: 3.7
+        x: 2.95  # mirrors the x: 0.5 leaf about the panel centre
         y: 0.8
         rotation: 45
         z_index: 6

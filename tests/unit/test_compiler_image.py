@@ -26,7 +26,6 @@ from holiday_card.core.models import (
     FoldType,
     ImageEffects,
     ImageElement,
-    OccasionType,
     Panel,
     PanelPosition,
     PhotoFrameStyle,
@@ -60,7 +59,6 @@ def _make_card(image: ImageElement) -> Card:
     return Card(
         name="t",
         template_id="t",
-        occasion=OccasionType.GENERIC,
         fold_type=FoldType.HALF_FOLD,
         panels=[panel],
     )

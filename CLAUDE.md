@@ -31,7 +31,7 @@ holiday-card create christmas-classic --inside-message-md letter.md   # Markdown
 holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," --signature "C" --ps "PS hi"   # structured letter
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-uv run pytest                       # all 882 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 927 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -133,7 +133,8 @@ tests/
                         # Curation/POD/markdown additions: test_sentiments, test_export_targets,
                         #   test_per_panel, test_markdown, test_render_changed
                         # L3 AI imagery: test_ai_rails, test_ai_provenance, test_ai_assets
-    __snapshots__/      # JSON snapshots of compile_card() output per template (8 files)
+                        # Loader: test_templates_loading (extra="forbid", fail-loud keys)
+    __snapshots__/      # JSON snapshots of compile_card() output per template (16 files)
   integration/          # test_full_generation, test_svg_backend, test_png_backend,
                         #   test_per_panel_output, test_voice_flag, test_md_inside,
                         #   test_ai_asset_cli (L3 ai-asset generate subcommand)
@@ -161,7 +162,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 882 tests pass
+uv run pytest                            # All 927 tests pass
 ```
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit
@@ -299,6 +300,32 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Recent changes
 
+- **2026-09-26 — Templates load via `Template.model_validate` with
+  `extra="forbid"` (expert-panel §P3 / D3, issue #56)**: The hand-written
+  YAML parsers in `core/templates.py` (`_parse_template` / `_panel` /
+  `_text_element` / `_fill_style` / `_shape_element`) re-listed model
+  fields and silently dropped the rest: SVGPath `x`/`y`, text `z_index` /
+  `font_style` / `rotation`, panel `border`, Line `rotation`/`fill`. Unknown
+  shape or fill types, and malformed shapes, became skipped `None`s. They
+  are deleted (D17). `load_template_from_file` now calls
+  `Template.model_validate` and raises `TemplateLoadError` listing every
+  Pydantic error `loc` (e.g. `panels.0.text_elements.0.colr: Extra inputs
+  are not permitted`). **Every domain model reachable from `Template`, plus
+  `Card`, has `model_config = ConfigDict(extra="forbid")`**. A typo'd key
+  is an error, and so is an unknown kwarg in Python (several test fixtures
+  had been passing a non-existent `Card(occasion=…)`). YAML aliases live on
+  the models via `validation_alias=AliasChoices(...)`: `Line`
+  `x1/y1/x2/y2`, `PatternFill` `angle` → `rotation`. `default_content` is
+  gone. With `x`/`y` honoured, holly-wreath and holiday-masterpiece paths
+  escaped their panels (authored values were leaf centres, not path
+  origins), so the template coordinates were fixed. The model semantics
+  stayed as they were. Compiled IR is byte-identical for the other 19
+  templates. Regenerated: `compile_card__christmas-holly-wreath.json` and
+  both visual baselines (eyeballed). Guarded by
+  `tests/unit/test_templates_loading.py` and the new
+  `test_shipped_svg_path_bbox_inside_panel` in `test_compiler_svg_path.py`.
+  The compiler still ignores text `font_style` / `rotation` (#63) and
+  `font_file` (#60).
 - **2026-09-26 — A closed stdout pipe exits 0 quietly (issue #92)**:
   `holiday-card themes | grep -q x` used to print `Error listing themes:
   [Errno 32] Broken pipe` plus interpreter flush noise and exit 1, which

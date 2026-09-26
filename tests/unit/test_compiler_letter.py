@@ -12,7 +12,6 @@ from holiday_card.core.letter import LetterContent
 from holiday_card.core.models import (
     Card,
     FoldType,
-    OccasionType,
     Panel,
     PanelPosition,
     TextElement,
@@ -33,7 +32,6 @@ def _make_card(text: TextElement) -> Card:
     return Card(
         name="test",
         template_id="t",
-        occasion=OccasionType.GENERIC,
         fold_type=FoldType.HALF_FOLD,
         panels=[panel],
     )

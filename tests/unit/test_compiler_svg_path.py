@@ -23,7 +23,6 @@ from holiday_card.core.compiler import (
 from holiday_card.core.models import (
     Card,
     FoldType,
-    OccasionType,
     Panel,
     PanelPosition,
     SVGPath,
@@ -52,7 +51,6 @@ def _make_card(shape: SVGPath) -> Card:
     )
     return Card(
         name="t", template_id="t",
-        occasion=OccasionType.GENERIC,
         fold_type=FoldType.HALF_FOLD,
         panels=[panel],
     )
@@ -196,3 +194,72 @@ class TestDeadTemplatesNowCompile:
         assert len(path_draws) >= 1, (
             f"{template_id} should emit at least one DrawShape with a PathGeom"
         )
+
+
+# ---------------------------------------------------------------------------
+# Shipped templates: every SVG path sits inside its panel (issue #56)
+# ---------------------------------------------------------------------------
+
+
+def _rotated_bbox(
+    points: list[tuple[float, float]], pivot: tuple[float, float], deg: float
+) -> tuple[float, float, float, float]:
+    import math
+
+    rad = math.radians(deg)
+    cos, sin = math.cos(rad), math.sin(rad)
+    px, py = pivot
+    rotated = [
+        (px + (x - px) * cos - (y - py) * sin, py + (x - px) * sin + (y - py) * cos)
+        for x, y in points
+    ]
+    xs = [p[0] for p in rotated]
+    ys = [p[1] for p in rotated]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _svg_path_cases() -> list[tuple[str, int, int]]:
+    from holiday_card.core.templates import discover_templates, load_template
+
+    cases = []
+    for info in sorted(discover_templates(), key=lambda t: t["id"]):
+        template = load_template(info["id"])
+        for p_idx, panel in enumerate(template.panels):
+            for s_idx, shape in enumerate(panel.shape_elements):
+                if isinstance(shape, SVGPath):
+                    cases.append((info["id"], p_idx, s_idx))
+    return cases
+
+
+@pytest.mark.parametrize(("template_id", "panel_idx", "shape_idx"), _svg_path_cases())
+def test_shipped_svg_path_bbox_inside_panel(
+    template_id: str, panel_idx: int, shape_idx: int
+) -> None:
+    from holiday_card.core.compiler import _compile_svg_path
+    from holiday_card.core.templates import load_template
+    from holiday_card.utils.measurements import inches_to_points
+
+    panel = load_template(template_id).panels[panel_idx]
+    shape = panel.shape_elements[shape_idx]
+    assert isinstance(shape, SVGPath)
+    cmds = _compile_svg_path(shape, panel)
+
+    draw = next(c for c in cmds if isinstance(c, DrawShape))
+    assert isinstance(draw.geometry, PathGeom)
+    points = [(pt.x, pt.y) for op in draw.geometry.ops for pt in op.points]
+    group = next((c for c in cmds if isinstance(c, BeginGroup)), None)
+    if group is None:
+        bbox = _rotated_bbox(points, (0.0, 0.0), 0.0)
+    else:
+        t = group.transform
+        bbox = _rotated_bbox(points, (t.translate_x, t.translate_y), t.rotate_deg)
+
+    left, bottom = inches_to_points(panel.x), inches_to_points(panel.y)
+    right = inches_to_points(panel.x + panel.width)
+    top = inches_to_points(panel.y + panel.height)
+    x0, y0, x1, y1 = bbox
+    assert left <= x0 and x1 <= right and bottom <= y0 and y1 <= top, (
+        f"{template_id} panel {panel.position} shape {shape_idx}: path bbox "
+        f"({x0:.1f}, {y0:.1f})–({x1:.1f}, {y1:.1f}) pt escapes panel "
+        f"({left:.1f}, {bottom:.1f})–({right:.1f}, {top:.1f}) pt"
+    )
