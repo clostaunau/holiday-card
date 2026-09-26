@@ -31,7 +31,7 @@ holiday-card create christmas-classic --inside-message-md letter.md   # Markdown
 holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," --signature "C" --ps "PS hi"   # structured letter
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-uv run pytest                       # all 836 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 837 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -155,7 +155,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 836 tests pass
+uv run pytest                            # All 837 tests pass
 ```
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit
@@ -304,12 +304,14 @@ template editing; a JSON "render plan" backend for downstream tooling.
   = ["numpy<2.5"]` and by running `type-check` on Python 3.11. Floors
   raised: `Pillow>=10.3.0` (CVE-2024-28219), `typer>=0.12` (dropped the
   removed `[all]` extra). New weekly `.github/workflows/latest-deps.yml`
-  tests unpinned latest deps on 3.11 + 3.13 (allowed to go red). Pre-commit
+  tests unpinned latest deps on 3.11 + 3.13 (allowed to go red; its
+  `uv pip install --no-config` is required — without it `uv pip` inside
+  the project silently applies the numpy constraint). Pre-commit
   ruff/mypy are now `repo: local` hooks running `uv run …`, so they use the
   locked versions. A `[dependency-groups] dev` group re-exports the `dev`
   extra so bare `uv run pytest` keeps the dev tools installed. Added
   `.python-version` (3.12). Guarded by `tests/unit/test_dependency_policy.py`
-  (5 tests).
+  (6 tests).
 - **2026-06-02 — L3 AI imagery: authoring-time `ai-asset generate`
   (narrow, hard-railed form)**: Ships the panel's recommended shape from
   `consensus-ai-feature.md` — an **authoring-time** subcommand that bakes

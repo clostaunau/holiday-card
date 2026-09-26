@@ -64,3 +64,15 @@ def test_pre_commit_does_not_pin_its_own_ruff_or_mypy() -> None:
     repos = [r["repo"] for r in config["repos"]]
     assert not any("astral-sh/ruff-pre-commit" in r for r in repos), repos
     assert not any("mirrors-mypy" in r for r in repos), repos
+
+
+def test_latest_deps_workflow_ignores_uv_constraints() -> None:
+    # `uv pip` run inside the project applies [tool.uv] constraint-dependencies;
+    # the canary must opt out with --no-config or it never sees numpy 2.5+.
+    workflow = yaml.safe_load(
+        (REPO_ROOT / ".github" / "workflows" / "latest-deps.yml").read_text()
+    )
+    runs = [step.get("run", "") for step in workflow["jobs"]["latest"]["steps"]]
+    installs = [r for r in runs if "uv pip install" in r]
+    assert installs, runs
+    assert all("--no-config" in r for r in installs), installs
