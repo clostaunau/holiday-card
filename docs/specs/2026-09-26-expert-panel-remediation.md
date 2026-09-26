@@ -39,7 +39,7 @@ Recorded 2026-09-26; the owner accepted every recommendation.
 | D8 | `moo-a6` default is **fill-then-crop** (`max` scale), warning if text crosses the safe zone; letterbox is opt-in only. | Letterbox default (produces white bands). |
 | D9 | CMYK conversion uses **LittleCMS via Pillow `ImageCms`** sRGB → bundled GRACoL2013 profile, relative colorimetric + BPC, total ink cap 300%, pure-black text → 0/0/0/100, large black areas → rich black. | Naive formula in `core/color_management.py`. |
 | D10 | In CMYK/PDF-X mode, alpha is **pre-composited against the known backdrop in the compiler where the backdrop is a solid fill; otherwise raise `UnsupportedFeatureError`**. RGB images are converted to CMYK via the same ICC transform. A PDF/X-4 target is a possible follow-up, not in scope. | Emit live transparency. |
-| D11 | PDF/X conformance is checked with **veraPDF** in CI (not regex). | Hand-rolled regex assertions only. |
+| D11 | ~~PDF/X conformance is checked with **veraPDF** in CI~~ **Amended 2026-09-26:** veraPDF validates PDF/A, PDF/UA and WTPDF only, not PDF/X. Conformance is checked by a pikepdf-based rule preflight (`renderers/pdfx_preflight.py`) plus a CI job cross-checking with `pdffonts` and Ghostscript `inkcov` (see §7). | Hand-rolled regex assertions only. |
 | D12 | Cross-backend correctness is guarded by a **conformance suite** (`tests/conformance/`) that renders one-feature IR fixtures through all three backends; **SVG is the reference oracle**. Each backend must match within tolerance or raise `NotImplementedError` (capability matrix). | Per-backend structural tests only. |
 | D13 | Pattern fills are **lowered by the compiler** into clip + primitive draw commands; the three backend pattern implementations are deleted. | Keep `PatternPaint` in the IR with a tighter tile spec. |
 | D14 | IR `Transform` fields are renamed to reflect pivot semantics and **scale is defined about the pivot** in every backend (PNG gains scale support). | Leave `translate_x/y` naming. |
@@ -183,3 +183,53 @@ that they are needed to verify.
 - The repo's committed `.venv` symlink is dead; create a fresh venv (`uv venv` / `python3.12 -m venv`).
 - Any visual-baseline or snapshot regeneration: **eyeball every regenerated PNG before committing** — automated regen faithfully captures bugs as truth (see §P3).
 - Update CLAUDE.md "Recent changes" and any stale counts touched by the change.
+
+## 7. Amendments — 2026-09-26 (issue-authoring pass)
+
+Issue authors re-verified every anchor while writing the GitHub issues. Where the
+findings above were wrong or incomplete, the issue bodies carry the corrected
+version; this section records the corrections so the spec stays the source of truth.
+
+- **D11 / §P9:** veraPDF has no PDF/X profile; see the amended D11. The Info/XMP
+  pair for PDF/X-1a:2003 is `GTS_PDFXVersion = "PDF/X-1a:2003"` (ISO 15930-4), not
+  `PDF/X-1:2003`; `tests/integration/test_pdfx_moo_a6.py:113` asserts the wrong
+  value. Transparency is used by **13 of 21** templates and RGB images appear in
+  **6** (5 photo templates + holiday-masterpiece), not just the two named in §P9.
+- **§P10:** with black-point compensation (as D9 specifies), `#CC1C1C` →
+  0/98/91/12.5 and ICC black → 83.1/74.1/61.2/99.6 (TAC still > 300%).
+- **§P2:** the numpy breakpoint is **2.5** (2.4.4 and 2.3.5 pass mypy); numpy 2.5
+  needs Python ≥ 3.12, which is why only the 3.12 type-check job breaks. The mypy
+  pre-commit pin is on `.pre-commit-config.yaml:9`.
+- **§P3:** `christmas-holiday-masterpiece` is confirmed affected (4 SVGPaths).
+  `model_validate` needs two YAML aliases: `Line` `x1/y1/x2/y2` and `PatternFill`
+  `angle`→`rotation`. `_parse_text_element` also drops `font_style`, `z_index`,
+  `rotation`, `font_file`, `paragraph_spacing`; `_parse_panel` drops `border`.
+  The compiler independently ignores `TextElement.font_style` (33 uses in 20
+  templates, `core/compiler.py:1023`) and text `rotation` — new issue (P1-8).
+- **§P4:** all 21 shipped templates are 4-panel; 20 use `half_fold` with mirrored
+  inside panels, and `christmas-modern` uses `quarter_fold` with a different wrong
+  layout. The `init` scaffold (`cli/commands.py:740-790`) omits the 180° rotation.
+- **§P5:** additional silent ignores — `--signature-font` without `--signature`;
+  `--blank-inside --inside-message-md`; `TextElement.font_file` never read;
+  `Panel.background_image` parsed but never drawn.
+- **§P6:** nested PNG clips combine by union, not intersection
+  (`png_backend.py:753-756`).
+- **§P7:** `reportlab_backend.py:551` `setDash(*stroke.dash)` misuses ReportLab's
+  signature (1-element dash draws solid; 3–4 elements raise `TypeError`). Stroke
+  and text colour alpha are never applied; all alpha bugs are masked today because
+  `_color_to_rgba` (`compiler.py:1575-1576`) drops colour alpha.
+- **§P8:** the `chdir(tests/fixtures)` workaround exists in six places (microsite,
+  baseline regen, render-changed script, three tests); holiday-masterpiece also
+  references `sample_photo.jpg`.
+- **§P15:** 9 of 10 functions in `utils/validators.py` are dead (not 8). CLAUDE.md
+  counts are stale: 16 snapshot files, 70 sentiment files, 21 visual baselines.
+  **The package has never been published to PyPI** (`pypi.org/pypi/holiday-card`
+  → 404), so the documented `pipx install holiday-card` has never worked. `openai`
+  is at 3.x against a `>=1.0` floor. The version string is duplicated in
+  `pyproject.toml:7` and `src/holiday_card/__init__.py:3`.
+- **§P15 AI sizing:** `docs/industry-review/openai-image-api-snapshot.md:16-23`
+  documents **gpt-image-2** with flexible sizes (1312×1824 is valid there); the
+  fixed-size claim for gpt-image-1 is unverified. Separately, the live client calls
+  `gpt-image-1` (`core/ai_openai.py:34`) while provenance records `gpt-image-2`
+  (`core/ai_assets.py:176`, `core/ai_provenance.py:72`) — the sidecar can name a
+  model that was never called.
