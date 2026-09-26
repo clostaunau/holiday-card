@@ -5,11 +5,14 @@ All commands support both human-readable and JSON output formats.
 """
 
 import json
+import os
+import sys
 from datetime import datetime
 from pathlib import Path
-from typing import NoReturn
+from typing import Any, NoReturn
 
 import typer
+from typer.core import TyperGroup
 
 from holiday_card import __version__
 from holiday_card.core.ai_openai import make_image_client
@@ -39,18 +42,47 @@ from holiday_card.renderers.reportlab_backend import IRReportLabRenderer
 from holiday_card.renderers.svg_backend import SVGRenderer
 from holiday_card.utils.validators import ValidationError, validate_image_format
 
+
+def _exit_quietly_on_broken_pipe() -> NoReturn:
+    # The reader closed stdout (e.g. `| grep -q`): not a failure (#92).
+    # Point fd 1 at /dev/null so the interpreter's final flush can't raise.
+    try:
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+    except (OSError, ValueError):
+        pass
+    raise typer.Exit(0)
+
+
+class _CLIGroup(TyperGroup):
+    """Root command group that turns a closed stdout pipe into a quiet exit 0."""
+
+    # ``Any``: the base's Context type is click's or typer's vendored copy
+    # depending on the typer version.
+    def invoke(self, ctx: Any) -> Any:
+        try:
+            return super().invoke(ctx)
+        except BrokenPipeError:
+            _exit_quietly_on_broken_pipe()
+
+
 # Create main Typer app
 app = typer.Typer(
     name="holiday-card",
     help="Create printable holiday greeting cards optimized for laser printing.",
     add_completion=False,
+    cls=_CLIGroup,
 )
 
 
 def version_callback(value: bool) -> None:
     """Print version and exit."""
     if value:
-        typer.echo(f"holiday-card version {__version__}")
+        # Eager option: runs while parsing, outside _CLIGroup.invoke.
+        try:
+            typer.echo(f"holiday-card version {__version__}")
+        except BrokenPipeError:
+            _exit_quietly_on_broken_pipe()
         raise typer.Exit()
 
 
@@ -130,8 +162,9 @@ def templates(
 
             typer.echo(f"\n{len(templates_list)} template(s) found.")
 
-    except typer.Exit:
-        # Preserve intentional exit codes (e.g. Exit(0) for "no results").
+    except (typer.Exit, BrokenPipeError):
+        # Preserve intentional exit codes (e.g. Exit(0) for "no results");
+        # a closed stdout pipe is handled by _CLIGroup, not reported here.
         raise
     except Exception as e:
         typer.secho(f"Error listing templates: {e}", fg=typer.colors.RED, err=True)
@@ -195,8 +228,9 @@ def list_themes(
 
             typer.echo(f"\n{len(themes_list)} theme(s) found.")
 
-    except typer.Exit:
-        # Preserve intentional exit codes (e.g. Exit(0) for "no results").
+    except (typer.Exit, BrokenPipeError):
+        # Preserve intentional exit codes (e.g. Exit(0) for "no results");
+        # a closed stdout pipe is handled by _CLIGroup, not reported here.
         raise
     except Exception as e:
         typer.secho(f"Error listing themes: {e}", fg=typer.colors.RED, err=True)
@@ -612,7 +646,7 @@ def create(
         if effective_message and not voice:
             typer.echo(f"  Message: {_truncate(effective_message, 50)}")
 
-    except typer.Exit:
+    except (typer.Exit, BrokenPipeError):
         # Preserve intentional exit codes from inner validation
         # (invalid fold type, missing image, etc.).
         raise
@@ -699,7 +733,7 @@ def preview(
         if open_after:
             _open_in_default_viewer(output)
 
-    except typer.Exit:
+    except (typer.Exit, BrokenPipeError):
         raise
 
     except TemplateNotFoundError as e:
@@ -853,7 +887,7 @@ def validate(
         typer.echo(f"  Fold type: {loaded.fold_type.value}")
         typer.echo(f"  Panels: {len(loaded.panels)}")
 
-    except typer.Exit:
+    except (typer.Exit, BrokenPipeError):
         raise
 
     except TemplateNotFoundError as e:
@@ -1089,7 +1123,6 @@ def _open_in_default_viewer(path: Path) -> None:
     convenience, not a guaranteed contract.
     """
     import subprocess
-    import sys
 
     try:
         if sys.platform == "darwin":
@@ -1097,7 +1130,6 @@ def _open_in_default_viewer(path: Path) -> None:
         elif sys.platform.startswith("linux"):
             subprocess.run(["xdg-open", str(path)], check=False)
         elif sys.platform.startswith("win"):
-            import os
             os.startfile(str(path))  # type: ignore[attr-defined]
     except Exception as e:  # noqa: BLE001 — preview is best-effort
         typer.secho(f"  (could not auto-open: {e})", fg=typer.colors.YELLOW, err=True)

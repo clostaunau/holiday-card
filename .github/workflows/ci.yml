@@ -120,18 +120,16 @@ jobs:
           if grep -q '_assets/' wheel.txt; then echo "stale _assets/ in wheel"; exit 1; fi
       - name: run the installed CLI outside any checkout
         working-directory: ${{ runner.temp }}
-        # Output goes to a file before grep: `cmd | grep -q` closes the
-        # pipe on first match and the CLI would die of EPIPE under pipefail.
+        # `cli | grep -q` under pipefail also guards #92: grep closes the pipe
+        # on first match, and the CLI must exit 0 quietly on EPIPE.
         run: |
           set -euo pipefail
           mkdir smoke && cd smoke
           # No override may mask missing bundled data.
           if env | grep '^HOLIDAY_CARD_'; then exit 1; fi
           holiday-card --version
-          holiday-card templates > templates.txt
-          grep -q christmas templates.txt
-          holiday-card themes > themes.txt
-          grep -q christmas themes.txt
+          holiday-card templates | grep -q christmas
+          holiday-card themes | grep -q christmas
           for t in christmas-classic birthday-balloons hanukkah-menorah generic-celebration; do
             holiday-card create "$t" -o "$t.pdf"
             test -s "$t.pdf"
