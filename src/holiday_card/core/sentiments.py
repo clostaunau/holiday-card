@@ -34,6 +34,7 @@ __all__ = [
     "Role",
     "Sentiment",
     "SentimentNotFoundError",
+    "available_voices",
     "pick_sentiment",
     "load_sentiment_file",
     "get_sentiments_dir",
@@ -149,6 +150,21 @@ def load_sentiment_file(
     if sentiments_dir is None:
         _cache[cache_key] = sentiment
     return sentiment
+
+
+def available_voices(occasion: OccasionType | str) -> tuple[str, ...]:
+    """Return the voices shipped for ``occasion``, sorted (``()`` if none).
+
+    Read from the directory listing, so it reflects exactly what
+    :func:`pick_sentiment` can load.
+    """
+    occasion_str = occasion.value if isinstance(occasion, OccasionType) else occasion
+    occasion_dir = get_sentiments_dir() / occasion_str
+    if not occasion_dir.is_dir():
+        return ()
+    return tuple(sorted(
+        d.name for d in occasion_dir.iterdir() if d.is_dir() and d.name in VOICES
+    ))
 
 
 # ---------------------------------------------------------------------------

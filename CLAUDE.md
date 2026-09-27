@@ -32,7 +32,7 @@ holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," -
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-uv run pytest                       # all 1015 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 1055 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -165,7 +165,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 1015 tests pass
+uv run pytest                            # All 1055 tests pass
 ```
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit
@@ -244,7 +244,9 @@ miscarriage-spare         pet-loss-spare
 Remaining gaps (out-of-scope features, each raises
 `UnsupportedFeatureError` rather than silently dropping content):
 SVG path **arc** commands (`A`/`a` — no shipped template uses arcs),
-photo `effects` / `frame_style`. **Fail loud, not silent** is the convention.
+photo `effects` / `frame_style`, panel `background_image`, text
+`font_file`; an unknown `font_family` raises `UnknownFontError` (a
+subclass). **Fail loud, not silent** is the convention.
 
 To support a new feature: extend `core/compiler.py` to lower the
 relevant `Card` field into IR commands, then make sure each backend
@@ -305,6 +307,35 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Recent changes
 
+- **2026-09-26 — `create`/`preview` fail loud on ignored or contradictory
+  inputs; global `--debug` (expert-panel §P5 / D4, issue #60)**: Each of
+  these used to exit 0 with the input ignored, or exit 1 with a bare
+  `KeyError`. They now print `Error: …`, write nothing, and exit 2: unknown
+  `--theme` (lists the sorted ids; the generator's `except
+  ThemeNotFoundError: pass` is gone), a `--voice` the occasion doesn't ship
+  (lists `sentiments.available_voices()`, with no library path; the two
+  yellow warnings are gone), `--blank-inside` with `--inside-message` or
+  `--inside-message-md`, `--seed` without `--voice`, `--signature-font`
+  without `--signature`, a `--fold-type` whose panel set the template
+  lacks (half/quarter need front/back/inside_left/inside_right, tri needs
+  left/center/right), and bad `-o` paths via `_validate_output_path` (an
+  extension other than `.pdf`/`.svg`, with a `preview` hint for `.png`; a
+  `--format` / extension clash; a file path for a per-panel target). A
+  suffix-less `-o` still gets `.pdf`/`.svg`. In the compiler, `_compile_panel`
+  raises `UnsupportedFeatureError` for a panel `background_image` or a
+  text `font_file`. It raises `UnknownFontError(UnsupportedFeatureError)`
+  (via `_require_known_font`, before any measurement) for a `font_family`
+  or `signature_font_family` outside `font_registry.known_font_ids()`, and
+  names `<template>/<panel>/<element>`. The CLI maps
+  `UnsupportedFeatureError` to exit 2. The generator now compiles before it
+  creates any output dir, and `preview` / `create` no longer `mkdir output/`
+  up front, so a failed run leaves nothing behind. The new root `--debug`
+  option (`HOLIDAY_CARD_DEBUG`) makes every command's catch-all re-raise
+  the original error. Without it, the one-line message ends with `(re-run
+  with --debug for a traceback)`. Guarded by `TestCreateFailsLoud` /
+  `TestDebugFlag` in `tests/unit/test_cli.py`, `TestFailLoud` in
+  `test_compiler.py`, `test_generators_theme.py`, and new cases in
+  `test_sentiments.py` / `test_font_registry.py`.
 - **2026-09-26 — `-i/--image` fills the template's photo slots; 1200 px
   placeholder; PNG upscales photos (expert-panel §P8/§P6, issue #65)**:
   `create -i me.jpg` used to fail on every template (`ImageElement

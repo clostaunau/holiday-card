@@ -16,19 +16,22 @@ from typer.core import TyperGroup
 
 from holiday_card import __version__
 from holiday_card.core.ai_openai import make_image_client
+from holiday_card.core.compiler import UnsupportedFeatureError
 from holiday_card.core.export_targets import (
     REGISTRY as EXPORT_TARGET_REGISTRY,
 )
 from holiday_card.core.export_targets import (
+    ExportTarget,
     ExportTargetNotFoundError,
     get_target,
 )
 from holiday_card.core.generators import CardGenerator, PhotoSlotError
 from holiday_card.core.images import ImageSourceError
-from holiday_card.core.models import FoldType, OccasionType
+from holiday_card.core.models import Card, FoldType, OccasionType
 from holiday_card.core.sentiments import (
     VOICES,
     SentimentNotFoundError,
+    available_voices,
     pick_sentiment,
 )
 from holiday_card.core.templates import (
@@ -87,6 +90,10 @@ def version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+# Set by the root callback on every invocation (``--debug`` / HOLIDAY_CARD_DEBUG).
+_debug = False
+
+
 @app.callback()
 def main(
     version: bool = typer.Option(
@@ -97,6 +104,12 @@ def main(
         callback=version_callback,
         is_eager=True,
     ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        envvar="HOLIDAY_CARD_DEBUG",
+        help="Re-raise unexpected errors with a full traceback.",
+    ),
 ) -> None:
     """Holiday Card Generator - Create printable greeting cards.
 
@@ -104,7 +117,27 @@ def main(
     on standard 8.5" x 11" paper. Supports multiple fold formats
     and customizable templates.
     """
-    pass
+    del version  # handled by the eager version_callback
+    global _debug
+    _debug = debug
+
+
+def _unexpected_error(prefix: str, e: Exception) -> NoReturn:
+    # The catch-all of every command: --debug re-raises the original error.
+    if _debug:
+        raise e
+    typer.secho(
+        f"{prefix}: {e} (re-run with --debug for a traceback)",
+        fg=typer.colors.RED,
+        err=True,
+    )
+    raise typer.Exit(1) from e
+
+
+def _fail(message: str) -> NoReturn:
+    # A bad or contradictory input: fail loud with exit 2 (D4).
+    typer.secho(f"Error: {message}", fg=typer.colors.RED, err=True)
+    raise typer.Exit(2)
 
 
 @app.command()
@@ -168,8 +201,7 @@ def templates(
         # a closed stdout pipe is handled by _CLIGroup, not reported here.
         raise
     except Exception as e:
-        typer.secho(f"Error listing templates: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(1) from e
+        _unexpected_error("Error listing templates", e)
 
 
 def _fail_empty_catalog(kind: str, directory: Path) -> NoReturn:
@@ -234,8 +266,7 @@ def list_themes(
         # a closed stdout pipe is handled by _CLIGroup, not reported here.
         raise
     except Exception as e:
-        typer.secho(f"Error listing themes: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(1) from e
+        _unexpected_error("Error listing themes", e)
 
 
 @app.command()
@@ -424,6 +455,19 @@ def create(
                 err=True,
             )
             raise typer.Exit(2)
+        if theme is not None:
+            theme_ids = sorted(t["id"] for t in discover_themes())
+            if theme not in theme_ids:
+                _fail(f"Unknown theme {theme!r}. Available: {', '.join(theme_ids)}")
+        _check_flag_combinations(
+            blank_inside=blank_inside,
+            inside_message=inside_message,
+            inside_message_md=inside_message_md,
+            voice=voice,
+            seed=seed,
+            signature=signature,
+            signature_font=signature_font,
+        )
         # Letter-part flags (--salutation / --signoff / --signature /
         # --ps) and --inside-message-md represent two different
         # authoring surfaces for the inside panel and have separate
@@ -471,10 +515,9 @@ def create(
         chosen_format = _resolve_output_format(output_format, output)
         ext = ".pdf" if chosen_format == "pdf" else ".svg"
 
-        # Generate default output path if not specified
+        # Default output path; the generator creates ``output/`` on write.
         if output is None:
             output_dir = Path("output")
-            output_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
             if target.layout == "per-panel":
                 # Per-panel mode writes a directory of files; the timestamp
@@ -483,11 +526,7 @@ def create(
             else:
                 output = output_dir / f"{template}-{timestamp}{ext}"
 
-        # Single-file mode: ensure the path has the expected extension.
-        # Per-panel mode: path is a directory; extension is appended per
-        # panel filename inside _generate_per_panel.
-        if target.layout == "imposition" and not str(output).lower().endswith(ext):
-            output = Path(f"{output}{ext}")
+        output = _validate_output_path(output, chosen_format, target)
 
         generator = CardGenerator(renderer=_make_renderer(chosen_format))
 
@@ -516,32 +555,18 @@ def create(
         picked_voice_inside: str | None = None
         if voice is not None:
             occasion_str = _template_occasion(template)
+            shipped = available_voices(occasion_str)
+            if voice not in shipped:
+                _fail(
+                    f"voice {voice!r} is not available for occasion "
+                    f"{occasion_str!r}. Available: {', '.join(shipped) or '(none)'}"
+                )
             if effective_message is None:
-                try:
-                    picked_voice_message = pick_sentiment(
-                        occasion_str, voice, "cover", seed=seed,
-                    )
-                    effective_message = picked_voice_message
-                except SentimentNotFoundError as e:
-                    typer.secho(
-                        f"Warning: no cover sentiment for "
-                        f"({occasion_str}, {voice}); leaving template default. {e}",
-                        fg=typer.colors.YELLOW,
-                        err=True,
-                    )
+                picked_voice_message = _pick_voice_line(occasion_str, voice, "cover", seed)
+                effective_message = picked_voice_message
             if effective_inside is None and not blank_inside:
-                try:
-                    picked_voice_inside = pick_sentiment(
-                        occasion_str, voice, "inside", seed=seed,
-                    )
-                    effective_inside = picked_voice_inside
-                except SentimentNotFoundError as e:
-                    typer.secho(
-                        f"Warning: no inside sentiment for "
-                        f"({occasion_str}, {voice}); leaving template default. {e}",
-                        fg=typer.colors.YELLOW,
-                        err=True,
-                    )
+                picked_voice_inside = _pick_voice_line(occasion_str, voice, "inside", seed)
+                effective_inside = picked_voice_inside
         if blank_inside:
             effective_inside = ""
 
@@ -578,6 +603,8 @@ def create(
                 else effective_inside
             ),
         )
+        if fold_type_enum is not None:
+            _check_fold_type_fits(fold_type_enum, card)
         if rich_inside is not None:
             generator.apply_inside_rich_content(card, rich_inside)
         if letter_content is not None:
@@ -652,14 +679,17 @@ def create(
             typer.echo(f"Templates with photo slots: {', '.join(slotted)}", err=True)
         raise typer.Exit(2) from e
 
+    except UnsupportedFeatureError as e:
+        typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from e
+
     except PermissionError as e:
         typer.secho(f"Error: Cannot write to {output}", fg=typer.colors.RED, err=True)
         typer.echo("Check that you have write permission to the output directory.", err=True)
         raise typer.Exit(4) from e
 
     except Exception as e:
-        typer.secho(f"Error creating card: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(1) from e
+        _unexpected_error("Error creating card", e)
 
 
 @app.command()
@@ -697,10 +727,8 @@ def preview(
     try:
         # Default output path
         if output is None:
-            output_dir = Path("output")
-            output_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-            output = output_dir / f"{template}-preview-{timestamp}.png"
+            output = Path("output") / f"{template}-preview-{timestamp}.png"
 
         # Ensure .png suffix (Pillow infers format from extension)
         if not str(output).lower().endswith(".png"):
@@ -710,6 +738,7 @@ def preview(
 
         card = CardGenerator().create_card(template_id=template, message=message)
         commands = compile_card(card)
+        output.parent.mkdir(parents=True, exist_ok=True)
         PNGRenderer(dpi=dpi).render(commands, output)
 
         typer.secho(f"Preview generated: {output}", fg=typer.colors.GREEN)
@@ -722,13 +751,12 @@ def preview(
     except (typer.Exit, BrokenPipeError):
         raise
 
-    except (TemplateNotFoundError, ImageSourceError) as e:
+    except (TemplateNotFoundError, ImageSourceError, UnsupportedFeatureError) as e:
         typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(2) from e
 
     except Exception as e:
-        typer.secho(f"Error generating preview: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(1) from e
+        _unexpected_error("Error generating preview", e)
 
 
 @app.command()
@@ -885,8 +913,7 @@ def validate(
         raise typer.Exit(2) from e
 
     except Exception as e:
-        typer.secho(f"Validation error: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(1) from e
+        _unexpected_error("Validation error", e)
 
 
 # ---------------------------------------------------------------------------
@@ -1165,6 +1192,84 @@ def _resolve_output_format(requested: str, output: Path | None) -> str:
         if suffix in _SUPPORTED_FORMATS:
             return suffix
     return "pdf"
+
+
+def _check_flag_combinations(
+    *,
+    blank_inside: bool,
+    inside_message: str | None,
+    inside_message_md: Path | None,
+    voice: str | None,
+    seed: int | None,
+    signature: str | None,
+    signature_font: str | None,
+) -> None:
+    """Refuse flags that would otherwise be silently ignored (#60)."""
+    if blank_inside and inside_message is not None:
+        _fail("--blank-inside cannot be combined with --inside-message")
+    if blank_inside and inside_message_md is not None:
+        _fail("--blank-inside cannot be combined with --inside-message-md")
+    if seed is not None and voice is None:
+        _fail("--seed only applies with --voice")
+    if signature_font is not None and signature is None:
+        _fail("--signature-font requires --signature")
+
+
+def _pick_voice_line(occasion: str, voice: str, role: str, seed: int | None) -> str:
+    try:
+        return pick_sentiment(occasion, voice, role, seed=seed)
+    except SentimentNotFoundError as e:
+        # The error names the absolute library path; keep it out of the CLI.
+        typer.secho(
+            f"Error: voice {voice!r} has no {role} sentiment for occasion {occasion!r}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(2) from e
+
+
+_FOLD_PANELS: dict[FoldType, tuple[str, ...]] = {
+    FoldType.HALF_FOLD: ("front", "back", "inside_left", "inside_right"),
+    FoldType.QUARTER_FOLD: ("front", "back", "inside_left", "inside_right"),
+    FoldType.TRI_FOLD: ("left", "center", "right"),
+}
+
+
+def _check_fold_type_fits(fold_type: FoldType, card: Card) -> None:
+    """Refuse a ``--fold-type`` whose panel set the template doesn't have."""
+    needed = _FOLD_PANELS[fold_type]
+    has = [p.position.value for p in card.panels]
+    if set(has) != set(needed):
+        _fail(
+            f"fold type {fold_type.value!r} needs panels {'/'.join(needed)}; "
+            f"template has {'/'.join(has)}"
+        )
+
+
+def _validate_output_path(output: Path, fmt: str, target: ExportTarget) -> Path:
+    """Check ``-o`` against the output format and target; return the final path.
+
+    Per-panel targets need a directory. Single-file targets need a
+    ``.pdf``/``.svg`` suffix matching ``fmt``; a path with no suffix
+    gets one appended.
+    """
+    if target.layout == "per-panel":
+        if output.is_file() or (output.suffix and not output.is_dir()):
+            _fail(
+                f"--export-for {target.name} writes one file per panel; "
+                f"-o must be a directory, not {str(output)!r}"
+            )
+        return output
+    ext = f".{fmt}"
+    suffix = output.suffix.lower()
+    if not suffix:
+        return Path(f"{output}{ext}")
+    if suffix == ext:
+        return output
+    if suffix in {f".{f}" for f in _SUPPORTED_FORMATS}:
+        _fail(f"--format {fmt} conflicts with output extension {output.suffix!r}")
+    hint = "; use 'holiday-card preview' for PNG" if suffix == ".png" else ""
+    _fail(f"unsupported output extension {output.suffix!r} (use .pdf or .svg{hint})")
 
 
 def _make_renderer(output_format: str) -> "IRReportLabRenderer | SVGRenderer":

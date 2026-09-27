@@ -77,16 +77,16 @@ Section IDs (§P1 …) are what issues cite.
 - Letter PDF MediaBox is 630×810 pt (8.75×11.25") because bleed is added; CropBox = MediaBox (`renderers/reportlab_backend.py:144`). Home printers "fit" → ~2.9% shrink.
 
 ### §P5 Fail-loud violations — ARCH F6, UX F4, REND F1, SEC P1 [partly verified]
-- `core/generators.py:198-199` `except ThemeNotFoundError: pass` [verified] — `--theme nope` exits 0; `SetMetadata` still records the theme id (`core/compiler.py:201`).
-- `--blank-inside --inside-message HELLO` renders nothing, reports `Inside: (blank)`.
-- `--seed` without `--voice` silently ignored.
-- `sympathy-spare --voice witty` prints two warnings (leaking absolute sentiment path) and exits 0; CLAUDE.md says it should raise `SentimentNotFoundError`.
-- `--fold-type tri_fold` on a 4-panel template succeeds and draws tri-fold guides (`core/compiler.py:1561`).
-- `--export-for moo-a6 -o single.pdf` creates a *directory* `single.pdf`; `-o x.docx` writes `x.docx.pdf`; `-o x.svg --format pdf` writes `x.svg.pdf`.
-- Unknown font → raw `KeyError` (`'PlayfairDisplay'`, `'NotAFont'`).
+- **[closed by #60]** `core/generators.py:198-199` `except ThemeNotFoundError: pass` [verified] — `--theme nope` exits 0; `SetMetadata` still records the theme id (`core/compiler.py:201`).
+- **[closed by #60]** `--blank-inside --inside-message HELLO` renders nothing, reports `Inside: (blank)`.
+- **[closed by #60]** `--seed` without `--voice` silently ignored.
+- **[closed by #60]** `sympathy-spare --voice witty` prints two warnings (leaking absolute sentiment path) and exits 0; CLAUDE.md says it should raise `SentimentNotFoundError`.
+- **[closed by #60]** `--fold-type tri_fold` on a 4-panel template succeeds and draws tri-fold guides (`core/compiler.py:1561`).
+- **[closed by #60]** `--export-for moo-a6 -o single.pdf` creates a *directory* `single.pdf`; `-o x.docx` writes `x.docx.pdf`; `-o x.svg --format pdf` writes `x.svg.pdf`.
+- **[closed by #60]** Unknown font → raw `KeyError` (`'PlayfairDisplay'`, `'NotAFont'`).
 - `templates`/`themes` exit 0 when nothing found.
 - PNG font chain silently falls back to Pillow bitmap font (`renderers/png_backend.py:674-681`).
-- Catch-all `except Exception` → exit 1 (`cli/commands.py:625`) hides tracebacks; no `--debug`.
+- **[closed by #60]** Catch-all `except Exception` → exit 1 (`cli/commands.py:625`) hides tracebacks; no `--debug`.
 - Good existing behavior to preserve: flag-conflict messages (e.g. `--inside-message-md` + letter parts), unknown `--export-for`/`--voice` list valid values; no traceback in ~40 bad-input runs.
 
 ### §P6 PNG backend silently drops features [verified] — REND F1, F2, F8, F10
@@ -210,7 +210,7 @@ version; this section records the corrections so the spec stays the source of tr
 - **§P4:** all 21 shipped templates are 4-panel; 20 use `half_fold` with mirrored
   inside panels, and `christmas-modern` uses `quarter_fold` with a different wrong
   layout. The `init` scaffold (`cli/commands.py:740-790`) omits the 180° rotation.
-- **§P5:** additional silent ignores — `--signature-font` without `--signature`;
+- **§P5 [closed by #60]:** additional silent ignores — `--signature-font` without `--signature`;
   `--blank-inside --inside-message-md`; `TextElement.font_file` never read;
   `Panel.background_image` parsed but never drawn.
 - **§P6:** nested PNG clips combine by union, not intersection

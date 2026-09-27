@@ -102,6 +102,7 @@ from holiday_card.utils.measurements import (
 __all__ = [
     "CompileContext",
     "compile_card",
+    "UnknownFontError",
     "UnsupportedFeatureError",
 ]
 
@@ -120,6 +121,10 @@ class UnsupportedFeatureError(NotImplementedError):
 
     The error message names the feature and the element for easy triage.
     """
+
+
+class UnknownFontError(UnsupportedFeatureError):
+    """Raised when a text element names a font no backend can render."""
 
 
 @dataclass(frozen=True)
@@ -215,6 +220,13 @@ def _compile_panel(
     geometry: PageGeometry,
     measurer: _reportlab_canvas.Canvas,
 ) -> list[RenderCommand]:
+    if panel.background_image:
+        raise UnsupportedFeatureError(
+            f"panel background_image is not supported (panel {panel.position.value})"
+        )
+    for text in panel.text_elements:
+        _check_text_fonts(text, f"{card.template_id}/{panel.position.value}/{text.id}")
+
     out: list[RenderCommand] = []
 
     # Panel rotation is around its center (matches the legacy renderer's
@@ -238,6 +250,27 @@ def _compile_panel(
 
     out.append(EndGroup())
     return out
+
+
+def _check_text_fonts(text: TextElement, where: str) -> None:
+    # Runs before any measurement: ReportLab raises a bare KeyError otherwise.
+    if text.font_file:
+        raise UnsupportedFeatureError(
+            f"font_file is not supported ({where}); use a font_family from the bundled set"
+        )
+    _require_known_font(text.font_family or "Helvetica", where)
+    if text.letter_content is not None and text.letter_content.signature_font_family:
+        _require_known_font(text.letter_content.signature_font_family, where)
+
+
+def _require_known_font(font_id: str, where: str) -> None:
+    from holiday_card.renderers.font_registry import known_font_ids
+
+    known = known_font_ids()
+    if font_id not in known:
+        raise UnknownFontError(
+            f"unknown font {font_id!r} in {where}. Available: {', '.join(sorted(known))}"
+        )
 
 
 def _panel_transform(panel: Panel) -> Transform:

@@ -251,3 +251,374 @@ class TestValidateCommand:
         # Either yaml-parse error or template-validation error — both acceptable.
         assert ("invalid" in result.stderr.lower()
                 or "error" in result.stderr.lower())
+
+
+# ---------------------------------------------------------------------------
+# Fail loud on ignored or contradictory inputs (#60)
+# ---------------------------------------------------------------------------
+
+_CLASSIC_YAML = (
+    Path(__file__).resolve().parents[2]
+    / "src/holiday_card/data/templates/christmas/classic.yaml"
+)
+
+
+@pytest.fixture
+def workdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An empty cwd; every refusal below must leave it empty."""
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
+    return work
+
+
+def _written(work: Path) -> list[str]:
+    return sorted(str(p.relative_to(work)) for p in work.rglob("*"))
+
+
+def _custom_templates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, old: str, new: str
+) -> None:
+    """Point the catalog at a copy of christmas-classic with one edit."""
+    text = _CLASSIC_YAML.read_text()
+    assert old in text
+    occasion_dir = tmp_path / "templates" / "christmas"
+    occasion_dir.mkdir(parents=True)
+    (occasion_dir / "classic.yaml").write_text(text.replace(old, new, 1))
+    monkeypatch.setenv("HOLIDAY_CARD_TEMPLATES", str(tmp_path / "templates"))
+
+
+def _refused(result: object, workdir: Path, *needles: str) -> None:
+    out = result.output  # type: ignore[attr-defined]
+    assert result.exit_code == 2, out  # type: ignore[attr-defined]
+    for needle in needles:
+        assert needle in out, out
+    assert _written(workdir) == []
+
+
+class TestCreateFailsLoud:
+    def test_unknown_theme(self, runner: CliRunner, workdir: Path) -> None:
+        from holiday_card.core.themes import discover_themes
+
+        ids = sorted(t["id"] for t in discover_themes())
+        result = runner.invoke(app, ["create", "christmas-classic", "--theme", "nope"])
+        _refused(result, workdir, "Error: Unknown theme 'nope'. Available: " + ", ".join(ids))
+
+    def test_voice_not_shipped_for_sympathy(
+        self, runner: CliRunner, workdir: Path
+    ) -> None:
+        from holiday_card.core.sentiments import get_sentiments_dir
+
+        result = runner.invoke(
+            app, ["create", "sympathy-spare", "--voice", "witty", "-o", "card.pdf"]
+        )
+        _refused(
+            result, workdir,
+            "Error: voice 'witty' is not available for occasion 'sympathy'. "
+            "Available: devotional, spare, warm",
+        )
+        assert str(get_sentiments_dir()) not in result.output
+        assert "Warning" not in result.output
+
+    def test_voice_missing_one_role_file(
+        self,
+        runner: CliRunner,
+        workdir: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        lib = tmp_path / "sentiments"
+        (lib / "christmas" / "warm").mkdir(parents=True)
+        (lib / "christmas" / "warm" / "cover.yaml").write_text(
+            "voice: warm\noccasion: christmas\nrole: cover\nsentiments: [Hi]\n"
+        )
+        monkeypatch.setenv("HOLIDAY_CARD_SENTIMENTS", str(lib))
+        from holiday_card.core.sentiments import reset_cache
+
+        reset_cache()
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "--voice", "warm", "-o", "c.pdf"]
+        )
+        reset_cache()
+        _refused(
+            result, workdir,
+            "Error: voice 'warm' has no inside sentiment for occasion 'christmas'",
+        )
+        assert str(lib) not in result.output
+
+    def test_blank_inside_with_inside_message(
+        self, runner: CliRunner, workdir: Path
+    ) -> None:
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "--blank-inside", "--inside-message", "HI"]
+        )
+        _refused(result, workdir, "Error: --blank-inside cannot be combined with --inside-message")
+
+    def test_blank_inside_with_inside_message_md(
+        self, runner: CliRunner, workdir: Path, tmp_path: Path
+    ) -> None:
+        letter = tmp_path / "l.md"
+        letter.write_text("Hello **there**.\n")
+        result = runner.invoke(
+            app,
+            ["create", "christmas-classic", "--blank-inside", "--inside-message-md", str(letter)],
+        )
+        _refused(
+            result, workdir, "Error: --blank-inside cannot be combined with --inside-message-md"
+        )
+
+    def test_seed_without_voice(self, runner: CliRunner, workdir: Path) -> None:
+        result = runner.invoke(app, ["create", "christmas-classic", "--seed", "7"])
+        _refused(result, workdir, "Error: --seed only applies with --voice")
+
+    def test_signature_font_without_signature(
+        self, runner: CliRunner, workdir: Path
+    ) -> None:
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "--signature-font", "Caveat"]
+        )
+        _refused(result, workdir, "Error: --signature-font requires --signature")
+
+    def test_fold_type_incompatible_with_panels(
+        self, runner: CliRunner, workdir: Path
+    ) -> None:
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "--fold-type", "tri_fold"]
+        )
+        _refused(
+            result, workdir,
+            "Error: fold type 'tri_fold' needs panels left/center/right; "
+            "template has front/back/inside_left/inside_right",
+        )
+
+    def test_unsupported_output_extension(
+        self, runner: CliRunner, workdir: Path
+    ) -> None:
+        result = runner.invoke(app, ["create", "christmas-classic", "-o", "x.docx"])
+        _refused(
+            result, workdir, "Error: unsupported output extension '.docx' (use .pdf or .svg)"
+        )
+
+    def test_format_conflicts_with_extension(
+        self, runner: CliRunner, workdir: Path
+    ) -> None:
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "-o", "x.svg", "--format", "pdf"]
+        )
+        _refused(result, workdir, "Error: --format pdf conflicts with output extension '.svg'")
+
+    def test_png_output_points_at_preview(
+        self, runner: CliRunner, workdir: Path
+    ) -> None:
+        result = runner.invoke(app, ["create", "christmas-classic", "-o", "card.png"])
+        _refused(
+            result, workdir,
+            "Error: unsupported output extension '.png'",
+            "use 'holiday-card preview' for PNG",
+        )
+
+    def test_per_panel_target_refuses_file_output(
+        self, runner: CliRunner, workdir: Path
+    ) -> None:
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "--export-for", "moo-a6", "-o", "single.pdf"]
+        )
+        _refused(
+            result, workdir,
+            "Error: --export-for moo-a6 writes one file per panel; "
+            "-o must be a directory, not 'single.pdf'",
+        )
+
+    def test_per_panel_target_refuses_existing_file(
+        self, runner: CliRunner, workdir: Path
+    ) -> None:
+        (workdir / "existing").write_text("keep me")
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "--export-for", "moo-a6", "-o", "existing"]
+        )
+        assert result.exit_code == 2, result.output
+        assert "-o must be a directory, not 'existing'" in result.output
+        assert (workdir / "existing").read_text() == "keep me"
+
+    @pytest.mark.parametrize("command", ["create", "preview"])
+    def test_unknown_template_font(
+        self,
+        runner: CliRunner,
+        workdir: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        command: str,
+    ) -> None:
+        _custom_templates(
+            tmp_path, monkeypatch, 'font_family: "PlayfairDisplay"', 'font_family: "NotAFont"'
+        )
+        args = [command, "christmas-classic"]
+        args += ["--no-open", "-o", "p.png"] if command == "preview" else []
+        result = runner.invoke(app, args)
+        _refused(
+            result, workdir,
+            "Error: unknown font 'NotAFont' in christmas-classic/front/",
+            "Available: Caveat, Comfortaa,",
+        )
+
+    def test_preview_default_output_writes_no_directory_on_error(
+        self,
+        runner: CliRunner,
+        workdir: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _custom_templates(
+            tmp_path, monkeypatch, 'font_family: "PlayfairDisplay"', 'font_family: "NotAFont"'
+        )
+        result = runner.invoke(app, ["preview", "christmas-classic", "--no-open"])
+        _refused(result, workdir, "unknown font 'NotAFont'")
+
+    def test_unknown_template_font_per_panel_writes_no_directory(
+        self,
+        runner: CliRunner,
+        workdir: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _custom_templates(
+            tmp_path, monkeypatch, 'font_family: "Cormorant"', 'font_family: "NotAFont"'
+        )
+        result = runner.invoke(
+            app,
+            ["create", "christmas-classic", "--export-for", "per-panel-pdf", "-o", "panels"],
+        )
+        _refused(result, workdir, "unknown font 'NotAFont' in christmas-classic/inside_right/")
+
+    def test_unknown_signature_font(self, runner: CliRunner, workdir: Path) -> None:
+        result = runner.invoke(
+            app,
+            ["create", "christmas-classic", "--signature", "C",
+             "--signature-font", "NotAFont", "-o", "card.pdf"],
+        )
+        _refused(result, workdir, "Error: unknown font 'NotAFont'", "Available: Caveat,")
+
+    def test_panel_background_image(
+        self,
+        runner: CliRunner,
+        workdir: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _custom_templates(
+            tmp_path, monkeypatch,
+            '    position: "front"\n',
+            '    position: "front"\n    background_image: "x.png"\n',
+        )
+        result = runner.invoke(app, ["create", "christmas-classic", "-o", "card.pdf"])
+        _refused(result, workdir, "panel background_image is not supported (panel front)")
+
+    def test_template_font_file(
+        self,
+        runner: CliRunner,
+        workdir: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _custom_templates(
+            tmp_path, monkeypatch,
+            'font_family: "PlayfairDisplay"',
+            'font_family: "PlayfairDisplay"\n        font_file: "mine.ttf"',
+        )
+        result = runner.invoke(app, ["create", "christmas-classic", "-o", "card.pdf"])
+        _refused(result, workdir, "font_file is not supported")
+
+
+class TestCreateStillWorks:
+    """Behavior #60 must not change."""
+
+    def test_suffixless_output_gets_extension(
+        self, runner: CliRunner, workdir: Path
+    ) -> None:
+        result = runner.invoke(app, ["create", "christmas-classic", "-o", "out"])
+        assert result.exit_code == 0, result.output
+        assert (workdir / "out.pdf").is_file()
+
+    def test_voice_with_blank_inside(self, runner: CliRunner, workdir: Path) -> None:
+        result = runner.invoke(
+            app,
+            ["create", "christmas-classic", "--voice", "warm", "--blank-inside",
+             "--seed", "1", "-o", "c.svg"],
+        )
+        assert result.exit_code == 0, result.output
+        assert "Inside: (blank)" in result.output
+        assert (workdir / "c.svg").is_file()
+
+    def test_letter_flags_with_blank_inside(
+        self, runner: CliRunner, workdir: Path
+    ) -> None:
+        result = runner.invoke(
+            app,
+            ["create", "christmas-classic", "--blank-inside", "--signature", "C",
+             "--signature-font", "Caveat", "-o", "c.pdf"],
+        )
+        assert result.exit_code == 0, result.output
+        assert (workdir / "c.pdf").is_file()
+
+    def test_per_panel_target_accepts_existing_directory_with_dot(
+        self, runner: CliRunner, workdir: Path
+    ) -> None:
+        (workdir / "moo.v2").mkdir()
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "--export-for", "per-panel-pdf", "-o", "moo.v2"]
+        )
+        assert result.exit_code == 0, result.output
+        assert (workdir / "moo.v2" / "front.pdf").is_file()
+
+
+@pytest.mark.usefixtures("workdir")
+class TestDebugFlag:
+    @pytest.fixture
+    def boom(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from holiday_card.core.generators import CardGenerator
+
+        def _raise(*_args: object, **_kwargs: object) -> None:
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(CardGenerator, "generate", _raise)
+
+    @pytest.mark.usefixtures("boom")
+    def test_debug_reraises_the_original_exception(
+        self, runner: CliRunner
+    ) -> None:
+        result = runner.invoke(
+            app, ["--debug", "create", "christmas-classic", "-o", "c.pdf"]
+        )
+        assert isinstance(result.exception, RuntimeError)
+        assert str(result.exception) == "boom"
+
+    @pytest.mark.usefixtures("boom")
+    def test_debug_env_var(
+        self, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("HOLIDAY_CARD_DEBUG", "1")
+        result = runner.invoke(app, ["create", "christmas-classic", "-o", "c.pdf"])
+        assert isinstance(result.exception, RuntimeError)
+
+    @pytest.mark.usefixtures("boom")
+    def test_without_debug_hints_at_the_flag(
+        self, runner: CliRunner
+    ) -> None:
+        result = runner.invoke(app, ["create", "christmas-classic", "-o", "c.pdf"])
+        assert result.exit_code == 1
+        assert "boom" in result.output
+        assert "(re-run with --debug for a traceback)" in result.output
+
+    def test_debug_reraises_in_preview(
+        self, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from holiday_card.renderers.png_backend import PNGRenderer
+
+        def _raise(*_args: object, **_kwargs: object) -> None:
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(PNGRenderer, "render", _raise)
+        result = runner.invoke(
+            app, ["--debug", "preview", "christmas-classic", "--no-open", "-o", "p.png"]
+        )
+        assert isinstance(result.exception, RuntimeError)
