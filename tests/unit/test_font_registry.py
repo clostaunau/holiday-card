@@ -18,6 +18,7 @@ from holiday_card.renderers.font_registry import (
     FONT_DIR,
     FONT_MAP,
     ensure_default_fonts_registered,
+    known_font_ids,
     resolve_font_id,
     ttf_path_for,
 )
@@ -220,3 +221,22 @@ class TestCuratedFonts:
             "FONT_MAP and CURATED_FONTS share keys; resolution order "
             "matters — curated wins, but the conflict should be intentional."
         )
+
+
+
+def test_known_font_ids_is_curated_plus_base14() -> None:
+    """#60: the compiler's unknown-font check and its error list use this."""
+    ids = known_font_ids()
+    assert isinstance(ids, frozenset)
+    assert ids >= _EXPECTED_CURATED_FONT_IDS
+    base14 = {
+        f"{family}{style}"
+        for family, styles in (
+            ("Helvetica", ("", "-Bold", "-Oblique", "-BoldOblique")),
+            ("Times", ("-Roman", "-Bold", "-Italic", "-BoldItalic")),
+            ("Courier", ("", "-Bold", "-Oblique", "-BoldOblique")),
+        )
+        for style in styles
+    }
+    assert base14 <= ids
+    assert len(ids) == len(_EXPECTED_CURATED_FONT_IDS) + 12 == 25

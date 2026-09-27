@@ -29,6 +29,7 @@ import pytest
 
 from holiday_card.core.compiler import (
     CompileContext,
+    UnknownFontError,
     UnsupportedFeatureError,
     compile_card,
 )
@@ -39,6 +40,7 @@ from holiday_card.core.models import (
     FoldType,
     Panel,
     PanelPosition,
+    TextElement,
 )
 from holiday_card.core.render_ir import (
     BeginGroup,
@@ -385,3 +387,77 @@ class TestBeginPageBleedFields:
         bp = compile_card(card, ctx)[0]
         assert isinstance(bp, BeginPage)
         assert bp.bleed == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Fail loud on unknown fonts / unsupported panel + text fields (#60)
+# ---------------------------------------------------------------------------
+
+
+def _text(**kwargs: object) -> TextElement:
+    return TextElement(x=0.5, y=2.0, **kwargs)  # type: ignore[arg-type]
+
+
+def _text_card(text: TextElement, **panel_kwargs: object) -> Card:
+    panel = Panel(
+        id="front-panel",
+        position=PanelPosition.FRONT,
+        x=4.25, y=0.0, width=4.25, height=5.5,
+        text_elements=[text],
+        **panel_kwargs,  # type: ignore[arg-type]
+    )
+    return Card(
+        name="fail-loud-fixture",
+        template_id="fail-loud-fixture",
+        fold_type=FoldType.HALF_FOLD,
+        panels=[panel],
+    )
+
+
+class TestFailLoud:
+    def test_unknown_font_error_is_an_unsupported_feature_error(self) -> None:
+        assert issubclass(UnknownFontError, UnsupportedFeatureError)
+
+    def test_unknown_font_family_raises_naming_where_and_available(self) -> None:
+        card = _text_card(_text(id="greeting", content="Hi", font_family="NotAFont"))
+        with pytest.raises(UnknownFontError) as exc:
+            compile_card(card)
+        msg = str(exc.value)
+        assert "unknown font 'NotAFont'" in msg
+        assert "fail-loud-fixture/front/greeting" in msg
+        assert "Available: Caveat, Comfortaa," in msg
+
+    def test_unknown_font_raises_even_for_empty_content(self) -> None:
+        card = _text_card(_text(id="blank", content="", font_family="NotAFont"))
+        with pytest.raises(UnknownFontError):
+            compile_card(card)
+
+    def test_unknown_signature_font_raises(self) -> None:
+        from holiday_card.core.letter import LetterContent
+
+        text = _text(
+            id="message", content="", font_family="Lato",
+            letter_content=LetterContent(
+                signature="C", signature_font_family="NotAFont",
+            ),
+        )
+        with pytest.raises(UnknownFontError, match="unknown font 'NotAFont'"):
+            compile_card(_text_card(text))
+
+    def test_font_file_raises_unsupported(self) -> None:
+        text = _text(id="t", content="Hi", font_file="fonts/Mine.ttf")
+        with pytest.raises(UnsupportedFeatureError, match="font_file is not supported"):
+            compile_card(_text_card(text))
+
+    def test_panel_background_image_raises_unsupported(self) -> None:
+        text = _text(id="t", content="Hi")
+        card = _text_card(text, background_image="x.png")
+        with pytest.raises(
+            UnsupportedFeatureError,
+            match=r"panel background_image is not supported \(panel front\)",
+        ):
+            compile_card(card)
+
+    def test_known_fonts_compile(self) -> None:
+        for font in ("Helvetica", "Times-Roman", "Caveat", "Lato-Bold"):
+            compile_card(_text_card(_text(id="t", content="Hi", font_family=font)))

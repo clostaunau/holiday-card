@@ -33,6 +33,7 @@ __all__ = [
     "FONT_MAP",
     "CURATED_FONTS",
     "ensure_default_fonts_registered",
+    "known_font_ids",
     "resolve_font_id",
     "ttf_path_for",
 ]
@@ -135,13 +136,18 @@ def _try_register(reg_name: str, path: Path, font_id: str) -> None:
         logger.warning("Failed to register font %s: %s", reg_name, e)
 
 
+def known_font_ids() -> frozenset[str]:
+    """Every IR ``font_id`` the backends can render (base-14 + curated)."""
+    return frozenset(FONT_MAP) | frozenset(CURATED_FONTS)
+
+
 def resolve_font_id(font_id: str) -> str:
     """Map an IR ``font_id`` to the registered ReportLab font name.
 
     Curated fonts win over the Liberation default chain when a name
     collides (currently no collision, but future-safe). Returns the
-    original ``font_id`` unchanged when it is not in either map (so
-    user-registered ``font_file`` paths still work).
+    original ``font_id`` unchanged when it is not in either map (the
+    compiler refuses such ids before they reach a backend).
     """
     curated = CURATED_FONTS.get(font_id)
     if curated:

@@ -26,8 +26,9 @@ from holiday_card.core.per_panel import (
     build_per_panel_card,
     build_per_panel_context,
 )
+from holiday_card.core.render_ir import RenderCommand
 from holiday_card.core.templates import load_template
-from holiday_card.core.themes import ThemeNotFoundError, load_theme
+from holiday_card.core.themes import load_theme
 from holiday_card.renderers.png_backend import PNGRenderer
 from holiday_card.renderers.reportlab_backend import IRReportLabRenderer
 from holiday_card.renderers.svg_backend import SVGRenderer
@@ -199,6 +200,7 @@ class CardGenerator:
         Raises:
             PhotoSlotError: ``photos`` don't fit the template's slots.
             ImageSourceError: A photo is missing or not a PNG/JPEG.
+            ThemeNotFoundError: ``theme_id`` names no known theme.
         """
         # Load template
         template = load_template(template_id, self.templates_dir)
@@ -234,11 +236,7 @@ class CardGenerator:
 
         # Apply theme if specified
         if theme_id:
-            try:
-                theme = load_theme(theme_id)
-                self._apply_theme(card, theme)
-            except ThemeNotFoundError:
-                pass  # Use template default colors if theme not found
+            self._apply_theme(card, load_theme(theme_id))
 
         return card
 
@@ -463,9 +461,9 @@ class CardGenerator:
             raise ValueError(
                 f"target {target.name!r} has layout='imposition' but no geometry"
             )
-        output_path.parent.mkdir(parents=True, exist_ok=True)
         ctx = CompileContext(geometry=target.geometry, emit_fold_lines=emit_fold_lines)
         commands = compile_card(card, ctx)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         renderer.render(commands, output_path)
         self._maybe_apply_pdfx(output_path, target)
         return output_path
@@ -478,9 +476,10 @@ class CardGenerator:
         emit_fold_lines: bool,
         renderer: Renderer,
     ) -> list[Path]:
-        output_dir.mkdir(parents=True, exist_ok=True)
         ext = renderer.file_extension  # ".pdf" / ".svg" / ".png"
-        written: list[Path] = []
+        # Compile every panel before writing anything, so a compile error
+        # (e.g. an unknown font) leaves no half-written directory behind.
+        compiled: list[tuple[str, list[RenderCommand]]] = []
         for panel in card.panels:
             per_card = build_per_panel_card(card, panel, target)
             ctx = build_per_panel_context(panel, target)
@@ -490,8 +489,11 @@ class CardGenerator:
             if emit_fold_lines and not ctx.emit_fold_lines:
                 from dataclasses import replace
                 ctx = replace(ctx, emit_fold_lines=True)
-            commands = compile_card(per_card, ctx)
             stem = _PER_PANEL_FILENAMES.get(panel.position.value, panel.position.value)
+            compiled.append((stem, compile_card(per_card, ctx)))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        written: list[Path] = []
+        for stem, commands in compiled:
             out = output_dir / f"{stem}{ext}"
             renderer.render(commands, out)
             self._maybe_apply_pdfx(out, target)

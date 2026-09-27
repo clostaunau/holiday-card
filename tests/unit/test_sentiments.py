@@ -15,6 +15,7 @@ from holiday_card.core.sentiments import (
     VOICES,
     Sentiment,
     SentimentNotFoundError,
+    available_voices,
     get_sentiments_dir,
     load_sentiment_file,
     pick_sentiment,
@@ -272,3 +273,24 @@ def test_sympathy_class_inappropriate_voices_raise(
     a good idea."""
     with pytest.raises(SentimentNotFoundError):
         pick_sentiment(occasion, voice, "cover", seed=0)
+
+
+# ---------------------------------------------------------------------------
+# available_voices (#60: the CLI lists these when --voice isn't shipped)
+# ---------------------------------------------------------------------------
+
+
+def test_available_voices_for_sympathy_is_sorted_shipped_subset() -> None:
+    assert available_voices("sympathy") == ("devotional", "spare", "warm")
+
+
+def test_available_voices_accepts_occasion_enum() -> None:
+    assert available_voices(OccasionType.PET_LOSS) == ("spare", "warm")
+
+
+def test_available_voices_unknown_occasion_is_empty(
+    monkeypatch: pytest.MonkeyPatch, fake_lib: Path
+) -> None:
+    monkeypatch.setenv("HOLIDAY_CARD_SENTIMENTS", str(fake_lib))
+    assert available_voices("christmas") == ("warm",)
+    assert available_voices("nope") == ()
