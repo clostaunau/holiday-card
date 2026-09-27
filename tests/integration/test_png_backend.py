@@ -147,3 +147,72 @@ def test_png_rotated_panel_renders_at_expected_position(tmp_path: Path) -> None:
         "appears to have rendered outside the expected area. "
         f"Got rgb=({r},{g},{b})."
     )
+
+
+def test_png_upscales_small_photo_to_fill_rect(tmp_path: Path) -> None:
+    """#65: ``thumbnail`` never enlarges, so a 100 px source in a 2" rect
+    at 300 DPI stayed 100 px. The fit scale must go up as well as down."""
+    from holiday_card.core.models import (
+        Card,
+        FoldType,
+        ImageElement,
+        Panel,
+        PanelPosition,
+    )
+
+    src = tmp_path / "small.png"
+    Image.new("RGB", (100, 100), (0, 0, 255)).save(src)
+    card = Card(
+        name="upscale", template_id="t", fold_type=FoldType.HALF_FOLD,
+        panels=[Panel(
+            position=PanelPosition.FRONT, x=0, y=0, width=4.25, height=5.5,
+            background_color={"r": 1, "g": 1, "b": 1},
+            image_elements=[ImageElement(
+                source_path=str(src), x=1.0, y=1.0, width=2.0, height=2.0,
+            )],
+        )],
+    )
+    out = tmp_path / "upscale.png"
+    PNGRenderer(dpi=300).render(compile_card(card), out)
+    with Image.open(out) as img:
+        rgb = img.convert("RGB")
+        blue = Image.eval(rgb.split()[2], lambda v: 255 if v > 200 else 0)
+        red = Image.eval(rgb.split()[0], lambda v: 255 if v < 60 else 0)
+        from PIL import ImageChops
+
+        bbox = ImageChops.multiply(blue, red).getbbox()
+    assert bbox is not None
+    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    assert w >= 590 and h >= 590, f"photo covers only {w}x{h} px"
+
+
+def test_png_downscales_large_photo_to_fit_rect(tmp_path: Path) -> None:
+    from holiday_card.core.models import (
+        Card,
+        FoldType,
+        ImageElement,
+        Panel,
+        PanelPosition,
+    )
+
+    src = tmp_path / "wide.png"
+    Image.new("RGB", (800, 400), (0, 0, 255)).save(src)
+    card = Card(
+        name="down", template_id="t", fold_type=FoldType.HALF_FOLD,
+        panels=[Panel(
+            position=PanelPosition.FRONT, x=0, y=0, width=4.25, height=5.5,
+            image_elements=[ImageElement(
+                source_path=str(src), x=1.0, y=1.0, width=2.0, height=2.0,
+            )],
+        )],
+    )
+    out = tmp_path / "down.png"
+    PNGRenderer(dpi=72).render(compile_card(card), out)
+    with Image.open(out) as img:
+        rgb = img.convert("RGB")
+        mask = Image.eval(rgb.split()[0], lambda v: 255 if v < 60 else 0)
+        bbox = mask.getbbox()
+    assert bbox is not None
+    # 2" = 144 px wide; aspect 2:1 → 72 px tall, centred.
+    assert abs((bbox[2] - bbox[0]) - 144) <= 1
+    assert abs((bbox[3] - bbox[1]) - 72) <= 1

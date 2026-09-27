@@ -187,7 +187,8 @@ panels:
 
     # Circular clipped photo
     image_elements:
-      - source_path: "sample_photo.jpg"
+      - source_path: "placeholder-photo.jpg"
+        slot: "photo"
         x: 1.475
         y: 1.0
         width: 1.3
@@ -372,7 +373,8 @@ panels:
         z_index: 6
 
     image_elements:
-      - source_path: "sample_photo.jpg"
+      - source_path: "placeholder-photo.jpg"
+        slot: "photo-2"
         x: 0.825
         y: 1.7
         width: 2.6

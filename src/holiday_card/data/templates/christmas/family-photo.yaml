@@ -44,11 +44,9 @@ panels:
         z_index: 2
 
     image_elements:
-      # Rectangle-clipped cover photo. sample_photo.jpg is a placeholder
-      # the photo-ornament template also uses; in real use the
-      # holiday-card consumer points --photo (future flag) or edits the
-      # source_path here to their own JPG.
-      - source_path: "sample_photo.jpg"
+      # Rectangle-clipped cover photo; `-i/--image` replaces the placeholder.
+      - source_path: "placeholder-photo.jpg"
+        slot: "photo"
         x: 0.65
         y: 1.75
         width: 2.95

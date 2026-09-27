@@ -62,7 +62,8 @@ panels:
       # Ellipse-clipped portrait — vertical orientation gives a vintage
       # cameo silhouette. The bounding rectangle is square-ish; the clip
       # narrows it.
-      - source_path: "sample_photo.jpg"
+      - source_path: "placeholder-photo.jpg"
+        slot: "photo"
         x: 0.825
         y: 1.55
         width: 2.6

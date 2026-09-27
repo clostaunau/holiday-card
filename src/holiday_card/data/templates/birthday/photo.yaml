@@ -96,7 +96,8 @@ panels:
         z_index: 2
 
     image_elements:
-      - source_path: "sample_photo.jpg"
+      - source_path: "placeholder-photo.jpg"
+        slot: "photo"
         x: 0.625
         y: 1.85
         width: 3.0

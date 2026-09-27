@@ -76,6 +76,21 @@ class TestProbeImage:
             path=FIXTURE_IMAGE.resolve(), format="jpeg", width_px=400, height_px=400
         )
 
+    def test_mpo_phone_photo_is_accepted_as_jpeg(self, tmp_path: Path) -> None:
+        # Dual-camera phones write JPEGs with an MPF marker; Pillow calls
+        # them MPO. The first frame is an ordinary baseline JPEG.
+        path = tmp_path / "phone.jpg"
+        frames = [Image.new("RGB", (8, 6), c) for c in ("red", "blue")]
+        frames[0].save(path, format="MPO", save_all=True, append_images=frames[1:])
+        with Image.open(path) as img:
+            assert img.format == "MPO"
+        probed = probe_image(path)
+        assert (probed.format, probed.width_px, probed.height_px) == ("jpeg", 8, 6)
+
+    def test_missing_file_says_not_found(self, tmp_path: Path) -> None:
+        with pytest.raises(ImageSourceError, match="not found"):
+            probe_image(tmp_path / "missing.jpg")
+
     def test_png_is_detected(self, template_dir: Path) -> None:
         probed = probe_image(template_dir / "sub" / "p.png")
         assert (probed.format, probed.width_px, probed.height_px) == ("png", 4, 3)

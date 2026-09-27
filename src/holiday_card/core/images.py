@@ -21,7 +21,9 @@ from PIL import Image
 MAX_IMAGE_PIXELS = 50_000_000
 """Largest image accepted (50 MP); larger files are refused, not downscaled."""
 
-_FORMATS: dict[str, Literal["png", "jpeg"]] = {"PNG": "png", "JPEG": "jpeg"}
+# MPO is what Pillow calls a JPEG with a CIPA MPF marker (dual-camera phone
+# photos); its first frame is an ordinary JPEG, which is what every backend reads.
+_FORMATS: dict[str, Literal["png", "jpeg"]] = {"PNG": "png", "JPEG": "jpeg", "MPO": "jpeg"}
 
 
 class ImageSourceError(ValueError):
@@ -78,6 +80,8 @@ def probe_image(path: Path) -> ProbedImage:
             JPEG, truncated/corrupt, or larger than ``MAX_IMAGE_PIXELS``.
     """
     resolved = path.resolve()
+    if not resolved.is_file():
+        raise ImageSourceError(f"image file not found: {path}")
     try:
         with warnings.catch_warnings():
             # Pillow warns (not raises) between its own limit and 2x it.

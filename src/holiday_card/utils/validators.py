@@ -188,30 +188,6 @@ def validate_font_size(size: int) -> int:
     return size
 
 
-def validate_image_format(path: Path) -> str:
-    """Validate image file format is supported.
-
-    Args:
-        path: Path to image file.
-
-    Returns:
-        Normalized file extension (lowercase, without dot).
-
-    Raises:
-        ValidationError: If format is not supported.
-    """
-    supported = {"png", "jpg", "jpeg"}
-    ext = path.suffix.lower().lstrip(".")
-
-    if ext not in supported:
-        raise ValidationError(
-            f"Unsupported image format: .{ext}. "
-            f"Supported formats: {', '.join(sorted(supported))}"
-        )
-
-    return ext
-
-
 def validate_dpi(dpi: int, warn_only: bool = True) -> str | None:
     """Validate image DPI for print quality.
 

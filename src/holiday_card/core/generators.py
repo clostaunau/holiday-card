@@ -4,19 +4,20 @@ This module provides the CardGenerator class that coordinates
 template loading, content customization, and PDF rendering.
 """
 
+from collections.abc import Sequence
 from datetime import datetime
 
-__all__ = ["CardGenerator"]
+__all__ = ["CardGenerator", "PhotoSlotError", "fill_photo_slots"]
 from pathlib import Path
 
 from holiday_card.core.compiler import compile_card
 from holiday_card.core.export_targets import ExportTarget, get_target
+from holiday_card.core.images import probe_image
 from holiday_card.core.letter import LetterContent
 from holiday_card.core.markdown import RichTextContent
 from holiday_card.core.models import (
     Card,
     FoldType,
-    ImageElement,
     Panel,
     TextElement,
     Theme,
@@ -107,6 +108,43 @@ def _find_or_add_inside_target(card: Card) -> TextElement:
     )
 
 
+class PhotoSlotError(ValueError):
+    """The photos given don't fit the template's photo slots."""
+
+
+def _slot_name(k: int) -> str:
+    return "photo" if k == 1 else f"photo-{k}"
+
+
+def fill_photo_slots(card: Card, photos: Sequence[Path]) -> None:
+    """Put the k-th photo into every image element whose slot is the k-th slot.
+
+    Slot 1 is ``photo``, slot k is ``photo-k``. Only ``source_path`` changes;
+    geometry, clip and z-order stay the template's, and unfilled slots keep
+    their placeholder. Each photo may live anywhere (D5) but must pass
+    :func:`probe_image`. Nothing is changed unless every photo is accepted.
+
+    Raises:
+        PhotoSlotError: The template has no slots, or fewer slots than photos.
+        ImageSourceError: A photo is missing or not a readable PNG/JPEG.
+    """
+    if not photos:
+        return
+    elements = [e for p in card.panels for e in p.image_elements if e.slot is not None]
+    slots = {e.slot for e in elements}
+    if not slots:
+        raise PhotoSlotError(f"{card.template_id} has no photo slot")
+    if len(photos) > len(slots):
+        raise PhotoSlotError(
+            f"{card.template_id} has {len(slots)} photo slot(s); "
+            f"got {len(photos)} --image values"
+        )
+    by_slot = {_slot_name(k): str(probe_image(p).path) for k, p in enumerate(photos, 1)}
+    for element in elements:
+        if element.slot in by_slot:
+            element.source_path = by_slot[element.slot]
+
+
 class CardGenerator:
     """Orchestrates card generation from template to PDF output.
 
@@ -138,7 +176,7 @@ class CardGenerator:
         output_path: Path | None = None,
         theme_id: str | None = None,
         fold_type: FoldType | None = None,
-        images: list[ImageElement] | None = None,
+        photos: Sequence[Path] | None = None,
         front_message: str | None = None,
         inside_message: str | None = None,
     ) -> Card:
@@ -150,12 +188,17 @@ class CardGenerator:
             output_path: Output PDF file path.
             theme_id: Optional theme to apply.
             fold_type: Optional fold type override.
-            images: Optional list of images to add.
+            photos: Optional photos for the template's photo slots, in slot
+                order (see :func:`fill_photo_slots`).
             front_message: Optional message for the front panel greeting.
             inside_message: Optional message for the inside panel.
 
         Returns:
             Created Card object.
+
+        Raises:
+            PhotoSlotError: ``photos`` don't fit the template's slots.
+            ImageSourceError: A photo is missing or not a PNG/JPEG.
         """
         # Load template
         template = load_template(template_id, self.templates_dir)
@@ -186,9 +229,8 @@ class CardGenerator:
         if inside_message is not None:
             self._apply_inside_message(card, inside_message)
 
-        # Apply images if provided
-        if images:
-            self._apply_images(card, images)
+        if photos:
+            fill_photo_slots(card, photos)
 
         # Apply theme if specified
         if theme_id:
@@ -288,25 +330,6 @@ class CardGenerator:
         target.content = message
         target.rich_content = None
         target.letter_content = None
-
-    def _apply_images(self, card: Card, images: list[ImageElement]) -> None:
-        """Apply images to the card.
-
-        Images are added to the front panel by default.
-
-        Args:
-            card: Card to modify.
-            images: List of images to add.
-        """
-        # Find the front panel
-        for panel in card.panels:
-            if panel.position.value == "front":
-                panel.image_elements.extend(images)
-                return
-
-        # If no front panel, add to first panel
-        if card.panels:
-            card.panels[0].image_elements.extend(images)
 
     def _apply_theme(self, card: Card, theme: Theme) -> None:
         """Apply a color theme to the card.
@@ -481,7 +504,7 @@ class CardGenerator:
         output_path: Path,
         message: str | None = None,
         fold_type: FoldType | None = None,
-        images: list[ImageElement] | None = None,
+        photos: Sequence[Path] | None = None,
         theme_id: str | None = None,
         front_message: str | None = None,
         inside_message: str | None = None,
@@ -493,7 +516,7 @@ class CardGenerator:
             output_path: Output PDF file path.
             message: Optional greeting message (applied to front, for backwards compatibility).
             fold_type: Optional fold type override.
-            images: Optional list of images to add.
+            photos: Optional photos for the template's photo slots.
             theme_id: Optional theme to apply.
             front_message: Optional message for the front panel greeting.
             inside_message: Optional message for the inside panel.
@@ -507,7 +530,7 @@ class CardGenerator:
             output_path=output_path,
             theme_id=theme_id,
             fold_type=fold_type,
-            images=images,
+            photos=photos,
             front_message=front_message,
             inside_message=inside_message,
         )

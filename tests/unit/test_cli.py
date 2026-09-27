@@ -214,7 +214,7 @@ class TestCreateCommand:
         result = runner.invoke(
             app,
             [
-                "create", "christmas-classic",
+                "create", "christmas-family-photo",
                 "-i", str(missing),
                 "-o", str(out),
             ],

@@ -1,6 +1,5 @@
 """Unit tests for input validators."""
 
-from pathlib import Path
 
 import pytest
 
@@ -11,7 +10,6 @@ from holiday_card.utils.validators import (
     validate_dimensions,
     validate_dpi,
     validate_font_size,
-    validate_image_format,
     validate_position,
     validate_template_name,
 )
@@ -107,19 +105,6 @@ class TestFontSizeValidation:
 
 class TestImageValidation:
     """Tests for image validation functions."""
-
-    def test_valid_image_formats(self):
-        """Test valid image formats."""
-        assert validate_image_format(Path("test.png")) == "png"
-        assert validate_image_format(Path("test.jpg")) == "jpg"
-        assert validate_image_format(Path("test.jpeg")) == "jpeg"
-
-    def test_invalid_image_format(self):
-        """Test invalid image format."""
-        with pytest.raises(ValidationError):
-            validate_image_format(Path("test.gif"))
-        with pytest.raises(ValidationError):
-            validate_image_format(Path("test.bmp"))
 
     def test_dpi_warning(self):
         """Test DPI validation with warning."""

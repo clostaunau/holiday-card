@@ -694,8 +694,8 @@ class PNGRenderer:
         1. Open source via Pillow; convert to RGBA so alpha compositing
            works regardless of the source format.
         2. Resize to the target rect's pixel dimensions. ``preserve_aspect``
-           uses :meth:`PIL.Image.Image.thumbnail` (fits inside the box);
-           otherwise stretches to fill.
+           scales (up or down) to fit inside the box; otherwise stretches
+           to fill.
         3. Compute pixel position from the IR rect (bottom-left origin
            → top-left origin; height inversion via ``_y``).
         4. If a clip is active, build a mask matching the clip geometry
@@ -718,12 +718,16 @@ class PNGRenderer:
         target_w_px = max(1, int(round(self._len(rect.width))))
         target_h_px = max(1, int(round(self._len(rect.height))))
         if cmd.image.preserve_aspect:
-            # ``thumbnail`` resizes in place to fit *within* the target,
-            # preserving aspect ratio. The result's actual dimensions
-            # may be smaller than (target_w_px, target_h_px) on the
-            # off-axis; the centering below compensates so the image
-            # sits in the middle of the intended rect.
-            src.thumbnail((target_w_px, target_h_px), Image.Resampling.LANCZOS)
+            # Fit inside the target, scaling up as well as down
+            # (``thumbnail`` never enlarges, so a small photo stayed
+            # small). The off-axis may come out short; the centering
+            # below puts the image in the middle of the intended rect.
+            scale = min(target_w_px / src.width, target_h_px / src.height)
+            fit = (
+                max(1, min(target_w_px, round(src.width * scale))),
+                max(1, min(target_h_px, round(src.height * scale))),
+            )
+            src = src.resize(fit, Image.Resampling.LANCZOS)
         else:
             src = src.resize((target_w_px, target_h_px), Image.Resampling.LANCZOS)
 
