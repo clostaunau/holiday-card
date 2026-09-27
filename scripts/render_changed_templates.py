@@ -140,26 +140,15 @@ def render_one(template_id: str, output_dir: Path, dpi: int = 144) -> Path:
     Uses the same compiler pipeline the CLI's ``preview`` command does.
     The PNG carries no message override — readers see the template's
     default content.
-
-    ``chdir``-s into ``tests/fixtures`` while compiling so photo-card
-    templates can resolve their relative ``sample_photo.jpg`` path
-    against a directory that contains the bundled sample. Same
-    pattern as ``scripts/build_microsite.py`` and
-    ``scripts/regenerate_visual_baselines.py``.
     """
-    import contextlib
-
     from holiday_card.core.compiler import compile_card
     from holiday_card.core.generators import CardGenerator
     from holiday_card.renderers.png_backend import PNGRenderer
 
-    fixtures_dir = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
-
     output_dir.mkdir(parents=True, exist_ok=True)
     out = output_dir / f"{template_id}.png"
-    with contextlib.chdir(fixtures_dir):
-        card = CardGenerator().create_card(template_id=template_id)
-        cmds = compile_card(card)
+    card = CardGenerator().create_card(template_id=template_id)
+    cmds = compile_card(card)
     PNGRenderer(dpi=dpi).render(cmds, out)
     return out
 

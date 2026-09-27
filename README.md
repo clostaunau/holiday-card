@@ -111,6 +111,22 @@ An override that isn't an existing directory is an error. If
 nothing, it exits 1 with `installation is missing bundled data` rather
 than printing an empty list.
 
+### Images in templates
+
+A template's `image_elements[].source_path` is resolved **relative to
+the template YAML file**, never the current directory. The rules:
+
+- Relative paths only. An absolute path is a load error, and so is any
+  `..` component or a symlink that points outside the template's
+  directory. Put the image next to the YAML (or in a subdirectory).
+- PNG or JPEG only, checked from the file's bytes rather than its
+  extension; truncated files and images over 50 megapixels are refused.
+- A bad path fails `holiday-card validate`; a bad image fails `create` /
+  `preview` with `Error: …` and exit 2.
+
+`--image` on the command line may point anywhere. It goes through the
+same content check.
+
 ## Hacking on it
 
 ```bash

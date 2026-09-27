@@ -31,7 +31,7 @@ holiday-card create christmas-classic --inside-message-md letter.md   # Markdown
 holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," --signature "C" --ps "PS hi"   # structured letter
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card preview christmas-classic                          # writes a PNG and opens it
-uv run pytest                       # all 927 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 969 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -93,6 +93,7 @@ src/holiday_card/
     ai_provenance.py    # L3 LicenseRecord sidecar + first-use consent gate
     ai_assets.py        # L3 POD-aware sizing + generate orchestration (injectable client)
     ai_openai.py        # L3 OpenAI image-client adapter (only module importing openai)
+    images.py           # Template image path containment + PNG/JPEG content probe (D5)
     validators.py       # Domain validation helpers
   renderers/
     reportlab_backend.py  # IR → PDF (default; sRGB or CMYK mode)
@@ -162,7 +163,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 927 tests pass
+uv run pytest                            # All 969 tests pass
 ```
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit
@@ -216,7 +217,9 @@ gradients, radial gradients, and patterns (stripes / dots / grid /
 checkerboard)**, text with left/center/right alignment + Markdown
 rich text (paragraphs + **bold** + *italic* + ***bold-italic***)
 + structured letter parts
-(salutation / signoff / signature / P.S.), **photo images** with
+(salutation / signoff / signature / P.S.), **photo images** (PNG/JPEG
+only, content-probed; template `source_path` is relative to the YAML
+file — absolute, `..` and symlink escapes are load errors, D5) with
 circle / rectangle / ellipse / star clip masks, fold lines, identity
 or rotation-only group transforms, and **bleed extension** on edges
 that touch the page trim (default 0.125", set per Card via
@@ -300,6 +303,30 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Recent changes
 
+- **2026-09-26 — Template images resolve against the template file;
+  image bytes are probed before embedding (security, expert-panel §P8 /
+  D5, issue #64)**: A template or `Card` whose `image_elements[].source_path`
+  named any readable file (e.g. `secret.env`) got it base64-embedded into
+  SVG output as `data:application/octet-stream`. New `core/images.py`:
+  `resolve_template_image_path` rejects absolute paths, `..` components and
+  symlink escapes; `probe_image` requires Pillow to read a whole PNG or
+  JPEG (never trusts the extension; truncated, GIF, text and >50 MP files
+  refused) and raises `ImageSourceError`. `load_template_from_file`
+  rewrites every image `source_path` to an absolute path inside the
+  template's dir (failures → `TemplateLoadError`, so `validate` fails too).
+  `_compile_image` refuses relative paths (**no cwd fallback**), probes the
+  file and puts `format` / `width_px` / `height_px` on `ImageRef` (#66
+  consumes the pixel size). The SVG backend takes its MIME type from
+  `ImageRef.format`; the extension map and `octet-stream` fallback are
+  gone. `sample_photo.jpg` now ships next to the christmas / birthday /
+  mothers_day templates, and the six `contextlib.chdir(tests/fixtures)`
+  workarounds in scripts and tests are deleted. CLI `create` / `preview`
+  map `ImageSourceError` to `Error: …` + exit 2. The CI smoke job renders
+  `christmas-photo-ornament` to SVG from the installed wheel. Visual
+  baselines and compile snapshots unchanged. Guarded by
+  `tests/unit/test_images.py`, `tests/unit/test_templates_images.py`,
+  `test_svg_backend.py::test_svg_refuses_non_image_source` and
+  `test_image_rendering.py::TestShippedPhotoTemplateFromAnyCwd`.
 - **2026-09-26 — Templates load via `Template.model_validate` with
   `extra="forbid"` (expert-panel §P3 / D3, issue #56)**: The hand-written
   YAML parsers in `core/templates.py` (`_parse_template` / `_panel` /

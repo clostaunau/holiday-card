@@ -614,9 +614,8 @@ class SVGRenderer:
 
     def _draw_image(self, cmd: DrawImage) -> None:
         # Embed the image as a base64 data URI so the resulting SVG is
-        # self-contained (no relative-path fragility when sharing the
-        # file). PNG and JPEG are the two formats users actually drop
-        # in; anything else is sniffed and labelled image/*.
+        # self-contained. The MIME type comes from the compiler's content
+        # probe (``ImageRef.format``), never from the file extension.
         import base64
         from pathlib import Path
 
@@ -626,14 +625,7 @@ class SVGRenderer:
             raise FileNotFoundError(
                 f"SVGRenderer: image source not found: {source_path}"
             )
-        suffix = source_path.suffix.lower()
-        mime = {
-            ".png": "image/png",
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".gif": "image/gif",
-            ".webp": "image/webp",
-        }.get(suffix, "application/octet-stream")
+        mime = f"image/{cmd.image.format}"
         encoded = base64.b64encode(source_path.read_bytes()).decode("ascii")
         href = f"data:{mime};base64,{encoded}"
 

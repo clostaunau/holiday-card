@@ -32,10 +32,12 @@ from __future__ import annotations
 
 import io
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas as _reportlab_canvas
 
+from holiday_card.core.images import ImageSourceError, probe_image
 from holiday_card.core.models import (
     Border,
     BorderStyle,
@@ -1402,7 +1404,9 @@ def _compile_image(image: ImageElement, panel: Panel) -> list[RenderCommand]:
       (matching the convention real templates ship — see
       ``templates/christmas/photo-ornament.yaml``).
     * Emit the ``DrawImage`` carrying an ``ImageRef`` with the
-      resolved absolute file path and the rectangle in page-points.
+      absolute file path, the rectangle in page-points, and the format
+      and pixel size from ``probe_image`` (which refuses anything that
+      is not a whole PNG/JPEG — raises ``ImageSourceError``).
 
     Deferred for v1 (raise ``UnsupportedFeatureError`` if encountered):
 
@@ -1436,10 +1440,16 @@ def _compile_image(image: ImageElement, panel: Panel) -> list[RenderCommand]:
             f"Auto-sizing from natural image dimensions is a follow-up."
         )
 
-    # Resolve relative paths against CWD so the IR carries an absolute
-    # path the backends can pass to drawImage/embed unchanged.
-    from pathlib import Path as _Path
-    source_abs = str(_Path(image.source_path).resolve())
+    # The loader (templates) or CLI (--image) already made the path absolute;
+    # a relative one here is a bug, and cwd is never a fallback (D1/D5).
+    source = Path(image.source_path)
+    if not source.is_absolute():
+        raise ImageSourceError(
+            f"ImageElement.source_path {image.source_path!r} is relative "
+            f"(element id {image.id!r}); template images are resolved against "
+            f"the template file at load time"
+        )
+    probed = probe_image(source)
 
     # Image rect in page-points (panel-relative inches → absolute points).
     x_pt = inches_to_points(panel.x + image.x)
@@ -1448,8 +1458,11 @@ def _compile_image(image: ImageElement, panel: Panel) -> list[RenderCommand]:
     height_pt = inches_to_points(image.height)
 
     image_ref = ImageRef(
-        source=source_abs,
+        source=str(probed.path),
         rect=RectGeom(x=x_pt, y=y_pt, width=width_pt, height=height_pt),
+        format=probed.format,
+        width_px=probed.width_px,
+        height_px=probed.height_px,
         preserve_aspect=image.preserve_aspect,
     )
     draw = DrawImage(image=image_ref, opacity=image.opacity)

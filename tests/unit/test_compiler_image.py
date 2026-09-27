@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from holiday_card.core.compiler import UnsupportedFeatureError, compile_card
+from holiday_card.core.images import ImageSourceError
 from holiday_card.core.models import (
     Card,
     CircleClipMask,
@@ -85,6 +86,36 @@ class TestCompileImage:
         # Dimensions: 2.0" × 72 = 144 pts
         assert d.image.rect.width == pytest.approx(144.0)
         assert d.image.rect.height == pytest.approx(144.0)
+
+    def test_drawimage_carries_probed_format_and_pixel_size(self) -> None:
+        img = ImageElement(
+            source_path=str(FIXTURE_IMAGE),
+            x=0.5, y=1.0, width=2.0, height=2.0,
+        )
+        d = _images(compile_card(_make_card(img)))[0]
+        assert (d.image.format, d.image.width_px, d.image.height_px) == ("jpeg", 400, 400)
+
+    def test_relative_source_path_is_rejected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # No cwd fallback: a relative path here is a loader bug (D1/D5).
+        monkeypatch.chdir(FIXTURE_IMAGE.parent)
+        img = ImageElement(
+            source_path=FIXTURE_IMAGE.name,
+            x=0.0, y=0.0, width=1.0, height=1.0,
+        )
+        with pytest.raises(ImageSourceError, match="relative"):
+            compile_card(_make_card(img))
+
+    def test_non_image_source_is_rejected(self, tmp_path: Path) -> None:
+        fake = tmp_path / "photo.jpg"
+        fake.write_text("AWS_SECRET_ACCESS_KEY=hunter2")
+        img = ImageElement(
+            source_path=str(fake),
+            x=0.0, y=0.0, width=1.0, height=1.0,
+        )
+        with pytest.raises(ImageSourceError, match="photo.jpg"):
+            compile_card(_make_card(img))
 
     def test_image_with_opacity_passes_through(self) -> None:
         img = ImageElement(

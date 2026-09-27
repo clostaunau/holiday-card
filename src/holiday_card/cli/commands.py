@@ -24,6 +24,7 @@ from holiday_card.core.export_targets import (
     get_target,
 )
 from holiday_card.core.generators import CardGenerator
+from holiday_card.core.images import ImageSourceError
 from holiday_card.core.models import FoldType, ImageElement, OccasionType
 from holiday_card.core.sentiments import (
     VOICES,
@@ -666,6 +667,10 @@ def create(
         typer.secho(f"Error loading template: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(2) from e
 
+    except ImageSourceError as e:
+        typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from e
+
     except PermissionError as e:
         typer.secho(f"Error: Cannot write to {output}", fg=typer.colors.RED, err=True)
         typer.echo("Check that you have write permission to the output directory.", err=True)
@@ -736,7 +741,7 @@ def preview(
     except (typer.Exit, BrokenPipeError):
         raise
 
-    except TemplateNotFoundError as e:
+    except (TemplateNotFoundError, ImageSourceError) as e:
         typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(2) from e
 

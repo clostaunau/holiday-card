@@ -7,7 +7,6 @@ valid image with the expected dimensions. Same shape as
 
 from __future__ import annotations
 
-import contextlib
 from pathlib import Path
 
 import pytest
@@ -16,8 +15,6 @@ from PIL import Image
 from holiday_card.core.compiler import compile_card
 from holiday_card.core.generators import CardGenerator
 from holiday_card.renderers.png_backend import PNGRenderer
-
-_FIXTURES = Path(__file__).parent.parent / "fixtures"
 
 PNG_TEMPLATES = (
     "christmas-classic",
@@ -41,16 +38,9 @@ PNG_TEMPLATES = (
 
 
 def _render_png(template_id: str, output_path: Path, dpi: int = 72) -> None:
-    """Use 72 DPI by default in tests so files stay small and fast.
-
-    ``chdir`` into ``tests/fixtures`` while compiling so photo-card
-    templates can resolve their relative ``sample_photo.jpg`` path.
-    Same pattern as the visual-regression suite and
-    ``scripts/build_microsite.py`` — keep them in lockstep.
-    """
-    with contextlib.chdir(_FIXTURES):
-        card = CardGenerator().create_card(template_id=template_id)
-        commands = compile_card(card)
+    """Use 72 DPI by default in tests so files stay small and fast."""
+    card = CardGenerator().create_card(template_id=template_id)
+    commands = compile_card(card)
     PNGRenderer(dpi=dpi).render(commands, output_path)
 
 
