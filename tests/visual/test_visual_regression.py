@@ -38,7 +38,6 @@ templates together.
 
 from __future__ import annotations
 
-import contextlib
 from pathlib import Path
 
 import imagehash
@@ -51,7 +50,6 @@ from holiday_card.core.templates import discover_templates
 from holiday_card.renderers.png_backend import PNGRenderer
 
 BASELINE_DIR = Path(__file__).parent / "fixtures" / "reference_cards"
-FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 BASELINE_DPI = 72
 
 # Perceptual-hash Hamming distance threshold. 0 = identical; values
@@ -78,9 +76,8 @@ def test_template_matches_baseline(template_id: str, tmp_path: Path) -> None:
 
     fresh_path = tmp_path / f"{template_id}.png"
     generator = CardGenerator(renderer=PNGRenderer(dpi=BASELINE_DPI))
-    with contextlib.chdir(FIXTURES_DIR):
-        card = generator.create_card(template_id=template_id)
-        commands = compile_card(card)
+    card = generator.create_card(template_id=template_id)
+    commands = compile_card(card)
     generator.renderer.render(commands, fresh_path)
 
     fresh_hash = imagehash.phash(Image.open(fresh_path))

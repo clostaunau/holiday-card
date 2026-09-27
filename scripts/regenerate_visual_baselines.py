@@ -13,10 +13,6 @@ This script:
 * Renders each to ``tests/visual/fixtures/reference_cards/{template_id}.png``
   at the same DPI the regression test uses (72; matches the PNG
   backend integration tests and keeps committed artifacts small).
-* ``chdir``-s into the test fixtures directory while compiling so
-  photo-card templates can resolve their relative
-  ``sample_photo.jpg`` path. Same pattern as
-  ``scripts/build_microsite.py``.
 
 Run from the repo root:
 
@@ -28,7 +24,6 @@ in a PR review before committing — that is the human gate.
 
 from __future__ import annotations
 
-import contextlib
 import sys
 from pathlib import Path
 
@@ -44,7 +39,6 @@ from holiday_card.renderers.png_backend import PNGRenderer  # noqa: E402
 
 BASELINE_DPI = 72
 BASELINE_DIR = _REPO / "tests" / "visual" / "fixtures" / "reference_cards"
-FIXTURES_DIR = _REPO / "tests" / "fixtures"
 
 
 def regenerate_one(template_id: str) -> Path:
@@ -53,9 +47,8 @@ def regenerate_one(template_id: str) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     generator = CardGenerator(renderer=PNGRenderer(dpi=BASELINE_DPI))
-    with contextlib.chdir(FIXTURES_DIR):
-        card = generator.create_card(template_id=template_id)
-        commands = compile_card(card)
+    card = generator.create_card(template_id=template_id)
+    commands = compile_card(card)
     generator.renderer.render(commands, out_path)
     return out_path
 

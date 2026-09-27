@@ -30,7 +30,6 @@ Or run from CI; the workflow passes ``--output _site`` to match
 from __future__ import annotations
 
 import argparse
-import contextlib
 import html
 import json
 import sys
@@ -148,20 +147,11 @@ def _render_thumbnail(template_id: str, out_path: Path, dpi: int) -> None:
     "printable" view; using just the front panel would lose context
     (where's the inside message? the back? — visible structure that
     distinguishes templates).
-
-    Photo-card templates reference ``sample_photo.jpg`` as a relative
-    path; the compiler resolves it against CWD. We ``chdir`` to the
-    test-fixtures directory so the bundled sample image is in scope
-    for thumbnail rendering. This keeps the placeholder sample
-    visible in the gallery without coupling the build to a specific
-    runtime CWD.
     """
     generator = CardGenerator(renderer=PNGRenderer(dpi=dpi))
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fixtures_dir = _REPO / "tests" / "fixtures"
-    with contextlib.chdir(fixtures_dir):
-        card = generator.create_card(template_id=template_id)
-        commands = compile_card(card)
+    card = generator.create_card(template_id=template_id)
+    commands = compile_card(card)
     generator.renderer.render(commands, out_path)
 
 

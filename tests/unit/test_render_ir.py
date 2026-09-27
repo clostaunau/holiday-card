@@ -121,6 +121,21 @@ class TestFieldValidation:
         with pytest.raises(ValidationError):
             BeginPage(width=612, height=792, safe_margin=-1.0)
 
+    def test_image_ref_requires_png_or_jpeg_format(self) -> None:
+        rect = RectGeom(x=0, y=0, width=10, height=10)
+        ImageRef(source="/x.png", rect=rect, format="png", width_px=1, height_px=1)
+        with pytest.raises(ValidationError):
+            ImageRef(source="/x.gif", rect=rect, format="gif", width_px=1, height_px=1)
+        with pytest.raises(ValidationError):
+            ImageRef(source="/x.png", rect=rect, width_px=1, height_px=1)
+
+    def test_image_ref_pixel_size_must_be_positive(self) -> None:
+        rect = RectGeom(x=0, y=0, width=10, height=10)
+        with pytest.raises(ValidationError):
+            ImageRef(source="/x.png", rect=rect, format="png", width_px=0, height_px=1)
+        with pytest.raises(ValidationError):
+            ImageRef(source="/x.png", rect=rect, format="png", width_px=1, height_px=-1)
+
     def test_linear_gradient_requires_at_least_two_stops(self) -> None:
         with pytest.raises(ValidationError):
             LinearGradientPaint(
@@ -151,7 +166,11 @@ def _all_command_fixtures() -> list[object]:
             run=TextRun(text="hi", origin=pt, font_id="Helvetica", size_pt=12, color=rgb),
             opacity=1.0,
         ),
-        DrawImage(image=ImageRef(source="/tmp/x.png", rect=rect)),
+        DrawImage(
+            image=ImageRef(
+                source="/tmp/x.png", rect=rect, format="png", width_px=10, height_px=5
+            )
+        ),
         BeginGroup(transform=Transform(translate_x=5, rotate_deg=15), opacity=0.8),
         EndGroup(),
         BeginClip(geometry=CircleGeom(center=pt, radius=20)),

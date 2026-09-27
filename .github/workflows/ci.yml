@@ -134,6 +134,10 @@ jobs:
             holiday-card create "$t" -o "$t.pdf"
             test -s "$t.pdf"
           done
+          # #64: template photos resolve against the bundled template dir,
+          # never cwd, and SVG embeds them with the probed MIME type.
+          holiday-card create christmas-photo-ornament --format svg -o photo.svg
+          grep -q 'href="data:image/jpeg;base64,' photo.svg
           # Every --voice resolves against the bundled sentiment library.
           for voice in warm witty spare devotional irreverent; do
             holiday-card create christmas-classic --voice "$voice" --seed 42 -o "voice-$voice.pdf"

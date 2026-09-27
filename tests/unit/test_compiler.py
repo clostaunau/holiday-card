@@ -59,8 +59,8 @@ UPDATE_SNAPSHOTS = os.environ.get("UPDATE_COMPILER_SNAPSHOTS") == "1"
 
 # Templates whose compiled IR is snapshot-stable across machines.
 # Templates with non-empty ``image_elements: source_path: ...`` are
-# excluded because the compiler resolves the source to an absolute
-# path at compile time, and a committed snapshot would carry
+# excluded because the loader resolves the source to an absolute
+# path inside the installed template dir, and a committed snapshot would carry
 # ``/Users/<dev>/...`` — diff noise on every contributor's machine
 # and a CI failure as soon as the generating machine differs from the
 # committing machine. The exclusion covers photo-ornament,

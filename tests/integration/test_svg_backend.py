@@ -12,7 +12,7 @@ content.
 
 from __future__ import annotations
 
-import contextlib
+import base64
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -20,9 +20,9 @@ import pytest
 
 from holiday_card.core.compiler import compile_card
 from holiday_card.core.generators import CardGenerator
+from holiday_card.core.images import ImageSourceError
+from holiday_card.core.models import ImageElement
 from holiday_card.renderers.svg_backend import SVGRenderer
-
-_FIXTURES = Path(__file__).parent.parent / "fixtures"
 
 # Every shipped template; mirrors ``test_png_backend.py``'s
 # ``PNG_TEMPLATES``. ``tests/unit/test_compiler.py``'s
@@ -52,13 +52,8 @@ _SVG_NS = "http://www.w3.org/2000/svg"
 
 
 def _render_svg(template_id: str, output_path: Path) -> None:
-    """``chdir`` into ``tests/fixtures`` so photo-card templates can
-    resolve relative ``sample_photo.jpg`` paths. Same pattern as the
-    PNG backend tests, the visual-regression suite, and the microsite
-    build."""
-    with contextlib.chdir(_FIXTURES):
-        card = CardGenerator().create_card(template_id=template_id)
-        commands = compile_card(card)
+    card = CardGenerator().create_card(template_id=template_id)
+    commands = compile_card(card)
     SVGRenderer().render(commands, output_path)
 
 
@@ -199,3 +194,25 @@ def test_svg_rotated_panel_uses_pivot_rotate_transform(tmp_path: Path) -> None:
             f"pivot-rotate idiom (translate pivot; rotate; translate -pivot). "
             f"Without it, rotated content lands in the wrong place."
         )
+
+
+def test_svg_refuses_non_image_source(tmp_path: Path) -> None:
+    """Regression (#64): a non-image ``source_path`` was base64-embedded
+    into the SVG as ``application/octet-stream``, leaking the file."""
+    secret = tmp_path / "secret.env"
+    secret_bytes = b"AWS_SECRET_ACCESS_KEY=hunter2"
+    secret.write_bytes(secret_bytes)
+    card = CardGenerator().create_card(template_id="christmas-classic")
+    card.panels[0].image_elements.append(
+        ImageElement(source_path=str(secret), x=0.5, y=0.5, width=1, height=1)
+    )
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    with pytest.raises(ImageSourceError, match="secret.env"):
+        SVGRenderer().render(compile_card(card), out_dir / "card.svg")
+
+    encoded = base64.b64encode(secret_bytes)
+    for produced in out_dir.iterdir():
+        data = produced.read_bytes()
+        assert secret_bytes not in data and encoded[:16] not in data

@@ -155,3 +155,37 @@ class TestPNGImageRendering:
                 f"Top-left page corner should be white background "
                 f"(got R={r} G={g} B={b})"
             )
+
+
+class TestShippedPhotoTemplateFromAnyCwd:
+    """D1/D5 (#64): template photos resolve against the template file, so
+    shipped photo cards render with no ``chdir`` into ``tests/fixtures``."""
+
+    @pytest.fixture(autouse=True)
+    def _cwd_is_tmp(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+
+    @staticmethod
+    def _commands() -> list:
+        from holiday_card.core.generators import CardGenerator
+
+        card = CardGenerator().create_card(template_id="christmas-photo-ornament")
+        return compile_card(card)
+
+    def test_pdf(self, tmp_path: Path) -> None:
+        out = tmp_path / "o.pdf"
+        IRReportLabRenderer().render(self._commands(), out)
+        assert out.stat().st_size > 0
+
+    def test_svg_embeds_jpeg_data_uri(self, tmp_path: Path) -> None:
+        out = tmp_path / "o.svg"
+        SVGRenderer().render(self._commands(), out)
+        hrefs = re.findall(r'href="([^"]{0,40})', out.read_text())
+        assert hrefs
+        assert all(h.startswith("data:image/jpeg;base64,") for h in hrefs)
+
+    def test_png(self, tmp_path: Path) -> None:
+        out = tmp_path / "o.png"
+        PNGRenderer(dpi=36).render(self._commands(), out)
+        with Image.open(out) as img:
+            assert img.width > 0

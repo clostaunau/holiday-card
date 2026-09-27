@@ -260,10 +260,16 @@ class ImageRef(_IRBase):
     Image effects (grayscale/sepia/vignette/blur) are applied by the
     compiler before the IR is emitted; ``source`` may point to a temp file
     holding the post-effect bytes.
+
+    ``format`` and the pixel size come from probing the file's bytes
+    (``core.images.probe_image``), never from its extension.
     """
 
     source: str = Field(min_length=1)
     rect: RectGeom
+    format: Literal["png", "jpeg"]
+    width_px: int = Field(gt=0)
+    height_px: int = Field(gt=0)
     preserve_aspect: bool = True
 
 

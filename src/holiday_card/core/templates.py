@@ -11,6 +11,7 @@ import yaml
 from pydantic import ValidationError
 
 from holiday_card.core.data_paths import data_path
+from holiday_card.core.images import ImageSourceError, resolve_template_image_path
 from holiday_card.core.models import Template
 
 logger = logging.getLogger(__name__)
@@ -141,11 +142,28 @@ def load_template_from_file(path: Path) -> Template:
         raise TemplateLoadError(f"Failed to read template file {path}: {e}") from e
 
     try:
-        return Template.model_validate(data)
+        template = Template.model_validate(data)
     except ValidationError as e:
         raise TemplateLoadError(
             f"Failed to parse template {path}:\n{_format_validation_error(e)}"
         ) from e
+    _resolve_image_paths(template, path)
+    return template
+
+
+def _resolve_image_paths(template: Template, path: Path) -> None:
+    # D5: image paths are relative to the template file, never to cwd.
+    errors: list[str] = []
+    for p, panel in enumerate(template.panels):
+        for i, image in enumerate(panel.image_elements):
+            try:
+                image.source_path = str(
+                    resolve_template_image_path(image.source_path, path.parent)
+                )
+            except ImageSourceError as e:
+                errors.append(f"  panels.{p}.image_elements.{i}.source_path: {e}")
+    if errors:
+        raise TemplateLoadError(f"Failed to parse template {path}:\n" + "\n".join(errors))
 
 
 def _format_validation_error(error: ValidationError) -> str:
