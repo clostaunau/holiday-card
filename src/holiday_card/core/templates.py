@@ -74,6 +74,24 @@ def discover_templates(templates_dir: Path | None = None) -> list[dict[str, str]
     return templates
 
 
+def templates_with_photo_slots(templates_dir: Path | None = None) -> list[str]:
+    """Return the sorted ids of templates with at least one photo ``slot``.
+
+    Templates that fail to load are skipped (``discover_templates`` already
+    lists what exists; ``validate`` reports why a template is broken).
+    """
+    ids: list[str] = []
+    for info in discover_templates(templates_dir):
+        try:
+            template = load_template_from_file(Path(info["path"]))
+        except TemplateLoadError as e:
+            logger.debug(f"Skipping {info['path']}: {e}")
+            continue
+        if any(e.slot for p in template.panels for e in p.image_elements):
+            ids.append(template.id)
+    return sorted(ids)
+
+
 def load_template(template_id: str, templates_dir: Path | None = None) -> Template:
     """Load a template by ID.
 

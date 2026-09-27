@@ -550,6 +550,14 @@ class ImageElement(BaseModel):
 
     id: str = Field(default_factory=lambda: str(uuid4()))
     source_path: str = Field(description="Path to source image file")
+    slot: str | None = Field(
+        default=None,
+        pattern=r"^photo(-[2-9])?$",
+        description=(
+            "User-replaceable photo slot: the k-th --image fills every element "
+            "whose slot is 'photo' (k=1) or 'photo-k'"
+        ),
+    )
     x: float = Field(ge=0.0, description="X position in inches from panel left")
     y: float = Field(ge=0.0, description="Y position in inches from panel bottom")
     width: float | None = Field(default=None, ge=0.0, description="Image width in inches")

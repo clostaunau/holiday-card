@@ -189,3 +189,106 @@ class TestShippedPhotoTemplateFromAnyCwd:
         PNGRenderer(dpi=36).render(self._commands(), out)
         with Image.open(out) as img:
             assert img.width > 0
+
+
+class TestCLIImageFillsPhotoSlot:
+    """#65: ``create -i PATH`` fills the template's photo slots (D4, D5)."""
+
+    @pytest.fixture
+    def red_jpg(self, tmp_path: Path) -> Path:
+        path = tmp_path / "anywhere" / "me.jpg"
+        path.parent.mkdir()
+        Image.new("RGB", (1200, 1200), (220, 0, 0)).save(path, quality=95)
+        return path
+
+    @staticmethod
+    def _invoke(*args: str):  # type: ignore[no-untyped-def]
+        from typer.testing import CliRunner
+
+        from holiday_card.cli.commands import app
+
+        return CliRunner().invoke(app, ["create", *args])
+
+    def test_cli_image_fills_front_photo_slot(self, red_jpg: Path, tmp_path: Path) -> None:
+        out = tmp_path / "card.pdf"
+        result = self._invoke("christmas-family-photo", "-i", str(red_jpg), "-o", str(out))
+        assert result.exit_code == 0, result.output + result.stderr
+        with pikepdf.open(out) as pdf:
+            images = [
+                pikepdf.PdfImage(v) for v in pdf.pages[0].Resources.XObject.values()
+                if v.get("/Subtype") == pikepdf.Name("/Image")
+            ]
+            # Exactly one image: the user's photo replaced the placeholder
+            # rather than stacking on top of it.
+            assert len(images) == 1
+            pil = images[0].as_pil_image().convert("RGB")
+        assert pil.size == (1200, 1200)
+        r, g, b = pil.getpixel((600, 600))
+        assert r > 180 and g < 60 and b < 60
+
+    def test_png_pixel_at_slot_centre_is_the_user_photo(
+        self, red_jpg: Path, tmp_path: Path,
+    ) -> None:
+        from holiday_card.core.generators import CardGenerator
+
+        card = CardGenerator().create_card(
+            template_id="christmas-family-photo", photos=[red_jpg],
+        )
+        out = tmp_path / "card.png"
+        PNGRenderer(dpi=72).render(compile_card(card), out)
+        with Image.open(out) as img:
+            # Front panel at x=4.25"; slot rect (0.65, 1.75) 2.95" square.
+            cx_in, cy_in = 4.25 + 0.65 + 2.95 / 2, 1.75 + 2.95 / 2
+            bleed_px = 9
+            px = (round(cx_in * 72) + bleed_px, img.height - bleed_px - round(cy_in * 72))
+            r, g, b = img.convert("RGB").getpixel(px)
+        assert r > 180 and g < 60 and b < 60, (r, g, b)
+
+    def test_more_images_than_slots_exits_two(self, red_jpg: Path, tmp_path: Path) -> None:
+        out = tmp_path / "card.pdf"
+        result = self._invoke(
+            "christmas-family-photo", "-i", str(red_jpg), "-i", str(red_jpg),
+            "-o", str(out),
+        )
+        assert result.exit_code == 2
+        assert (
+            "Error: christmas-family-photo has 1 photo slot(s); got 2 --image values"
+            in result.stderr
+        )
+        assert not out.exists()
+
+    def test_image_on_template_without_slots_exits_two(
+        self, red_jpg: Path, tmp_path: Path,
+    ) -> None:
+        out = tmp_path / "card.pdf"
+        result = self._invoke("christmas-classic", "-i", str(red_jpg), "-o", str(out))
+        assert result.exit_code == 2
+        assert "christmas-classic has no photo slot" in result.stderr
+        # Lists the templates that do have slots.
+        assert "christmas-family-photo" in result.stderr
+        assert "christmas-photo-ornament" in result.stderr
+        assert not out.exists()
+
+    def test_text_file_renamed_to_jpg_exits_two(self, tmp_path: Path) -> None:
+        fake = tmp_path / "notes.jpg"
+        fake.write_text("dear santa")
+        out = tmp_path / "card.pdf"
+        result = self._invoke("christmas-family-photo", "-i", str(fake), "-o", str(out))
+        assert result.exit_code == 2
+        assert "Error:" in result.stderr
+        assert not out.exists()
+
+    def test_second_image_fills_second_slot(self, red_jpg: Path, tmp_path: Path) -> None:
+        from holiday_card.core.generators import CardGenerator
+
+        blue = tmp_path / "blue.png"
+        Image.new("RGB", (64, 64), "blue").save(blue)
+        card = CardGenerator().create_card(
+            template_id="christmas-photo-ornament", photos=[red_jpg, blue],
+        )
+        by_slot = {
+            e.slot: e.source_path for p in card.panels for e in p.image_elements
+        }
+        assert by_slot["photo"] == str(red_jpg.resolve())
+        assert by_slot["photo-2"] == str(blue.resolve())
+        assert Path(by_slot["photo-3"]).name == "placeholder-photo.jpg"

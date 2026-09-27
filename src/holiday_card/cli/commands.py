@@ -23,9 +23,9 @@ from holiday_card.core.export_targets import (
     ExportTargetNotFoundError,
     get_target,
 )
-from holiday_card.core.generators import CardGenerator
+from holiday_card.core.generators import CardGenerator, PhotoSlotError
 from holiday_card.core.images import ImageSourceError
-from holiday_card.core.models import FoldType, ImageElement, OccasionType
+from holiday_card.core.models import FoldType, OccasionType
 from holiday_card.core.sentiments import (
     VOICES,
     SentimentNotFoundError,
@@ -37,11 +37,11 @@ from holiday_card.core.templates import (
     discover_templates,
     get_templates_dir,
     load_template_from_file,
+    templates_with_photo_slots,
 )
 from holiday_card.core.themes import discover_themes, get_themes_dir
 from holiday_card.renderers.reportlab_backend import IRReportLabRenderer
 from holiday_card.renderers.svg_backend import SVGRenderer
-from holiday_card.utils.validators import ValidationError, validate_image_format
 
 
 def _exit_quietly_on_broken_pipe() -> NoReturn:
@@ -251,7 +251,13 @@ def create(
         None, "--fold-type", "-f", help="Override fold type: half_fold, quarter_fold, tri_fold"
     ),
     image: list[Path] | None = typer.Option(
-        None, "--image", "-i", help="Add image to card (can be repeated)"
+        None,
+        "--image",
+        "-i",
+        help=(
+            "Photo for the template's photo slots (PNG/JPEG, any path). "
+            "Repeat to fill slot 2, 3, …; unfilled slots keep the placeholder."
+        ),
     ),
     theme: str | None = typer.Option(
         None, "--theme", "-t", help="Color theme to apply (e.g., christmas-red-green)"
@@ -501,38 +507,6 @@ def create(
                 )
                 raise typer.Exit(2) from e
 
-        # Validate and prepare images if provided
-        image_elements: list[ImageElement] = []
-        if image:
-            for idx, img_path in enumerate(image):
-                # Check file exists
-                if not img_path.exists():
-                    typer.secho(
-                        f"Error: Image file not found: {img_path}",
-                        fg=typer.colors.RED,
-                        err=True,
-                    )
-                    raise typer.Exit(2)
-
-                # Validate format
-                try:
-                    validate_image_format(img_path)
-                except ValidationError as e:
-                    typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
-                    raise typer.Exit(2) from e
-
-                # Create image element with default positioning
-                # Images are placed on the front panel, stacked vertically
-                image_elements.append(
-                    ImageElement(
-                        source_path=str(img_path.absolute()),
-                        x=0.5,
-                        y=1.0 + (idx * 2.0),  # Stack images vertically
-                        width=3.0,
-                        preserve_aspect=True,
-                    )
-                )
-
         # Resolve --voice into picked sentiments, only filling slots the
         # user didn't explicitly set. Explicit --message and --inside-message
         # always win; --blank-inside trumps both.
@@ -597,7 +571,7 @@ def create(
             output_path=output,
             theme_id=theme,
             fold_type=fold_type_enum,
-            images=image_elements if image_elements else None,
+            photos=image,
             inside_message=(
                 None
                 if (rich_inside is not None or letter_content is not None)
@@ -669,6 +643,13 @@ def create(
 
     except ImageSourceError as e:
         typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from e
+
+    except PhotoSlotError as e:
+        typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
+        slotted = templates_with_photo_slots()
+        if slotted:
+            typer.echo(f"Templates with photo slots: {', '.join(slotted)}", err=True)
         raise typer.Exit(2) from e
 
     except PermissionError as e:

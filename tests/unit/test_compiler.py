@@ -66,7 +66,7 @@ UPDATE_SNAPSHOTS = os.environ.get("UPDATE_COMPILER_SNAPSHOTS") == "1"
 # committing machine. The exclusion covers photo-ornament,
 # family-photo, mothers-day-photo, birthday-photo, AND
 # holiday-masterpiece (its decorative ``image_elements`` carry a
-# sample_photo.jpg path even though the template's identity is the
+# placeholder-photo.jpg path even though the template's identity is the
 # SVGPath illustration, not the photo). These templates have
 # coverage via test_png_backend.py + test_svg_backend.py + the
 # visual-regression suite instead.

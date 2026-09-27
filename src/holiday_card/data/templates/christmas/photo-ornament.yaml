@@ -85,10 +85,11 @@ panels:
         opacity: 0.8
         z_index: 3
 
-    # NOTE: In actual use, replace "sample_photo.jpg" with real photo path
-    # The circular clip mask creates an ornament-shaped photo frame
+    # The circular clip mask creates an ornament-shaped photo frame.
+    # Photo slots: `-i` fills them in order (photo, photo-2, ...).
     image_elements:
-      - source_path: "sample_photo.jpg"
+      - source_path: "placeholder-photo.jpg"
+        slot: "photo"
         x: 0.525
         y: 1.15
         width: 3.2
@@ -144,7 +145,8 @@ panels:
 
     # Star-shaped photo clipping mask
     image_elements:
-      - source_path: "sample_photo.jpg"
+      - source_path: "placeholder-photo.jpg"
+        slot: "photo-2"
         x: 0.725
         y: 1.35
         width: 2.8
@@ -215,7 +217,8 @@ panels:
 
     image_elements:
       # Three circular photo clips arranged in triangle
-      - source_path: "sample_photo.jpg"
+      - source_path: "placeholder-photo.jpg"
+        slot: "photo-3"
         x: 0.55
         y: 3.35
         width: 1.3
@@ -227,7 +230,8 @@ panels:
           radius: 0.6
         z_index: 4
 
-      - source_path: "sample_photo.jpg"
+      - source_path: "placeholder-photo.jpg"
+        slot: "photo-4"
         x: 2.4
         y: 3.35
         width: 1.3
@@ -239,7 +243,8 @@ panels:
           radius: 0.6
         z_index: 4
 
-      - source_path: "sample_photo.jpg"
+      - source_path: "placeholder-photo.jpg"
+        slot: "photo-5"
         x: 1.475
         y: 1.65
         width: 1.3
