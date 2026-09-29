@@ -45,11 +45,12 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "hypothesis>=6.0",
-    "pdf2image>=1.16",
     "imagehash>=4.3",
     "mypy>=1.0",
     "ruff>=0.1",
     "pre-commit>=3.7",
+    "pypdfium2>=5.0",
+    "resvg-py>=0.5",
 ]
 
 [dependency-groups]

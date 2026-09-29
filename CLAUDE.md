@@ -32,7 +32,7 @@ holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," -
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 1312 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 1392 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -152,6 +152,11 @@ tests/
                         #   (test_visual_regression.py); baselines in
                         #   fixtures/reference_cards/. Regenerate via
                         #   scripts/regenerate_visual_baselines.py.
+  conformance/          # Cross-backend conformance (#67, D12): cases.py (37 one-feature
+                        #   IR pages), capabilities.py (the pdf/png status matrix),
+                        #   conftest.py (resvg-py / pypdfium2 rasterizers + tolerances),
+                        #   test_conformance.py (case × backend vs the SVG oracle).
+                        #   docs/conformance-matrix.md is generated from capabilities.py.
 LICENSE                 # MIT
 scripts/                # Stand-alone helpers used by CI/Actions
                         #   render_changed_templates.py — powers .github/workflows/render-cards.yml
@@ -173,7 +178,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 1312 tests pass
+uv run pytest                            # All 1392 tests pass
 ```
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit
@@ -282,7 +287,12 @@ The pattern that worked three times in PRs #7, #11, #12:
    pixel-correctness checks**, not just structural validity — see the
    `test_png_christmas_classic_has_red_pixel_in_front_panel` test for
    how the PNG suite caught a transform bug the SVG suite missed.
-5. (CLI integration) Either expose via the existing `--format` enum on
+5. Add a column to `tests/conformance/capabilities.py` (extend the
+   `Backend` literal, give every case a `match` / `raises` /
+   `known_diff` status from the observed results), teach
+   `render_backend` in `test_conformance.py` to render it, and
+   regenerate `docs/conformance-matrix.md`.
+6. (CLI integration) Either expose via the existing `--format` enum on
    `holiday-card create`, or via a new top-level command (like
    `preview` does for PNG).
 
@@ -318,6 +328,43 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — Cross-backend conformance suite + capability matrix
+  (expert-panel §P12 / D12, issue #67)**: New `tests/conformance/` (no
+  `__init__.py`). `cases.py` holds 37 frozen `Case`s, each a 144×144 pt
+  page (bleed 0, except `page_bleed_background`) built straight from
+  `render_ir` types that exercises one feature: fills, strokes, dash
+  arrays on a line, gradients, the four patterns, clips, group
+  rotate/scale/opacity, alpha, Lato/Cormorant text, JPEG images, fold
+  line and bleed. `test_conformance.py` renders every case through SVG
+  (the oracle, rasterized by `resvg-py` with `skip_system_fonts=True` +
+  the bundled fonts) and through PDF (rasterized by `pypdfium2`) and PNG,
+  all at 144 DPI, and applies `capabilities.CAPABILITIES[case][backend]`:
+  `match` must be within tolerance, `raises` must raise
+  `NotImplementedError`, and `known_diff` must be **outside** tolerance,
+  so fixing the bug fails the test until the matrix is flipped (explicit
+  strict-xfail). Tolerances are in `conftest.py`: a pixel mismatches at a
+  channel delta > 48; `match` means mismatch ratio ≤ 1.0% (PDF) / 2.0%
+  (PNG, no AA until #77) **and** a mean ink colour within 48 per channel.
+  The ink check exists because a 0.5 pt fold line is 0.35% of the page, so
+  a ratio alone missed an inverted fold-line colour. Text cases compare
+  the ink bbox (±3 px per edge) plus the mean ink colour. Drift guards:
+  every case has both backends, no orphans, every `known_diff` names an
+  owner. `docs/conformance-matrix.md` must equal `render_markdown(
+  CAPABILITIES)`; regenerate with `python -m tests.conformance.capabilities
+  > docs/conformance-matrix.md`. Observed matrix: everything `match`
+  except `stroke_rect_6pt` PNG (#77), `pattern_stripes` PDF and
+  `pattern_grid` / `pattern_checkerboard` on both (#74), `group_scale_pivot`
+  PDF (#72; PNG raises), `text_curated_family` (#76: the SVG oracle draws
+  nothing for `font-family="Cormorant"`; `conftest` points every resvg
+  generic family at a sentinel name so an unmatched family draws nothing on
+  every host, because resvg's default fallback resolved on Linux but not
+  macOS), and `group_opacity` (both
+  raise). `pattern_dots` and `pattern_stripes` PNG match with this
+  fixture; PNG dots sit at 1.98% of the 2.0% limit. Dev deps:
+  `pypdfium2` and `resvg-py` added (wheels only, no system packages, so
+  CI is unchanged); the unused `pdf2image` is gone. The suite adds 80
+  tests and ~1 s.
 
 - **2026-09-29 — PNG backend honours clips, dashes and text alpha, or
   raises (expert-panel §P6 / §P5 / D4, issue #61)**: `preview` uses
