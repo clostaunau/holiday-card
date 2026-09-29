@@ -153,12 +153,12 @@
         "g": 0.2,
         "r": 0.55
       },
-      "font_id": "PlayfairDisplay",
+      "font_id": "PlayfairDisplay-Italic",
       "origin": {
         "x": 459.0,
         "y": 216.0
       },
-      "size_pt": 29.0,
+      "size_pt": 30.0,
       "text": "Happy Mother's Day"
     }
   },

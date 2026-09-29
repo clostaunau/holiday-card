@@ -196,10 +196,14 @@ def font_id_for_run(
     * Italic only → try the Italic variant; degrade to regular.
 
     The known-variant sets are explicit (not derived from the font
-    registry) so this module stays independent of ReportLab. Curated
-    fonts ship Regular only today — italic and bold spans on those
-    fonts render as Regular. Documented limitation; lifts when italic
+    registry) so this module stays independent of ReportLab. Cormorant
+    and PlayfairDisplay ship every variant and Lato ships Bold; Inter,
+    Caveat, Comfortaa (and Lato italic) have no variant TTFs, so those
+    styles render as Regular. Documented limitation; lifts when the
     TTFs are added to ``fonts/curated/``.
+
+    Also used for plain and letter text: the compiler resolves a
+    ``TextElement.font_style`` through this function (#63).
     """
     if not bold and not italic:
         return font_family
