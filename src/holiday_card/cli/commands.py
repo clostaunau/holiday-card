@@ -1048,6 +1048,12 @@ def _exit_for_card_error(prefix: str, e: Exception) -> NoReturn:
         if slotted:
             typer.echo(f"Templates with photo slots: {', '.join(slotted)}", err=True)
         raise typer.Exit(2) from e
+    from holiday_card.renderers.pdfx_preflight import PDFXConformanceError  # pikepdf: lazy
+
+    if isinstance(e, PDFXConformanceError):
+        # The self-check after PDF/X post-processing (#71): list every violation.
+        typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from e
     if isinstance(e, ImageSourceError | UnsupportedFeatureError | ValidationError | ValueError):
         # Bad or contradictory input (D4): the message is already user-facing.
         message = validation_message(e) if isinstance(e, ValidationError) else str(e)

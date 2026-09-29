@@ -296,6 +296,57 @@ def _refused(result: object, workdir: Path, *needles: str) -> None:
     assert _written(workdir) == []
 
 
+_TWINKLE_OVER_GRADIENT = """    shape_elements:
+      - type: rectangle
+        x: 0
+        y: 0
+        width: 4.25
+        height: 5.5
+        fill:
+          type: linear_gradient
+          angle: 90
+          stops:
+            - {position: 0, color: "#000033"}
+            - {position: 1, color: "#333366"}
+      - id: "twinkle"
+        type: star
+        center_x: 2.0
+        center_y: 1.0
+        outer_radius: 0.3
+        inner_radius: 0.15
+        fill_color: "#FFFFFF"
+        opacity: 0.6
+        z_index: 1
+    text_elements:
+      - id: "greeting"
+"""
+
+
+class TestTranslucencyOnPdfxTargets:
+    """PDF/X refuses translucency over a non-solid backdrop (#71, D10)."""
+
+    def test_moo_a6_refuses_a_translucent_star_over_a_gradient(
+        self, runner: CliRunner, workdir: Path, tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _custom_templates(tmp_path, monkeypatch, '    text_elements:\n      - id: "greeting"\n',
+                          _TWINKLE_OVER_GRADIENT)
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "--export-for", "moo-a6", "-o", "out"]
+        )
+        _refused(result, workdir, "Error: ", "christmas-classic/front/", "twinkle", "gradient")
+        assert "Traceback" not in result.output
+
+    @pytest.mark.usefixtures("workdir")
+    def test_letter_keeps_the_same_template_translucent(
+        self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _custom_templates(tmp_path, monkeypatch, '    text_elements:\n      - id: "greeting"\n',
+                          _TWINKLE_OVER_GRADIENT)
+        result = runner.invoke(app, ["create", "christmas-classic", "-o", "card.pdf"])
+        assert result.exit_code == 0, result.output
+
+
 class TestCreateFailsLoud:
     def test_unknown_theme(self, runner: CliRunner, workdir: Path) -> None:
         from holiday_card.core.themes import discover_themes

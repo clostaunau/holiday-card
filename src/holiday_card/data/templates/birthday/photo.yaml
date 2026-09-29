@@ -89,8 +89,7 @@ panels:
         center_x: 2.125
         center_y: 3.35
         radius: 1.58
-        fill_color: "#F06292"
-        opacity: 0.18
+        fill_color: "#FADCDB"
         z_index: 2
 
     image_elements:

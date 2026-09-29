@@ -64,8 +64,7 @@ panels:
         y2: 1.8
         x3: 3.65
         y3: 1.8
-        fill_color: "#A8B5A0"
-        opacity: 0.9
+        fill_color: "#B0BCA8"
         z_index: 3
 
       # Middle triangle (burgundy)
@@ -76,8 +75,7 @@ panels:
         y2: 2.6
         x3: 3.25
         y3: 2.6
-        fill_color: "#B85C50"
-        opacity: 0.85
+        fill_color: "#B76A5D"
         z_index: 4
 
       # Top triangle (teal accent)
@@ -88,8 +86,7 @@ panels:
         y2: 3.4
         x3: 2.85
         y3: 3.4
-        fill_color: "#76A5A0"
-        opacity: 0.8
+        fill_color: "#839993"
         z_index: 5
 
       # Star on top
@@ -108,24 +105,21 @@ panels:
         center_x: 1.5
         center_y: 2.3
         radius: 0.12
-        fill_color: "#D4AF37"
-        opacity: 0.9
+        fill_color: "#D0B042"
         z_index: 6
 
       - type: circle
         center_x: 2.7
         center_y: 2.5
         radius: 0.1
-        fill_color: "#B85C50"
-        opacity: 0.9
+        fill_color: "#B76659"
         z_index: 6
 
       - type: circle
         center_x: 2.0
         center_y: 3.2
         radius: 0.1
-        fill_color: "#76A5A0"
-        opacity: 0.9
+        fill_color: "#7C9F99"
         z_index: 6
 
       # Tree trunk

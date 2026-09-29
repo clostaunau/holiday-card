@@ -271,6 +271,7 @@ class ImageRef(_IRBase):
     width_px: int = Field(gt=0)
     height_px: int = Field(gt=0)
     preserve_aspect: bool = True
+    backdrop: RGBA | None = None
 
 
 # ---------------------------------------------------------------------------

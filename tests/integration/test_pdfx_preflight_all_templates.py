@@ -3,12 +3,11 @@
 Each template is rendered once with ``--export-for moo-a6`` (four panel PDFs)
 and checked three ways:
 
-* ``preflight_pdfx1a`` (the pikepdf rule checker). Font, metadata, box and
-  forbidden-feature rules must be clean. ``transparency.*`` and
-  ``colorspace.rgb_image`` are strict xfails for the templates that break
-  them today; #71 removes transparency and converts images, and each fix
-  flips its xfail to an XPASS failure until the set below is trimmed.
+* ``preflight_pdfx1a`` (the pikepdf rule checker) returns no violation:
+  fonts, metadata, boxes, forbidden features, transparency (flattened in
+  the compiler) and image colour spaces (converted to CMYK), #71.
 * poppler ``pdffonts``: every font row says ``emb yes``.
+* poppler ``pdfimages -list``: every image is ``cmyk``.
 * Ghostscript ``inkcov``: every file renders and reports four ink values
   per page.
 
@@ -36,32 +35,11 @@ from holiday_card.renderers.pdfx_preflight import (
 pytestmark = pytest.mark.pdfx
 
 TEMPLATE_IDS = sorted(t["id"] for t in discover_templates())
-
-# Observed 2026-09-29 on main @ eb1e7a3; both sets shrink to empty in #71.
-TRANSPARENCY_TEMPLATES = frozenset({
-    "birthday-balloons", "birthday-photo", "christmas-artist",
-    "christmas-family-photo", "christmas-geometric",
-    "christmas-holiday-masterpiece", "christmas-holly-wreath",
-    "christmas-metallic-ornaments", "christmas-photo-ornament",
-    "christmas-winter-sky", "hanukkah-menorah", "mothers-day",
-    "mothers-day-photo",
-})
-RGB_IMAGE_TEMPLATES = frozenset({
+# Templates whose front panel embeds a raster image (placeholder photo).
+IMAGE_TEMPLATES = (
     "birthday-photo", "christmas-family-photo", "christmas-holiday-masterpiece",
     "christmas-photo-ornament", "mothers-day-photo",
-})
-
-_DEFERRED_PREFIXES = ("transparency.", "colorspace.rgb_image")
-
-
-def _params(xfail_ids: frozenset[str]) -> list[object]:
-    return [
-        pytest.param(
-            tid,
-            marks=pytest.mark.xfail(strict=True, reason="#71") if tid in xfail_ids else (),
-        )
-        for tid in TEMPLATE_IDS
-    ]
+)
 
 
 @pytest.fixture(scope="module")
@@ -108,20 +86,16 @@ def test_every_shipped_template_is_covered() -> None:
 
 
 @pytest.mark.parametrize("template_id", TEMPLATE_IDS)
-def test_font_metadata_and_box_rules_pass(
+def test_preflight_is_clean(
     moo_outputs: dict[str, list[Path]],
     moo_violations: dict[str, list[tuple[str, PreflightViolation]]],
     template_id: str,
 ) -> None:
     assert len(moo_outputs[template_id]) == 4
-    found = [
-        (name, v) for name, v in moo_violations[template_id]
-        if not v.rule.startswith(_DEFERRED_PREFIXES)
-    ]
-    assert found == []
+    assert moo_violations[template_id] == []
 
 
-@pytest.mark.parametrize("template_id", _params(TRANSPARENCY_TEMPLATES))
+@pytest.mark.parametrize("template_id", TEMPLATE_IDS)
 def test_no_transparency(
     moo_violations: dict[str, list[tuple[str, PreflightViolation]]], template_id: str
 ) -> None:
@@ -130,7 +104,7 @@ def test_no_transparency(
     assert found == []
 
 
-@pytest.mark.parametrize("template_id", _params(RGB_IMAGE_TEMPLATES))
+@pytest.mark.parametrize("template_id", TEMPLATE_IDS)
 def test_no_rgb_images(
     moo_violations: dict[str, list[tuple[str, PreflightViolation]]], template_id: str
 ) -> None:
@@ -146,6 +120,27 @@ def test_pdffonts_reports_every_font_embedded(
     pdffonts = _require_tool("pdffonts")
     for pdf in moo_outputs[template_id]:
         assert _pdffonts_unembedded(pdffonts, pdf) == [], pdf.name
+
+
+def _pdfimages_colours(pdfimages: str, pdf: Path) -> list[str]:
+    """The ``color`` column of ``pdfimages -list``, one entry per image."""
+    result = subprocess.run([pdfimages, "-list", str(pdf)], capture_output=True,
+                            text=True, check=True)
+    lines = result.stdout.splitlines()
+    column = lines[0].split().index("color")
+    return [row.split()[column] for row in lines[2:]]
+
+
+@pytest.mark.parametrize("template_id", TEMPLATE_IDS)
+def test_pdfimages_reports_cmyk_for_every_image(
+    moo_outputs: dict[str, list[Path]], template_id: str
+) -> None:
+    pdfimages = _require_tool("pdfimages")
+    colours = [c for pdf in moo_outputs[template_id]
+               for c in _pdfimages_colours(pdfimages, pdf)]
+    assert all(c == "cmyk" for c in colours), colours
+    if template_id in IMAGE_TEMPLATES:
+        assert colours, "expected the placeholder photo"
 
 
 @pytest.mark.parametrize("template_id", TEMPLATE_IDS)
