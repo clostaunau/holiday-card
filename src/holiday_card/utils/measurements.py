@@ -34,7 +34,7 @@ FOLD_LINE_WIDTH: float = 0.5  # points
 CUT_LINE_WIDTH: float = 1.0  # points
 
 # Image quality
-MIN_DPI: int = 150  # minimum DPI for print quality (enforced by utils.validators)
+MIN_DPI: int = 150  # print minimum; core.images.MIN_PRINT_PPI is this value (#66)
 
 # Fold type dimensions (folded sizes in inches)
 HALF_FOLD_WIDTH: float = PAGE_HEIGHT / 2  # 5.5 inches when folded

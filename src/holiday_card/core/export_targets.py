@@ -92,6 +92,10 @@ class ExportTarget:
     # and forces PDF 1.4. Currently only ``"PDF/X-1a:2003"`` is
     # recognized; other levels raise at post-process time.
     pdfx: str | None = None
+    # Whether PDF output checks each placed image's effective PPI (#66):
+    # below 300 warns, below 150 refuses. Every current target is a print
+    # target; SVG / PNG output is never checked (screen formats).
+    checks_print_resolution: bool = True
 
 
 REGISTRY: dict[str, ExportTarget] = {

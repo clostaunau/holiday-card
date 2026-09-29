@@ -292,3 +292,129 @@ class TestCLIImageFillsPhotoSlot:
         assert by_slot["photo"] == str(red_jpg.resolve())
         assert by_slot["photo-2"] == str(blue.resolve())
         assert Path(by_slot["photo-3"]).name == "placeholder-photo.jpg"
+
+
+class TestPrintResolutionGate:
+    """#66 (D4, D8): print targets refuse images below 150 PPI and warn below
+    300; screen formats (SVG) skip the check."""
+
+    @staticmethod
+    def _jpg(tmp_path: Path, px: int) -> Path:
+        path = tmp_path / f"me-{px}.jpg"
+        Image.new("RGB", (px, px), (220, 0, 0)).save(path, quality=90)
+        return path
+
+    @staticmethod
+    def _invoke(*args: str):  # type: ignore[no-untyped-def]
+        from typer.testing import CliRunner
+
+        from holiday_card.cli.commands import app
+
+        return CliRunner().invoke(app, ["create", *args])
+
+    def test_400px_photo_to_pdf_exits_two_and_writes_nothing(self, tmp_path: Path) -> None:
+        out = tmp_path / "card.pdf"
+        result = self._invoke(
+            "christmas-family-photo", "-i", str(FIXTURE_IMAGE), "-o", str(out),
+        )
+        assert result.exit_code == 2, result.output + result.stderr
+        assert "PPI" in result.stderr
+        assert "sample_photo.jpg is 136 PPI" in result.stderr
+        assert "need ≥ 885×885 px" in result.stderr
+        assert not out.exists()
+
+    def test_allow_low_res_renders_with_one_warning(self, tmp_path: Path) -> None:
+        out = tmp_path / "card.pdf"
+        result = self._invoke(
+            "christmas-family-photo", "-i", str(FIXTURE_IMAGE), "-o", str(out),
+            "--allow-low-res",
+        )
+        assert result.exit_code == 0, result.output + result.stderr
+        assert out.exists()
+        warnings = [ln for ln in result.stderr.splitlines() if ln.startswith("Warning:")]
+        assert warnings == [
+            "Warning: sample_photo.jpg is 136 PPI at its placed size "
+            "(300 recommended; need ≥ 885×885 px)"
+        ]
+
+    def test_700px_photo_warns_and_renders(self, tmp_path: Path) -> None:
+        out = tmp_path / "card.pdf"
+        result = self._invoke(
+            "christmas-family-photo", "-i", str(self._jpg(tmp_path, 700)), "-o", str(out),
+        )
+        assert result.exit_code == 0, result.output + result.stderr
+        assert out.exists()
+        assert "Warning: me-700.jpg is 237 PPI at its placed size" in result.stderr
+
+    def test_svg_skips_the_check(self, tmp_path: Path) -> None:
+        out = tmp_path / "card.svg"
+        result = self._invoke(
+            "christmas-family-photo", "-i", str(FIXTURE_IMAGE), "-o", str(out),
+        )
+        assert result.exit_code == 0, result.output + result.stderr
+        assert "PPI" not in result.stderr
+        assert out.exists()
+
+    def test_moo_a6_with_400px_photo_exits_two(self, tmp_path: Path) -> None:
+        out = tmp_path / "moo"
+        result = self._invoke(
+            "christmas-family-photo", "-i", str(FIXTURE_IMAGE), "-o", str(out),
+            "--export-for", "moo-a6",
+        )
+        assert result.exit_code == 2, result.output + result.stderr
+        assert "PPI" in result.stderr
+        assert not out.exists()
+
+    def test_moo_a6_counts_the_fill_scale(self, tmp_path: Path) -> None:
+        # 2.95" x 1.0600 (#73 fill) = 3.127": 400 px -> 128 PPI, not 136.
+        result = self._invoke(
+            "christmas-family-photo", "-i", str(FIXTURE_IMAGE),
+            "-o", str(tmp_path / "moo"), "--export-for", "moo-a6", "--allow-low-res",
+        )
+        assert result.exit_code == 0, result.output + result.stderr
+        assert "sample_photo.jpg is 128 PPI" in result.stderr
+
+    def test_placeholder_pdf_has_empty_stderr(self, tmp_path: Path) -> None:
+        out = tmp_path / "card.pdf"
+        result = self._invoke("christmas-family-photo", "-o", str(out))
+        assert result.exit_code == 0, result.output + result.stderr
+        assert result.stderr == ""
+
+    def test_generator_raises_before_writing(self, tmp_path: Path) -> None:
+        from holiday_card.core.generators import CardGenerator
+        from holiday_card.core.images import LowResolutionImageError
+
+        gen = CardGenerator()
+        card = gen.create_card(template_id="christmas-family-photo", photos=[FIXTURE_IMAGE])
+        out = tmp_path / "sub" / "card.pdf"
+        with pytest.raises(LowResolutionImageError) as exc:
+            gen.generate(card, out)
+        assert [f.level for f in exc.value.findings] == ["fail"]
+        assert not out.parent.exists()
+
+    def test_generator_allow_low_res_warns(self, tmp_path: Path) -> None:
+        from holiday_card.core.generators import CardGenerator
+        from holiday_card.core.images import LowResolutionWarning
+
+        gen = CardGenerator()
+        card = gen.create_card(template_id="christmas-family-photo", photos=[FIXTURE_IMAGE])
+        with pytest.warns(LowResolutionWarning, match="136 PPI"):
+            gen.generate(card, tmp_path / "card.pdf", allow_low_res=True)
+
+    def test_target_can_opt_out(self, tmp_path: Path) -> None:
+        from dataclasses import replace
+
+        from holiday_card.core.export_targets import get_target
+        from holiday_card.core.generators import CardGenerator
+
+        gen = CardGenerator()
+        card = gen.create_card(template_id="christmas-family-photo", photos=[FIXTURE_IMAGE])
+        target = replace(get_target("letter"), checks_print_resolution=False)
+        (out,) = gen.generate(card, tmp_path / "card.pdf", target)
+        assert out.exists()
+
+
+def test_every_current_target_is_a_print_target() -> None:
+    from holiday_card.core.export_targets import REGISTRY
+
+    assert all(t.checks_print_resolution for t in REGISTRY.values())

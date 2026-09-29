@@ -37,7 +37,7 @@ from holiday_card.core.export_targets import (
     get_target,
 )
 from holiday_card.core.generators import CardGenerator, PhotoSlotError
-from holiday_card.core.images import ImageSourceError
+from holiday_card.core.images import ImageSourceError, LowResolutionWarning
 from holiday_card.core.models import Card, OccasionType
 from holiday_card.core.templates import (
     TemplateLoadError,
@@ -443,6 +443,15 @@ def create(
             "and the guide would print on the product)."
         ),
     ),
+    allow_low_res: bool = typer.Option(
+        False,
+        "--allow-low-res",
+        help=(
+            "Render PDF output even when a photo is below the 150 PPI print "
+            "minimum (it is reported as a warning instead). For proofs only: "
+            "the print will be soft. 300 PPI is recommended."
+        ),
+    ),
 ) -> None:
     """Create a new card from a template.
 
@@ -478,6 +487,7 @@ def create(
             export_for=export_for,
             fold_marks=with_fold_marks,
             panel_fit=panel_fit,
+            allow_low_res=allow_low_res,
         )
         if debug_emit_ir:
             _emit_ir_debug(request)
@@ -493,11 +503,13 @@ def create(
         generator = CardGenerator(renderer=_make_renderer(plan.output_format))
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always", SafeZoneWarning)
+            warnings.simplefilter("always", LowResolutionWarning)
             written = generator.generate(
                 card, plan.path, target, emit_fold_lines=request.fold_marks,
+                allow_low_res=request.allow_low_res,
             )
         for warning in caught:
-            if issubclass(warning.category, SafeZoneWarning):
+            if issubclass(warning.category, SafeZoneWarning | LowResolutionWarning):
                 typer.secho(f"Warning: {warning.message}", fg=typer.colors.YELLOW, err=True)
             else:
                 warnings.showwarning(

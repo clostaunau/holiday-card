@@ -194,3 +194,47 @@ class TestThemeDiscovery:
         assert "id" in theme
         assert "name" in theme
         assert "occasion" in theme
+
+
+def _shipped_template_ids() -> list[str]:
+    from holiday_card.core.templates import discover_templates
+
+    return sorted(t["id"] for t in discover_templates())
+
+
+class TestShippedTemplatesPrintResolution:
+    """#66: every shipped template (placeholder photos included) prints at
+    ≥ 300 PPI on every print target, so `create` to PDF has no findings."""
+
+    @pytest.mark.parametrize("template_id", _shipped_template_ids())
+    @pytest.mark.parametrize("target_name", ["letter", "per-panel-pdf", "moo-a6"])
+    def test_no_resolution_findings(self, template_id: str, target_name: str) -> None:
+        from holiday_card.core.compiler import CompileContext, compile_card
+        from holiday_card.core.export_targets import get_target
+        from holiday_card.core.images import check_print_resolution
+        from holiday_card.core.per_panel import build_per_panel_card, build_per_panel_context
+
+        card = CardGenerator().create_card(template_id=template_id)
+        target = get_target(target_name)
+        if target.layout == "imposition":
+            assert target.geometry is not None
+            commands = compile_card(card, CompileContext(geometry=target.geometry))
+        else:
+            commands = [
+                cmd
+                for panel in card.panels
+                for cmd in compile_card(
+                    build_per_panel_card(card, panel), build_per_panel_context(panel, target),
+                )
+            ]
+        assert check_print_resolution(commands) == []
+
+    def test_placeholder_photo_card_writes_pdf_without_warnings(self, tmp_path: Path) -> None:
+        import warnings
+
+        generator = CardGenerator()
+        card = generator.create_card(template_id="christmas-photo-ornament")
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            (out,) = generator.generate(card, tmp_path / "c.pdf")
+        assert out.exists()

@@ -4,6 +4,7 @@ This module provides the CardGenerator class that coordinates
 template loading, content customization, and PDF rendering.
 """
 
+import warnings
 from collections.abc import Sequence
 from datetime import datetime
 
@@ -12,7 +13,13 @@ from pathlib import Path
 
 from holiday_card.core.compiler import compile_card
 from holiday_card.core.export_targets import ExportTarget, get_target
-from holiday_card.core.images import probe_image
+from holiday_card.core.images import (
+    LowResolutionImageError,
+    LowResolutionWarning,
+    check_print_resolution,
+    describe_finding,
+    probe_image,
+)
 from holiday_card.core.letter import LetterContent
 from holiday_card.core.markdown import RichTextContent
 from holiday_card.core.models import (
@@ -112,6 +119,21 @@ def _find_or_add_inside_target(card: Card) -> TextElement:
 
 class PhotoSlotError(ValueError):
     """The photos given don't fit the template's photo slots."""
+
+
+def _enforce_print_resolution(
+    commands: Sequence[RenderCommand], *, allow_low_res: bool,
+) -> None:
+    """Refuse (or, with ``allow_low_res``, warn about) images below the print
+    minimum; warn about images below the recommended PPI (#66, D4)."""
+    # One line per distinct image and size: a photo repeated across slots or
+    # per-panel files is reported once.
+    findings = list({describe_finding(f): f for f in check_print_resolution(commands)}.values())
+    failures = [f for f in findings if f.level == "fail"]
+    if failures and not allow_low_res:
+        raise LowResolutionImageError(failures)
+    for finding in findings:
+        warnings.warn(describe_finding(finding), LowResolutionWarning, stacklevel=3)
 
 
 def _slot_name(k: int) -> str:
@@ -400,6 +422,7 @@ class CardGenerator:
         target: ExportTarget | str = "letter",
         *,
         emit_fold_lines: bool | None = None,
+        allow_low_res: bool = False,
     ) -> list[Path]:
         """Render a card to one or more files based on the export target.
 
@@ -418,6 +441,13 @@ class CardGenerator:
         as ``--with-fold-marks`` / ``--no-fold-marks``. None means
         "use the target default."
 
+        PDF output for a target with ``checks_print_resolution`` checks
+        every placed image's effective PPI on the compiled IR (#66) before
+        anything is written: below ``MIN_PRINT_PPI`` raises
+        ``LowResolutionImageError`` (``allow_low_res`` downgrades it to a
+        warning), below ``RECOMMENDED_PRINT_PPI`` emits a
+        ``LowResolutionWarning`` via :mod:`warnings`.
+
         Returns the list of written paths, in panel-iteration order.
         Single-file mode returns a one-element list for uniform handling
         by callers.
@@ -430,10 +460,19 @@ class CardGenerator:
             else target.fold_marks_default
         )
         renderer = self._renderer_for(target)
+        check_ppi = (
+            target.checks_print_resolution and renderer.file_extension == ".pdf"
+        )
         if target.layout == "imposition":
-            return [self._generate_imposition(card, output, target, fold_marks, renderer)]
+            return [self._generate_imposition(
+                card, output, target, fold_marks, renderer,
+                check_ppi=check_ppi, allow_low_res=allow_low_res,
+            )]
         if target.layout == "per-panel":
-            return self._generate_per_panel(card, output, target, fold_marks, renderer)
+            return self._generate_per_panel(
+                card, output, target, fold_marks, renderer,
+                check_ppi=check_ppi, allow_low_res=allow_low_res,
+            )
         raise ValueError(f"unknown layout {target.layout!r} on target {target.name!r}")
 
     def _renderer_for(self, target: ExportTarget) -> Renderer:
@@ -481,6 +520,9 @@ class CardGenerator:
         target: ExportTarget,
         emit_fold_lines: bool,
         renderer: Renderer,
+        *,
+        check_ppi: bool,
+        allow_low_res: bool,
     ) -> Path:
         from holiday_card.core.compiler import CompileContext  # local: avoid top-level cycle risk
 
@@ -494,6 +536,8 @@ class CardGenerator:
             flatten_transparency=target.pdfx is not None,
         )
         commands = compile_card(card, ctx)
+        if check_ppi:
+            _enforce_print_resolution(commands, allow_low_res=allow_low_res)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         renderer.render(commands, output_path)
         self._maybe_apply_pdfx(output_path, target)
@@ -506,6 +550,9 @@ class CardGenerator:
         target: ExportTarget,
         emit_fold_lines: bool,
         renderer: Renderer,
+        *,
+        check_ppi: bool,
+        allow_low_res: bool,
     ) -> list[Path]:
         ext = renderer.file_extension  # ".pdf" / ".svg" / ".png"
         # Compile every panel before writing anything, so a compile error
@@ -522,6 +569,11 @@ class CardGenerator:
                 ctx = replace(ctx, emit_fold_lines=True)
             stem = _PER_PANEL_FILENAMES.get(panel.position.value, panel.position.value)
             compiled.append((stem, compile_card(per_card, ctx)))
+        if check_ppi:
+            _enforce_print_resolution(
+                [cmd for _, commands in compiled for cmd in commands],
+                allow_low_res=allow_low_res,
+            )
         output_dir.mkdir(parents=True, exist_ok=True)
         written: list[Path] = []
         for stem, commands in compiled:
