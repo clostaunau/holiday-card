@@ -92,7 +92,7 @@ src/holiday_card/
     card_request.py     # CardRequest + build_card / plan_output: the ONE owner of CLI precedence (D15)
     imposition.py       # letter_slot / impose_letter / panel_placements: where panels land on the sheet (D6, #58)
     errors.py           # UnsupportedFeatureError (re-exported by compiler.py)
-    color_management.py # sRGB→CMYK conversion + ICC profile path resolution
+    color_management.py # CMYKConverter (ICC sRGB→GRACoL2013, 300% ink cap, black rules) + ICC path resolution
     data_paths.py       # data_path(kind): the ONE resolver for bundled data (+ env overrides)
     ai_rails.py         # L3 hard category rails (occasion + prompt blocklists)
     ai_provenance.py    # L3 LicenseRecord sidecar + first-use consent gate
@@ -299,9 +299,10 @@ The pattern that worked three times in PRs #7, #11, #12:
    `preview` does for PNG).
 
 CMYK output is already shipped as a backend mode rather than a separate
-renderer: `IRReportLabRenderer(color_space="cmyk")` plus the pikepdf-based
-`renderers/pdfx_postprocess.py` produce DeviceCMYK PDF/X-1a:2003 when
-`--export-for moo-a6` is used. Beyond the panel's roadmap, speculative
+renderer: `IRReportLabRenderer(color_space="cmyk")` (every colour through
+one ICC `CMYKConverter`, with a text / stroke / fill role) plus the
+pikepdf-based `renderers/pdfx_postprocess.py` produce DeviceCMYK
+PDF/X-1a:2003 when `--export-for moo-a6` is used. Beyond the panel's roadmap, speculative
 future backends: HTML/Canvas streaming over a websocket for live
 template editing; a JSON "render plan" backend for downstream tooling.
 
@@ -330,6 +331,49 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — ICC-managed sRGB → CMYK with a 300% ink cap and
+  press black rules (expert-panel §P10 / D9, issue #70)**: `moo-a6`
+  wrote DeviceCMYK from the naive "black removal" formula, and a RIP
+  prints DeviceCMYK as-is (the OutputIntent only names the condition),
+  so pure blue printed purple (100/100/0/0), the christmas-classic red
+  brick-orange (0/87.5/87.5/20) and large blacks a washed-out K-only
+  grey. `rgb_to_cmyk` is deleted (D17). New `color_management.
+  CMYKConverter(profile_path=None, *, total_ink_limit=3.00,
+  rich_black=(.6,.4,.4,1), rich_black_min_area_pt2=5184)`:
+  `convert(r, g, b, *, role="fill"|"stroke"|"text", area_pt2=None)`
+  sends pure black text/strokes to `0 0 0 1`, a pure-black fill whose
+  bbox is ≥ 1 in² to rich black and a smaller or area-less fill to K-only;
+  every other colour is quantised to 8 bits and converted by one
+  LittleCMS transform (Pillow `ImageCms`, sRGB → bundled GRACoL2013,
+  relative colorimetric + BPC; `lru_cache` per triplet), then capped: if
+  C+M+Y+K > limit, C/M/Y scale by `(limit − K)/(C+M+Y)` and K stays.
+  `convert_image(img)` (the #71 seam) applies transform + cap per pixel,
+  honours an embedded `icc_profile` and returns mode `CMYK`; black rules
+  don't apply to rasters. A missing profile raises
+  `ICCProfileNotFoundError`, an unreadable or non-CMYK one `ValueError`
+  (D4, no naive fallback). `IRReportLabRenderer(color_space="cmyk")`
+  shares one process-wide converter (Pillow's `ImageCmsTransform.apply`
+  re-serialises the 3.4 MB output profile on every call, ~12 ms, so the
+  memo must outlive a single panel); `_set_fill` takes `role` /
+  `area_pt2` (`_draw_shape` passes the `_shape_bbox` area, paths
+  `None`), `_draw_text` passes `role="text"`, `_set_stroke` and fold
+  lines `role="stroke"`, and the gradient / pattern helpers share
+  `_rl_color` (gradient stops and the pattern background carry the
+  bbox area; pattern tiles count as small). `_draw_image` and alpha are
+  untouched (#71). Result: classic front bg `0 .988 .925 .122 k`, blue
+  100/85.5/0/0, `#0A0A0A` 77.3/69.5/59.0/94.1 (TAC exactly 300). The
+  sRGB `letter` path is byte-identical: its content streams match
+  `tests/integration/__golden__/letter_content_sha256.json`, captured
+  before the change (regenerate only on purpose with
+  `HOLIDAY_CARD_REGEN_LETTER_CONTENT_GOLDEN=1`). Snapshots and visual
+  baselines unchanged. Guarded by `tests/unit/test_color_management.py`
+  (the issue's ±2-point table, a 9×9×9 TAC grid, roles and the 5184 pt²
+  boundary, profile errors, `convert_image` with a Display-P3 tag),
+  `tests/integration/test_cmyk_operators.py` (per-role operators,
+  gradient `C0`, pattern tiles, fold line, TAC ≤ 3.0 for every `k`/`K`
+  in all 21 templates' moo-a6 output, the sRGB golden) and
+  `TestPdfxMooA6::test_front_background_is_icc_converted`.
 
 - **2026-09-29 — PDF/X-1a: embedded initial font, correct Info/XMP
   identification, and a rule preflight gated in CI (expert-panel §P9 /
@@ -996,8 +1040,8 @@ template editing; a JSON "render plan" backend for downstream tooling.
   declaring PDF/X-1a:2003 (it wrongly said `GTS_PDFXVersion=
   "PDF/X-1:2001"` until #69), `/Info /Trapped` set to
   `/False`, and the PDF header forced to 1.4. Implementation:
-  `core/color_management.py` (naive sRGB→CMYK conversion + ICC
-  path resolution), `renderers/pdfx_postprocess.py` (pikepdf-based
+  `core/color_management.py` (naive sRGB→CMYK conversion, replaced
+  by the ICC `CMYKConverter` in #70, + ICC path resolution), `renderers/pdfx_postprocess.py` (pikepdf-based
   OutputIntent + XMP injection), `IRReportLabRenderer(color_space=
   "cmyk")` for the CMYK emission path. `ExportTarget` gained
   `color_space` + `pdfx` fields; the generator dispatches a

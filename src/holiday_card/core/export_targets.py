@@ -66,9 +66,10 @@ class ExportTarget:
     # Color space for the emitted PDF stream. ``srgb`` is today's
     # default and what home-printer / browser previews expect.
     # ``cmyk`` switches the PDF backend to emit DeviceCMYK color
-    # operators (k/K) using a deterministic sRGB→CMYK conversion at
-    # render time; perceptual interpretation is deferred to the
-    # OutputIntent ICC profile attached by the PDF/X post-processor.
+    # operators (k/K), converted at render time by
+    # ``color_management.CMYKConverter`` (ICC, GRACoL2013, rel. col. +
+    # BPC, 300% ink cap). Those numbers are what prints: the PDF/X
+    # OutputIntent only names the intended condition.
     # Non-PDF backends (SVG/PNG) ignore this field today.
     color_space: Literal["srgb", "cmyk"] = "srgb"
     # PDF/X conformance level to apply via post-processing. ``None``
