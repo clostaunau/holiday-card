@@ -1,10 +1,14 @@
 """Template loading and discovery for holiday cards.
 
-This module handles loading YAML template files and discovering
-available templates in the templates directory.
+This module handles loading YAML template files and discovering the
+templates on the layered search path (:func:`template_search_path`):
+``HOLIDAY_CARD_TEMPLATES`` entries, then the XDG user dir, then the
+bundled templates. :func:`resolve_template` is the one resolver for a
+template reference, whether an id or a file path (#79).
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -32,49 +36,97 @@ class TemplateLoadError(Exception):
     pass
 
 
-def get_templates_dir() -> Path:
-    """Return the templates directory (bundled, or ``HOLIDAY_CARD_TEMPLATES``)."""
-    return data_path("templates")
+TEMPLATES_ENV_VAR = "HOLIDAY_CARD_TEMPLATES"
+_TEMPLATE_SUFFIXES = (".yaml", ".yml")
+
+
+def user_templates_dir() -> Path:
+    """Return the user template layer: ``$XDG_DATA_HOME/holiday-card/templates``.
+
+    ``XDG_DATA_HOME`` unset or empty falls back to ``~/.local/share``.
+    """
+    base = os.environ.get("XDG_DATA_HOME")
+    root = Path(base) if base else Path.home() / ".local" / "share"
+    return root / "holiday-card" / "templates"
+
+
+def template_search_path() -> list[tuple[str, Path]]:
+    """Ordered (source, dir) layers; earlier wins. Sources: "env", "user", "builtin".
+
+    Each ``os.pathsep``-separated entry of ``HOLIDAY_CARD_TEMPLATES`` comes
+    first, then :func:`user_templates_dir`, then the bundled templates. Like
+    ``PATH``, a layer that doesn't exist is skipped by the searches.
+    """
+    layers: list[tuple[str, Path]] = [
+        ("env", Path(entry).expanduser())
+        for entry in os.environ.get(TEMPLATES_ENV_VAR, "").split(os.pathsep)
+        if entry
+    ]
+    layers.append(("user", user_templates_dir()))
+    layers.append(("builtin", data_path("templates")))
+    return layers
+
+
+def _layers(templates_dir: Path | None) -> list[tuple[str, Path]]:
+    # An explicit dir (tests, the microsite) is the only layer searched.
+    return template_search_path() if templates_dir is None else [("dir", templates_dir)]
+
+
+def _layer_files(directory: Path) -> list[Path]:
+    # Any depth, so a user layer needs no occasion subfolder.
+    if not directory.is_dir():
+        return []
+    return sorted(
+        p for p in directory.rglob("*") if p.suffix in _TEMPLATE_SUFFIXES and p.is_file()
+    )
+
+
+def _read_mapping(path: Path) -> dict[str, Any] | None:
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f)
+    except (yaml.YAMLError, OSError) as e:
+        logger.warning(f"Skipping invalid template {path}: {e}")
+        return None
+    if not isinstance(data, dict):
+        logger.warning(f"Skipping invalid template {path}: not a YAML mapping")
+        return None
+    return data
 
 
 def discover_templates(templates_dir: Path | None = None) -> list[dict[str, str]]:
-    """Discover all available templates.
+    """Discover the templates on the search path.
 
     Args:
-        templates_dir: Path to templates directory. Uses default if None.
+        templates_dir: Search only this directory. Uses
+            :func:`template_search_path` if None.
 
     Returns:
-        List of template info dicts with 'id', 'name', 'occasion', 'path'.
+        One info dict per template id with 'id', 'name', 'occasion' (from the
+        YAML), 'fold_type', 'description', 'path' and 'source' (the layer it
+        came from). A template that shadows the same id in a later layer is
+        listed once, with 'shadows' naming that layer.
     """
-    if templates_dir is None:
-        templates_dir = get_templates_dir()
-
-    if not templates_dir.exists():
-        return []
-
-    templates = []
-
-    # Scan for YAML files in occasion subdirectories
-    for occasion_dir in templates_dir.iterdir():
-        if occasion_dir.is_dir():
-            occasion = occasion_dir.name
-            for template_file in occasion_dir.glob("*.yaml"):
-                try:
-                    with open(template_file) as f:
-                        data = yaml.safe_load(f)
-                        templates.append({
-                            "id": data.get("id", template_file.stem),
-                            "name": data.get("name", template_file.stem),
-                            "occasion": occasion,
-                            "fold_type": data.get("fold_type", "half_fold"),
-                            "description": data.get("description", ""),
-                            "path": str(template_file),
-                        })
-                except (yaml.YAMLError, KeyError, TypeError, OSError) as e:
-                    logger.warning(f"Skipping invalid template {template_file}: {e}")
-                    continue
-
-    return templates
+    found: dict[str, dict[str, str]] = {}
+    for source, directory in _layers(templates_dir):
+        for template_file in _layer_files(directory):
+            data = _read_mapping(template_file)
+            if data is None:
+                continue
+            template_id = str(data.get("id", template_file.stem))
+            if template_id in found:
+                found[template_id].setdefault("shadows", source)
+                continue
+            found[template_id] = {
+                "id": template_id,
+                "name": str(data.get("name", template_file.stem)),
+                "occasion": str(data.get("occasion", "")),
+                "fold_type": str(data.get("fold_type", "half_fold")),
+                "description": str(data.get("description", "")),
+                "path": str(template_file),
+                "source": source,
+            }
+    return list(found.values())
 
 
 def templates_with_photo_slots(templates_dir: Path | None = None) -> list[str]:
@@ -95,53 +147,55 @@ def templates_with_photo_slots(templates_dir: Path | None = None) -> list[str]:
     return sorted(ids)
 
 
-def load_template(template_id: str, templates_dir: Path | None = None) -> Template:
-    """Load a template by ID.
+def is_template_path(ref: str) -> bool:
+    """Whether ``ref`` names a file rather than a template id.
 
-    Args:
-        template_id: Template identifier (e.g., 'christmas-classic').
-        templates_dir: Path to templates directory. Uses default if None.
+    True when it ends with ``.yaml``/``.yml``, contains a path separator, or
+    starts with ``.`` or ``~``.
+    """
+    return (
+        ref.endswith(_TEMPLATE_SUFFIXES)
+        or os.sep in ref
+        or "/" in ref
+        or ref.startswith((".", "~"))
+    )
 
-    Returns:
-        Loaded Template object.
+
+def resolve_template(
+    ref: str, *, templates_dir: Path | None = None
+) -> tuple[Template, Path]:
+    """Path-like ref (endswith .yaml/.yml, or contains os.sep / '/', or starts with '.' or '~')
+    → load_template_from_file(expanduser(ref)); missing file → TemplateNotFoundError naming the path.
+    Otherwise → search template_search_path() by id, then by filename stem.
+
+    ``templates_dir`` replaces the search path with that one directory. The
+    returned path is the absolute path of the loaded file.
 
     Raises:
-        TemplateNotFoundError: If template not found.
-        TemplateLoadError: If template fails to load.
+        TemplateNotFoundError: no file at the path, or no layer has the id.
+        TemplateLoadError: the file was found but doesn't load.
     """
-    if templates_dir is None:
-        templates_dir = get_templates_dir()
+    if is_template_path(ref):
+        path = Path(ref).expanduser()
+        if not path.is_file():
+            raise TemplateNotFoundError(f"Template not found: {ref}")
+        path = path.resolve()
+        return load_template_from_file(path), path
 
-    # Search for template file
-    template_path = None
-    for occasion_dir in templates_dir.iterdir():
-        if occasion_dir.is_dir():
-            for yaml_file in occasion_dir.glob("*.yaml"):
-                try:
-                    with open(yaml_file) as f:
-                        data = yaml.safe_load(f)
-                        if data.get("id") == template_id:
-                            template_path = yaml_file
-                            break
-                except (yaml.YAMLError, OSError) as e:
-                    logger.debug(f"Skipping {yaml_file} during search: {e}")
-                    continue
-        if template_path:
-            break
+    files = [f for _, directory in _layers(templates_dir) for f in _layer_files(directory)]
+    for template_file in files:
+        data = _read_mapping(template_file)
+        if data is not None and data.get("id") == ref:
+            return load_template_from_file(template_file), template_file
+    for template_file in files:
+        if template_file.stem == ref:
+            return load_template_from_file(template_file), template_file
+    raise TemplateNotFoundError(f"Template not found: {ref}")
 
-    # Also check by filename
-    if not template_path:
-        for occasion_dir in templates_dir.iterdir():
-            if occasion_dir.is_dir():
-                possible_path = occasion_dir / f"{template_id}.yaml"
-                if possible_path.exists():
-                    template_path = possible_path
-                    break
 
-    if not template_path:
-        raise TemplateNotFoundError(f"Template not found: {template_id}")
-
-    return load_template_from_file(template_path)
+def load_template(template_id: str, templates_dir: Path | None = None) -> Template:
+    """Load a template by id (or path); see :func:`resolve_template`."""
+    return resolve_template(template_id, templates_dir=templates_dir)[0]
 
 
 def load_template_from_file(path: Path) -> Template:

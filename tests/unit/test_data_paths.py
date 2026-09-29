@@ -20,12 +20,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_DATA = Path(holiday_card.__file__).parent / "data"
 
 ALL_KINDS = ("templates", "themes", "sentiments", "fonts", "icc")
-OVERRIDABLE = ("templates", "themes", "sentiments")
+OVERRIDABLE = ("themes", "sentiments")
 
 
 @pytest.fixture(autouse=True)
 def _clear_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
-    for var in ENV_OVERRIDES.values():
+    for var in (*ENV_OVERRIDES.values(), "HOLIDAY_CARD_TEMPLATES"):
         monkeypatch.delenv(var, raising=False)
 
 
@@ -36,9 +36,9 @@ def test_default_resolves_under_package_data(kind: str) -> None:
     assert path.is_dir()
 
 
-def test_env_overrides_cover_exactly_the_three_catalogs() -> None:
+def test_env_overrides_cover_exactly_themes_and_sentiments() -> None:
+    # HOLIDAY_CARD_TEMPLATES is a search-path layer, not a replacement (#79).
     assert dict(ENV_OVERRIDES) == {
-        "templates": "HOLIDAY_CARD_TEMPLATES",
         "themes": "HOLIDAY_CARD_THEMES",
         "sentiments": "HOLIDAY_CARD_SENTIMENTS",
     }
@@ -56,9 +56,16 @@ def test_env_override_expands_user(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
-    (tmp_path / "tpl").mkdir()
-    monkeypatch.setenv("HOLIDAY_CARD_TEMPLATES", "~/tpl")
-    assert data_path("templates") == tmp_path / "tpl"
+    (tmp_path / "th").mkdir()
+    monkeypatch.setenv("HOLIDAY_CARD_THEMES", "~/th")
+    assert data_path("themes") == tmp_path / "th"
+
+
+def test_templates_env_var_does_not_replace_the_bundled_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOLIDAY_CARD_TEMPLATES", str(tmp_path))
+    assert data_path("templates") == PACKAGE_DATA / "templates"
 
 
 def test_empty_env_override_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,11 +1,21 @@
 """Shared pytest fixtures for holiday card tests."""
 
+import os
+import tempfile
 from collections.abc import Generator
 from pathlib import Path
 
 import pytest
 
 from holiday_card.core.data_paths import data_path
+
+
+def pytest_configure(config: pytest.Config) -> None:  # noqa: ARG001 (hook signature)
+    """Keep the suite off the real user template layer (#79).
+
+    Set before collection, since some modules discover templates at import.
+    """
+    os.environ["XDG_DATA_HOME"] = tempfile.mkdtemp(prefix="holiday-card-xdg-")
 
 
 @pytest.fixture

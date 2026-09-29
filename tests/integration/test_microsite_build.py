@@ -44,9 +44,24 @@ def built_site(tmp_path_factory: pytest.TempPathFactory):
     """Run the build once per test module; reuse for individual assertions."""
     output = tmp_path_factory.mktemp("microsite")
     module = _load_build_module()
-    # Use a small DPI to keep the build fast; the structural assertions
-    # don't care about thumbnail resolution.
-    cards = module.build(output, dpi=72)
+    # A user and an env template are on the search path (#79); the gallery
+    # must still show only the built-ins.
+    layers = tmp_path_factory.mktemp("layers")
+    classic = (REPO_ROOT / "src/holiday_card/data/templates/christmas/classic.yaml").read_text()
+    for layer, template_id in (
+        ("xdg/holiday-card/templates", "user-only-card"),
+        ("env", "env-only-card"),
+    ):
+        (layers / layer).mkdir(parents=True)
+        (layers / layer / "t.yaml").write_text(
+            classic.replace('id: "christmas-classic"', f'id: "{template_id}"', 1)
+        )
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("XDG_DATA_HOME", str(layers / "xdg"))
+        mp.setenv("HOLIDAY_CARD_TEMPLATES", str(layers / "env"))
+        # Use a small DPI to keep the build fast; the structural assertions
+        # don't care about thumbnail resolution.
+        cards = module.build(output, dpi=72)
     return output, cards
 
 
@@ -57,6 +72,14 @@ class TestBuildShape:
         assert (output / "style.css").is_file()
         # Should produce all 14 templates currently in the repo.
         assert len(cards) >= 14, f"Expected 14+ templates rendered, got {len(cards)}"
+
+    def test_gallery_shows_only_the_builtin_templates(self, built_site) -> None:
+        from holiday_card.core.data_paths import data_path
+        from holiday_card.core.templates import discover_templates
+
+        _, cards = built_site
+        builtin = {t["id"] for t in discover_templates(data_path("templates"))}
+        assert {c.id for c in cards} == builtin
 
     def test_per_template_pages_exist(self, built_site) -> None:
         output, cards = built_site

@@ -42,10 +42,11 @@ _REPO = _THIS.parent.parent
 sys.path.insert(0, str(_REPO / "src"))
 
 from holiday_card.core.compiler import compile_card  # noqa: E402
+from holiday_card.core.data_paths import data_path  # noqa: E402
 from holiday_card.core.generators import CardGenerator  # noqa: E402
 from holiday_card.core.templates import (  # noqa: E402
     discover_templates,
-    load_template,
+    resolve_template,
 )
 from holiday_card.renderers.png_backend import PNGRenderer  # noqa: E402
 
@@ -105,17 +106,20 @@ def build(output_dir: Path, dpi: int = 144) -> list[TemplateCard]:
     (output_dir / "thumbs").mkdir(parents=True, exist_ok=True)
 
     cards: list[TemplateCard] = []
-    discovered = sorted(discover_templates(), key=lambda d: d["id"])
+    # The gallery shows what ships: only the bundled layer, never a user's
+    # or HOLIDAY_CARD_TEMPLATES' templates (#79).
+    builtin = data_path("templates")
+    discovered = sorted(discover_templates(builtin), key=lambda d: d["id"])
     for entry in discovered:
         template_id = entry["id"]
         try:
-            tmpl = load_template(template_id)
+            tmpl, _ = resolve_template(template_id, templates_dir=builtin)
         except Exception as e:  # pragma: no cover — defensive
             print(f"skip {template_id!r}: load failed ({e})", file=sys.stderr)
             continue
         thumb_rel = f"thumbs/{template_id}.png"
         try:
-            _render_thumbnail(template_id, output_dir / thumb_rel, dpi)
+            _render_thumbnail(template_id, output_dir / thumb_rel, dpi, builtin)
         except Exception as e:
             print(
                 f"skip {template_id!r}: thumbnail render failed ({e})",
@@ -139,7 +143,9 @@ def build(output_dir: Path, dpi: int = 144) -> list[TemplateCard]:
     return cards
 
 
-def _render_thumbnail(template_id: str, out_path: Path, dpi: int) -> None:
+def _render_thumbnail(
+    template_id: str, out_path: Path, dpi: int, templates_dir: Path
+) -> None:
     """Render the template's full sheet as a PNG thumbnail.
 
     Uses the default letter export target so the thumbnail shows the
@@ -148,7 +154,7 @@ def _render_thumbnail(template_id: str, out_path: Path, dpi: int) -> None:
     (where's the inside message? the back? — visible structure that
     distinguishes templates).
     """
-    generator = CardGenerator(renderer=PNGRenderer(dpi=dpi))
+    generator = CardGenerator(templates_dir=templates_dir, renderer=PNGRenderer(dpi=dpi))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     card = generator.create_card(template_id=template_id)
     commands = compile_card(card)
