@@ -110,8 +110,7 @@ panels:
         y2: 2.6
         x3: 2.4
         y3: 2.6
-        fill_color: "#3CB371"
-        opacity: 0.85
+        fill_color: "#3DAF70"
         z_index: 7
 
       # Star on canvas tree
