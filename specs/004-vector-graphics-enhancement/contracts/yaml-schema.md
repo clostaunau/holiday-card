@@ -1,3 +1,5 @@
+> **Superseded by [docs/template-authoring.md](../../../docs/template-authoring.md)** and the generated [docs/template-schema.json](../../../docs/template-schema.json) (#57). Kept as a historical record; it no longer describes the loader.
+
 # YAML Schema: Vector Graphics Enhancement
 
 **Feature**: 004-vector-graphics-enhancement

@@ -1,0 +1,2223 @@
+{
+  "$defs": {
+    "Border": {
+      "additionalProperties": false,
+      "description": "Border styling for panels and elements.\n\nAll dimensions are in points for ReportLab compatibility.",
+      "properties": {
+        "color": {
+          "$ref": "#/$defs/Color",
+          "description": "Border color"
+        },
+        "corner_radius": {
+          "default": 0.0,
+          "description": "Corner radius in points",
+          "minimum": 0.0,
+          "title": "Corner Radius",
+          "type": "number"
+        },
+        "style": {
+          "$ref": "#/$defs/BorderStyle",
+          "default": "solid",
+          "description": "Border style"
+        },
+        "width": {
+          "default": 1.0,
+          "description": "Border width in points",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "title": "Width",
+          "type": "number"
+        }
+      },
+      "title": "Border",
+      "type": "object"
+    },
+    "BorderStyle": {
+      "description": "Border style options.",
+      "enum": [
+        "solid",
+        "dashed",
+        "dotted",
+        "decorative"
+      ],
+      "title": "BorderStyle",
+      "type": "string"
+    },
+    "Circle": {
+      "additionalProperties": false,
+      "description": "Circle shape with center and radius.",
+      "properties": {
+        "center_x": {
+          "description": "Center X position in inches",
+          "minimum": 0.0,
+          "title": "Center X",
+          "type": "number"
+        },
+        "center_y": {
+          "description": "Center Y position in inches",
+          "minimum": 0.0,
+          "title": "Center Y",
+          "type": "number"
+        },
+        "fill": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "linear_gradient": "#/$defs/LinearGradientFill",
+                  "pattern": "#/$defs/PatternFill",
+                  "radial_gradient": "#/$defs/RadialGradientFill",
+                  "solid": "#/$defs/SolidFill"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SolidFill"
+                },
+                {
+                  "$ref": "#/$defs/LinearGradientFill"
+                },
+                {
+                  "$ref": "#/$defs/RadialGradientFill"
+                },
+                {
+                  "$ref": "#/$defs/PatternFill"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fill style (solid, gradient, or pattern)",
+          "title": "Fill"
+        },
+        "fill_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fill color as hex string (#RRGGBB) - legacy support",
+          "title": "Fill Color"
+        },
+        "id": {
+          "description": "Unique shape identifier",
+          "title": "Id",
+          "type": "string"
+        },
+        "opacity": {
+          "default": 1.0,
+          "description": "Opacity 0.0-1.0",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Opacity",
+          "type": "number"
+        },
+        "radius": {
+          "description": "Radius in inches",
+          "exclusiveMinimum": 0.0,
+          "title": "Radius",
+          "type": "number"
+        },
+        "rotation": {
+          "default": 0.0,
+          "description": "Rotation in degrees",
+          "exclusiveMaximum": 360.0,
+          "minimum": 0.0,
+          "title": "Rotation",
+          "type": "number"
+        },
+        "stroke_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Stroke color as hex string (#RRGGBB)",
+          "title": "Stroke Color"
+        },
+        "stroke_width": {
+          "default": 0.0,
+          "description": "Stroke width in points",
+          "minimum": 0.0,
+          "title": "Stroke Width",
+          "type": "number"
+        },
+        "type": {
+          "const": "circle",
+          "default": "circle",
+          "title": "Type",
+          "type": "string"
+        },
+        "z_index": {
+          "default": 0,
+          "description": "Rendering layer (higher = on top)",
+          "title": "Z Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "center_x",
+        "center_y",
+        "radius"
+      ],
+      "title": "Circle",
+      "type": "object"
+    },
+    "CircleClipMask": {
+      "additionalProperties": false,
+      "description": "Circular clipping mask for images.",
+      "properties": {
+        "center_x": {
+          "description": "Center X position in inches (relative to image)",
+          "minimum": 0.0,
+          "title": "Center X",
+          "type": "number"
+        },
+        "center_y": {
+          "description": "Center Y position in inches (relative to image)",
+          "minimum": 0.0,
+          "title": "Center Y",
+          "type": "number"
+        },
+        "radius": {
+          "description": "Circle radius in inches",
+          "exclusiveMinimum": 0.0,
+          "title": "Radius",
+          "type": "number"
+        },
+        "type": {
+          "const": "circle",
+          "default": "circle",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "center_x",
+        "center_y",
+        "radius"
+      ],
+      "title": "CircleClipMask",
+      "type": "object"
+    },
+    "Color": {
+      "additionalProperties": false,
+      "description": "RGB color value object with validation.\n\nAll color components must be in range 0.0 to 1.0.",
+      "properties": {
+        "b": {
+          "description": "Blue component (0.0-1.0)",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "B",
+          "type": "number"
+        },
+        "g": {
+          "description": "Green component (0.0-1.0)",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "G",
+          "type": "number"
+        },
+        "r": {
+          "description": "Red component (0.0-1.0)",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "R",
+          "type": "number"
+        }
+      },
+      "required": [
+        "r",
+        "g",
+        "b"
+      ],
+      "title": "Color",
+      "type": "object"
+    },
+    "ColorStop": {
+      "additionalProperties": false,
+      "description": "A color stop within a gradient.\n\nDefines a color at a specific position along the gradient.",
+      "properties": {
+        "color": {
+          "description": "Color as hex string (#RRGGBB)",
+          "title": "Color",
+          "type": "string"
+        },
+        "position": {
+          "description": "Position along gradient (0.0=start, 1.0=end)",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Position",
+          "type": "number"
+        }
+      },
+      "required": [
+        "position",
+        "color"
+      ],
+      "title": "ColorStop",
+      "type": "object"
+    },
+    "EllipseClipMask": {
+      "additionalProperties": false,
+      "description": "Elliptical clipping mask for images.",
+      "properties": {
+        "center_x": {
+          "description": "Center X position in inches (relative to image)",
+          "minimum": 0.0,
+          "title": "Center X",
+          "type": "number"
+        },
+        "center_y": {
+          "description": "Center Y position in inches (relative to image)",
+          "minimum": 0.0,
+          "title": "Center Y",
+          "type": "number"
+        },
+        "radius_x": {
+          "description": "Horizontal radius in inches",
+          "exclusiveMinimum": 0.0,
+          "title": "Radius X",
+          "type": "number"
+        },
+        "radius_y": {
+          "description": "Vertical radius in inches",
+          "exclusiveMinimum": 0.0,
+          "title": "Radius Y",
+          "type": "number"
+        },
+        "type": {
+          "const": "ellipse",
+          "default": "ellipse",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "center_x",
+        "center_y",
+        "radius_x",
+        "radius_y"
+      ],
+      "title": "EllipseClipMask",
+      "type": "object"
+    },
+    "FoldType": {
+      "description": "Card fold format types.\n\nEach fold type defines how the 8.5\" x 11\" paper is folded:\n- quarter_fold: Two folds - horizontal then vertical (4.25\" x 5.5\" when\n  folded). Four panels printed on one side; the compiler computes where\n  each panel lands (``core/imposition.py``).\n- half_fold: Legacy alias for the 4-panel single-sided quarter fold.\n  Every shipped template used this spelling before issue #58; it loads\n  and imposes exactly like ``quarter_fold``.\n- tri_fold: Two vertical folds (3.67\" x 8.5\" panels). No letter\n  imposition is implemented; the compiler raises.",
+      "enum": [
+        "half_fold",
+        "quarter_fold",
+        "tri_fold"
+      ],
+      "title": "FoldType",
+      "type": "string"
+    },
+    "FontStyle": {
+      "description": "Font style options.",
+      "enum": [
+        "normal",
+        "bold",
+        "italic",
+        "bold_italic"
+      ],
+      "title": "FontStyle",
+      "type": "string"
+    },
+    "ImageEffects": {
+      "additionalProperties": false,
+      "description": "Collection of effects to apply to an image.",
+      "properties": {
+        "blur": {
+          "default": 0.0,
+          "description": "Gaussian blur radius in pixels",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "title": "Blur",
+          "type": "number"
+        },
+        "grayscale": {
+          "default": false,
+          "description": "Convert to grayscale",
+          "title": "Grayscale",
+          "type": "boolean"
+        },
+        "sepia": {
+          "default": false,
+          "description": "Apply sepia tone",
+          "title": "Sepia",
+          "type": "boolean"
+        },
+        "vignette": {
+          "default": 0.0,
+          "description": "Vignette intensity (0=none, 1=max)",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Vignette",
+          "type": "number"
+        }
+      },
+      "title": "ImageEffects",
+      "type": "object"
+    },
+    "ImageElement": {
+      "additionalProperties": false,
+      "description": "Image content with positioning and scaling.\n\nPositions are relative to the panel, in inches.",
+      "properties": {
+        "clip_mask": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "circle": "#/$defs/CircleClipMask",
+                  "ellipse": "#/$defs/EllipseClipMask",
+                  "rectangle": "#/$defs/RectangleClipMask",
+                  "star": "#/$defs/StarClipMask"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/CircleClipMask"
+                },
+                {
+                  "$ref": "#/$defs/RectangleClipMask"
+                },
+                {
+                  "$ref": "#/$defs/EllipseClipMask"
+                },
+                {
+                  "$ref": "#/$defs/StarClipMask"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional clipping mask",
+          "title": "Clip Mask"
+        },
+        "effects": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageEffects"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Image processing effects"
+        },
+        "frame_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Frame color as hex (#RRGGBB)",
+          "title": "Frame Color"
+        },
+        "frame_style": {
+          "$ref": "#/$defs/PhotoFrameStyle",
+          "default": "none",
+          "description": "Photo frame style"
+        },
+        "frame_width": {
+          "default": 0.0,
+          "description": "Frame width in inches",
+          "maximum": 0.5,
+          "minimum": 0.0,
+          "title": "Frame Width",
+          "type": "number"
+        },
+        "height": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Image height in inches",
+          "title": "Height"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "opacity": {
+          "default": 1.0,
+          "description": "Image opacity (0-1)",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Opacity",
+          "type": "number"
+        },
+        "preserve_aspect": {
+          "default": true,
+          "description": "Maintain aspect ratio when scaling",
+          "title": "Preserve Aspect",
+          "type": "boolean"
+        },
+        "rotation": {
+          "default": 0.0,
+          "description": "Rotation in degrees",
+          "title": "Rotation",
+          "type": "number"
+        },
+        "slot": {
+          "anyOf": [
+            {
+              "pattern": "^photo(-[2-9])?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "User-replaceable photo slot: the k-th --image fills every element whose slot is 'photo' (k=1) or 'photo-k'",
+          "title": "Slot"
+        },
+        "source_path": {
+          "description": "Path to source image file",
+          "title": "Source Path",
+          "type": "string"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Image width in inches",
+          "title": "Width"
+        },
+        "x": {
+          "description": "X position in inches from panel left",
+          "minimum": 0.0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "description": "Y position in inches from panel bottom",
+          "minimum": 0.0,
+          "title": "Y",
+          "type": "number"
+        },
+        "z_index": {
+          "default": 100,
+          "description": "Rendering layer (higher = on top)",
+          "title": "Z Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_path",
+        "x",
+        "y"
+      ],
+      "title": "ImageElement",
+      "type": "object"
+    },
+    "LetterContent": {
+      "additionalProperties": false,
+      "description": "Structured inside-panel letter with five named parts.\n\nAll fields default to empty strings \u2014 an empty ``LetterContent``\nis legal (renders nothing). At least one non-empty part is the\ncommon case but not enforced; a blank instance is a useful\nplaceholder for templates that want a \"render whatever the CLI\nflags supply\" slot.",
+      "properties": {
+        "body": {
+          "default": "",
+          "description": "The letter's prose. Newlines split into hard line breaks; blank lines split into paragraphs.",
+          "maxLength": 2000,
+          "title": "Body",
+          "type": "string"
+        },
+        "postscript": {
+          "default": "",
+          "description": "P.S. line; rendered smaller and below the signature",
+          "maxLength": 400,
+          "title": "Postscript",
+          "type": "string"
+        },
+        "salutation": {
+          "default": "",
+          "description": "e.g. 'Dear Aunt Margaret,'",
+          "maxLength": 200,
+          "title": "Salutation",
+          "type": "string"
+        },
+        "signature": {
+          "default": "",
+          "description": "Writer's name",
+          "maxLength": 100,
+          "title": "Signature",
+          "type": "string"
+        },
+        "signature_font_family": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional font_family override for the signature line. Defaults to None (= use the surrounding TextElement's font_family). Common pick: 'Caveat' (a curated handwritten font shipped in fonts/curated/).",
+          "title": "Signature Font Family"
+        },
+        "signoff": {
+          "default": "",
+          "description": "e.g. 'Love,' or '\u2014 C'",
+          "maxLength": 100,
+          "title": "Signoff",
+          "type": "string"
+        }
+      },
+      "title": "LetterContent",
+      "type": "object"
+    },
+    "Line": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "anyOf": [
+            {
+              "required": [
+                "start_x"
+              ]
+            },
+            {
+              "required": [
+                "x1"
+              ]
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "required": [
+                "start_y"
+              ]
+            },
+            {
+              "required": [
+                "y1"
+              ]
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "required": [
+                "end_x"
+              ]
+            },
+            {
+              "required": [
+                "x2"
+              ]
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "required": [
+                "end_y"
+              ]
+            },
+            {
+              "required": [
+                "y2"
+              ]
+            }
+          ]
+        }
+      ],
+      "description": "Line shape with start and end points.",
+      "properties": {
+        "end_x": {
+          "description": "End X position in inches",
+          "minimum": 0.0,
+          "title": "End X",
+          "type": "number"
+        },
+        "end_y": {
+          "description": "End Y position in inches",
+          "minimum": 0.0,
+          "title": "End Y",
+          "type": "number"
+        },
+        "fill": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "linear_gradient": "#/$defs/LinearGradientFill",
+                  "pattern": "#/$defs/PatternFill",
+                  "radial_gradient": "#/$defs/RadialGradientFill",
+                  "solid": "#/$defs/SolidFill"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SolidFill"
+                },
+                {
+                  "$ref": "#/$defs/LinearGradientFill"
+                },
+                {
+                  "$ref": "#/$defs/RadialGradientFill"
+                },
+                {
+                  "$ref": "#/$defs/PatternFill"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fill style (solid, gradient, or pattern)",
+          "title": "Fill"
+        },
+        "fill_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fill color as hex string (#RRGGBB) - legacy support",
+          "title": "Fill Color"
+        },
+        "id": {
+          "description": "Unique shape identifier",
+          "title": "Id",
+          "type": "string"
+        },
+        "opacity": {
+          "default": 1.0,
+          "description": "Opacity 0.0-1.0",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Opacity",
+          "type": "number"
+        },
+        "rotation": {
+          "default": 0.0,
+          "description": "Rotation in degrees",
+          "exclusiveMaximum": 360.0,
+          "minimum": 0.0,
+          "title": "Rotation",
+          "type": "number"
+        },
+        "start_x": {
+          "description": "Start X position in inches",
+          "minimum": 0.0,
+          "title": "Start X",
+          "type": "number"
+        },
+        "start_y": {
+          "description": "Start Y position in inches",
+          "minimum": 0.0,
+          "title": "Start Y",
+          "type": "number"
+        },
+        "stroke_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Stroke color as hex string (#RRGGBB)",
+          "title": "Stroke Color"
+        },
+        "stroke_width": {
+          "default": 0.0,
+          "description": "Stroke width in points",
+          "minimum": 0.0,
+          "title": "Stroke Width",
+          "type": "number"
+        },
+        "type": {
+          "const": "line",
+          "default": "line",
+          "title": "Type",
+          "type": "string"
+        },
+        "x1": {
+          "description": "Start X position in inches",
+          "minimum": 0.0,
+          "title": "Start X",
+          "type": "number"
+        },
+        "x2": {
+          "description": "End X position in inches",
+          "minimum": 0.0,
+          "title": "End X",
+          "type": "number"
+        },
+        "y1": {
+          "description": "Start Y position in inches",
+          "minimum": 0.0,
+          "title": "Start Y",
+          "type": "number"
+        },
+        "y2": {
+          "description": "End Y position in inches",
+          "minimum": 0.0,
+          "title": "End Y",
+          "type": "number"
+        },
+        "z_index": {
+          "default": 0,
+          "description": "Rendering layer (higher = on top)",
+          "title": "Z Index",
+          "type": "integer"
+        }
+      },
+      "title": "Line",
+      "type": "object"
+    },
+    "LinearGradientFill": {
+      "additionalProperties": false,
+      "description": "Linear gradient fill with color stops.\n\nGradient transitions smoothly between color stops along a line\ndefined by the angle parameter.",
+      "properties": {
+        "angle": {
+          "default": 0.0,
+          "description": "Gradient angle in degrees (0=horizontal right)",
+          "exclusiveMaximum": 360.0,
+          "minimum": 0.0,
+          "title": "Angle",
+          "type": "number"
+        },
+        "stops": {
+          "description": "Color stops (minimum 2)",
+          "items": {
+            "$ref": "#/$defs/ColorStop"
+          },
+          "maxItems": 20,
+          "minItems": 2,
+          "title": "Stops",
+          "type": "array"
+        },
+        "type": {
+          "const": "linear_gradient",
+          "default": "linear_gradient",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stops"
+      ],
+      "title": "LinearGradientFill",
+      "type": "object"
+    },
+    "OccasionType": {
+      "description": "Types of occasions for card templates and themes.",
+      "enum": [
+        "christmas",
+        "hanukkah",
+        "birthday",
+        "generic",
+        "new_year",
+        "thanksgiving",
+        "valentine",
+        "mothers_day",
+        "sympathy",
+        "condolence",
+        "miscarriage",
+        "pet_loss"
+      ],
+      "title": "OccasionType",
+      "type": "string"
+    },
+    "OverflowStrategy": {
+      "description": "Strategy for handling text that exceeds designated boundaries.\n\n- AUTO: Automatically select best strategy based on text characteristics\n- SHRINK: Reduce font size until text fits (minimum 8pt)\n- WRAP: Break text into multiple lines\n- TRUNCATE: Cut off text with ellipsis (existing behavior)",
+      "enum": [
+        "auto",
+        "shrink",
+        "wrap",
+        "truncate"
+      ],
+      "title": "OverflowStrategy",
+      "type": "string"
+    },
+    "Panel": {
+      "additionalProperties": false,
+      "description": "A distinct section of the card.\n\nEach panel has its own position, dimensions, and content.\nPositions are in inches from the page origin (bottom-left).",
+      "properties": {
+        "background_color": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Color"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Panel background color"
+        },
+        "background_image": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to background image",
+          "title": "Background Image"
+        },
+        "bleed": {
+          "anyOf": [
+            {
+              "maximum": 0.5,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-panel bleed extension in inches. None (the default) inherits from Card.bleed. Background fills extend past the trim edge by this amount on edges that touch the page trim.",
+          "title": "Bleed"
+        },
+        "border": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Border"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Panel border styling"
+        },
+        "height": {
+          "description": "Panel height in inches",
+          "exclusiveMinimum": 0.0,
+          "title": "Height",
+          "type": "number"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "image_elements": {
+          "description": "Images on panel",
+          "items": {
+            "$ref": "#/$defs/ImageElement"
+          },
+          "title": "Image Elements",
+          "type": "array"
+        },
+        "position": {
+          "$ref": "#/$defs/PanelPosition",
+          "description": "Panel position identifier"
+        },
+        "rotation": {
+          "default": 0.0,
+          "description": "Rotation in degrees about the panel centre. Derived by the compiler from the fold type for letter output; templates leave it out.",
+          "title": "Rotation",
+          "type": "number"
+        },
+        "shape_elements": {
+          "description": "Vector shapes and decorative elements",
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "circle": "#/$defs/Circle",
+                "line": "#/$defs/Line",
+                "rectangle": "#/$defs/Rectangle",
+                "star": "#/$defs/Star",
+                "svg_path": "#/$defs/SVGPath",
+                "triangle": "#/$defs/Triangle"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/Rectangle"
+              },
+              {
+                "$ref": "#/$defs/Circle"
+              },
+              {
+                "$ref": "#/$defs/Triangle"
+              },
+              {
+                "$ref": "#/$defs/Star"
+              },
+              {
+                "$ref": "#/$defs/Line"
+              },
+              {
+                "$ref": "#/$defs/SVGPath"
+              }
+            ]
+          },
+          "title": "Shape Elements",
+          "type": "array"
+        },
+        "text_elements": {
+          "description": "Text on panel",
+          "items": {
+            "$ref": "#/$defs/TextElement"
+          },
+          "title": "Text Elements",
+          "type": "array"
+        },
+        "width": {
+          "description": "Panel width in inches",
+          "exclusiveMinimum": 0.0,
+          "title": "Width",
+          "type": "number"
+        },
+        "x": {
+          "default": 0.0,
+          "description": "X position in inches from page left. Derived by the compiler from the fold type for letter output (D6); templates leave it out.",
+          "minimum": 0.0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "default": 0.0,
+          "description": "Y position in inches from page bottom. Derived by the compiler from the fold type for letter output (D6); templates leave it out.",
+          "minimum": 0.0,
+          "title": "Y",
+          "type": "number"
+        }
+      },
+      "required": [
+        "position",
+        "width",
+        "height"
+      ],
+      "title": "Panel",
+      "type": "object"
+    },
+    "PanelPosition": {
+      "description": "Position identifiers for card panels.\n\nDifferent fold types use different panels:\n- Half-fold: front, back, inside_left, inside_right\n- Quarter-fold: front, back, inside_left, inside_right\n- Tri-fold: left, center, right (uses LEFT, CENTER, RIGHT values)",
+      "enum": [
+        "front",
+        "back",
+        "inside_left",
+        "inside_right",
+        "center"
+      ],
+      "title": "PanelPosition",
+      "type": "string"
+    },
+    "Paragraph": {
+      "additionalProperties": false,
+      "description": "A single paragraph (one or more styled runs).",
+      "properties": {
+        "hard_lines": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/StyledRun"
+            },
+            "type": "array"
+          },
+          "minItems": 1,
+          "title": "Hard Lines",
+          "type": "array"
+        }
+      },
+      "required": [
+        "hard_lines"
+      ],
+      "title": "Paragraph",
+      "type": "object"
+    },
+    "PatternFill": {
+      "additionalProperties": false,
+      "description": "Repeating pattern fill.\n\nCreates decorative repeating patterns like stripes, dots, grid, or checkerboard.",
+      "properties": {
+        "angle": {
+          "default": 0.0,
+          "description": "Pattern rotation in degrees",
+          "exclusiveMaximum": 360.0,
+          "minimum": 0.0,
+          "title": "Rotation",
+          "type": "number"
+        },
+        "colors": {
+          "description": "Pattern colors as hex strings",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Colors",
+          "type": "array"
+        },
+        "pattern_type": {
+          "$ref": "#/$defs/PatternType",
+          "description": "Pattern type (stripes, dots, grid, checkerboard)"
+        },
+        "rotation": {
+          "default": 0.0,
+          "description": "Pattern rotation in degrees",
+          "exclusiveMaximum": 360.0,
+          "minimum": 0.0,
+          "title": "Rotation",
+          "type": "number"
+        },
+        "scale": {
+          "default": 1.0,
+          "description": "Pattern scale multiplier",
+          "exclusiveMinimum": 0.0,
+          "maximum": 5.0,
+          "title": "Scale",
+          "type": "number"
+        },
+        "spacing": {
+          "default": 0.25,
+          "description": "Pattern spacing in inches",
+          "exclusiveMinimum": 0.0,
+          "maximum": 2.0,
+          "title": "Spacing",
+          "type": "number"
+        },
+        "type": {
+          "const": "pattern",
+          "default": "pattern",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pattern_type",
+        "colors"
+      ],
+      "title": "PatternFill",
+      "type": "object"
+    },
+    "PatternType": {
+      "description": "Pattern fill types for repeating patterns.\n\n- STRIPES: Parallel lines with configurable width and angle\n- DOTS: Polka dots with configurable spacing and size\n- GRID: Perpendicular lines forming a grid\n- CHECKERBOARD: Alternating squares",
+      "enum": [
+        "stripes",
+        "dots",
+        "grid",
+        "checkerboard"
+      ],
+      "title": "PatternType",
+      "type": "string"
+    },
+    "PhotoFrameStyle": {
+      "description": "Photo frame/border styles.",
+      "enum": [
+        "none",
+        "simple",
+        "rounded",
+        "shadow",
+        "polaroid"
+      ],
+      "title": "PhotoFrameStyle",
+      "type": "string"
+    },
+    "RadialGradientFill": {
+      "additionalProperties": false,
+      "description": "Radial gradient fill with color stops.\n\nGradient radiates from a center point outward through the color stops.\n\nCoordinate convention: ``center_x`` / ``center_y`` / ``radius`` are\nin **panel-relative inches** (matching how clip_mask coordinates\nand shape positions work \u2014 see the discussion in\n``templates/christmas/metallic-ornaments.yaml``). Earlier revisions\nof this model expected fractional 0-1 values, but every shipped\ntemplate uses absolute inches and the compiler interprets them\nthat way.",
+      "properties": {
+        "center_x": {
+          "default": 0.0,
+          "description": "Center X position in inches (panel-relative)",
+          "minimum": 0.0,
+          "title": "Center X",
+          "type": "number"
+        },
+        "center_y": {
+          "default": 0.0,
+          "description": "Center Y position in inches (panel-relative)",
+          "minimum": 0.0,
+          "title": "Center Y",
+          "type": "number"
+        },
+        "radius": {
+          "default": 0.5,
+          "description": "Gradient radius in inches",
+          "exclusiveMinimum": 0.0,
+          "title": "Radius",
+          "type": "number"
+        },
+        "stops": {
+          "description": "Color stops (minimum 2)",
+          "items": {
+            "$ref": "#/$defs/ColorStop"
+          },
+          "maxItems": 20,
+          "minItems": 2,
+          "title": "Stops",
+          "type": "array"
+        },
+        "type": {
+          "const": "radial_gradient",
+          "default": "radial_gradient",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stops"
+      ],
+      "title": "RadialGradientFill",
+      "type": "object"
+    },
+    "Rectangle": {
+      "additionalProperties": false,
+      "description": "Rectangle shape with position and dimensions.",
+      "properties": {
+        "fill": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "linear_gradient": "#/$defs/LinearGradientFill",
+                  "pattern": "#/$defs/PatternFill",
+                  "radial_gradient": "#/$defs/RadialGradientFill",
+                  "solid": "#/$defs/SolidFill"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SolidFill"
+                },
+                {
+                  "$ref": "#/$defs/LinearGradientFill"
+                },
+                {
+                  "$ref": "#/$defs/RadialGradientFill"
+                },
+                {
+                  "$ref": "#/$defs/PatternFill"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fill style (solid, gradient, or pattern)",
+          "title": "Fill"
+        },
+        "fill_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fill color as hex string (#RRGGBB) - legacy support",
+          "title": "Fill Color"
+        },
+        "height": {
+          "description": "Height in inches",
+          "exclusiveMinimum": 0.0,
+          "title": "Height",
+          "type": "number"
+        },
+        "id": {
+          "description": "Unique shape identifier",
+          "title": "Id",
+          "type": "string"
+        },
+        "opacity": {
+          "default": 1.0,
+          "description": "Opacity 0.0-1.0",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Opacity",
+          "type": "number"
+        },
+        "rotation": {
+          "default": 0.0,
+          "description": "Rotation in degrees",
+          "exclusiveMaximum": 360.0,
+          "minimum": 0.0,
+          "title": "Rotation",
+          "type": "number"
+        },
+        "stroke_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Stroke color as hex string (#RRGGBB)",
+          "title": "Stroke Color"
+        },
+        "stroke_width": {
+          "default": 0.0,
+          "description": "Stroke width in points",
+          "minimum": 0.0,
+          "title": "Stroke Width",
+          "type": "number"
+        },
+        "type": {
+          "const": "rectangle",
+          "default": "rectangle",
+          "title": "Type",
+          "type": "string"
+        },
+        "width": {
+          "description": "Width in inches",
+          "exclusiveMinimum": 0.0,
+          "title": "Width",
+          "type": "number"
+        },
+        "x": {
+          "description": "X position in inches from panel left",
+          "minimum": 0.0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "description": "Y position in inches from panel bottom",
+          "minimum": 0.0,
+          "title": "Y",
+          "type": "number"
+        },
+        "z_index": {
+          "default": 0,
+          "description": "Rendering layer (higher = on top)",
+          "title": "Z Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "title": "Rectangle",
+      "type": "object"
+    },
+    "RectangleClipMask": {
+      "additionalProperties": false,
+      "description": "Rectangular clipping mask for images.",
+      "properties": {
+        "height": {
+          "description": "Height in inches",
+          "exclusiveMinimum": 0.0,
+          "title": "Height",
+          "type": "number"
+        },
+        "type": {
+          "const": "rectangle",
+          "default": "rectangle",
+          "title": "Type",
+          "type": "string"
+        },
+        "width": {
+          "description": "Width in inches",
+          "exclusiveMinimum": 0.0,
+          "title": "Width",
+          "type": "number"
+        },
+        "x": {
+          "description": "X position in inches (relative to image)",
+          "minimum": 0.0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "description": "Y position in inches (relative to image)",
+          "minimum": 0.0,
+          "title": "Y",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "title": "RectangleClipMask",
+      "type": "object"
+    },
+    "RichTextContent": {
+      "additionalProperties": false,
+      "description": "A parsed Markdown document \u2014 paragraphs of styled runs.",
+      "properties": {
+        "paragraphs": {
+          "items": {
+            "$ref": "#/$defs/Paragraph"
+          },
+          "minItems": 1,
+          "title": "Paragraphs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "paragraphs"
+      ],
+      "title": "RichTextContent",
+      "type": "object"
+    },
+    "SVGPath": {
+      "additionalProperties": false,
+      "description": "SVG path shape for complex vector graphics.\n\nSupports SVG path data containing move, line, curve, arc, and close commands.\nPath data uses inches for coordinates after applying ``scale``; the\nfinal shape lands at panel-relative ``(x, y)``. Path-internal\ncoordinates can be in any unit (templates typically use 0\u2013100\nSVG-style coords with a small ``scale`` like 0.018 to fit a 1.8\"\nleaf inside a 100-unit drawing).",
+      "properties": {
+        "fill": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "linear_gradient": "#/$defs/LinearGradientFill",
+                  "pattern": "#/$defs/PatternFill",
+                  "radial_gradient": "#/$defs/RadialGradientFill",
+                  "solid": "#/$defs/SolidFill"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SolidFill"
+                },
+                {
+                  "$ref": "#/$defs/LinearGradientFill"
+                },
+                {
+                  "$ref": "#/$defs/RadialGradientFill"
+                },
+                {
+                  "$ref": "#/$defs/PatternFill"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fill style (solid, gradient, or pattern)",
+          "title": "Fill"
+        },
+        "fill_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fill color as hex string (#RRGGBB) - legacy support",
+          "title": "Fill Color"
+        },
+        "id": {
+          "description": "Unique shape identifier",
+          "title": "Id",
+          "type": "string"
+        },
+        "opacity": {
+          "default": 1.0,
+          "description": "Opacity 0.0-1.0",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Opacity",
+          "type": "number"
+        },
+        "path_data": {
+          "description": "SVG path data string (M, L, C, Q, A, Z commands)",
+          "minLength": 1,
+          "title": "Path Data",
+          "type": "string"
+        },
+        "rotation": {
+          "default": 0.0,
+          "description": "Rotation in degrees",
+          "exclusiveMaximum": 360.0,
+          "minimum": 0.0,
+          "title": "Rotation",
+          "type": "number"
+        },
+        "scale": {
+          "default": 1.0,
+          "description": "Scale multiplier from path units to inches",
+          "exclusiveMinimum": 0.0,
+          "maximum": 10.0,
+          "title": "Scale",
+          "type": "number"
+        },
+        "stroke_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Stroke color as hex string (#RRGGBB)",
+          "title": "Stroke Color"
+        },
+        "stroke_width": {
+          "default": 0.0,
+          "description": "Stroke width in points",
+          "minimum": 0.0,
+          "title": "Stroke Width",
+          "type": "number"
+        },
+        "type": {
+          "const": "svg_path",
+          "default": "svg_path",
+          "title": "Type",
+          "type": "string"
+        },
+        "x": {
+          "default": 0.0,
+          "description": "X position of path origin in panel-relative inches",
+          "minimum": 0.0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "default": 0.0,
+          "description": "Y position of path origin in panel-relative inches",
+          "minimum": 0.0,
+          "title": "Y",
+          "type": "number"
+        },
+        "z_index": {
+          "default": 0,
+          "description": "Rendering layer (higher = on top)",
+          "title": "Z Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path_data"
+      ],
+      "title": "SVGPath",
+      "type": "object"
+    },
+    "SolidFill": {
+      "additionalProperties": false,
+      "description": "Solid color fill.",
+      "properties": {
+        "color": {
+          "description": "Fill color as hex string (#RRGGBB)",
+          "title": "Color",
+          "type": "string"
+        },
+        "type": {
+          "const": "solid",
+          "default": "solid",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "color"
+      ],
+      "title": "SolidFill",
+      "type": "object"
+    },
+    "Star": {
+      "additionalProperties": false,
+      "description": "Star shape with configurable points.",
+      "properties": {
+        "center_x": {
+          "description": "Center X position in inches",
+          "minimum": 0.0,
+          "title": "Center X",
+          "type": "number"
+        },
+        "center_y": {
+          "description": "Center Y position in inches",
+          "minimum": 0.0,
+          "title": "Center Y",
+          "type": "number"
+        },
+        "fill": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "linear_gradient": "#/$defs/LinearGradientFill",
+                  "pattern": "#/$defs/PatternFill",
+                  "radial_gradient": "#/$defs/RadialGradientFill",
+                  "solid": "#/$defs/SolidFill"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SolidFill"
+                },
+                {
+                  "$ref": "#/$defs/LinearGradientFill"
+                },
+                {
+                  "$ref": "#/$defs/RadialGradientFill"
+                },
+                {
+                  "$ref": "#/$defs/PatternFill"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fill style (solid, gradient, or pattern)",
+          "title": "Fill"
+        },
+        "fill_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fill color as hex string (#RRGGBB) - legacy support",
+          "title": "Fill Color"
+        },
+        "id": {
+          "description": "Unique shape identifier",
+          "title": "Id",
+          "type": "string"
+        },
+        "inner_radius": {
+          "description": "Inner point radius in inches",
+          "exclusiveMinimum": 0.0,
+          "title": "Inner Radius",
+          "type": "number"
+        },
+        "opacity": {
+          "default": 1.0,
+          "description": "Opacity 0.0-1.0",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Opacity",
+          "type": "number"
+        },
+        "outer_radius": {
+          "description": "Outer point radius in inches",
+          "exclusiveMinimum": 0.0,
+          "title": "Outer Radius",
+          "type": "number"
+        },
+        "points": {
+          "default": 5,
+          "description": "Number of star points",
+          "maximum": 20,
+          "minimum": 3,
+          "title": "Points",
+          "type": "integer"
+        },
+        "rotation": {
+          "default": 0.0,
+          "description": "Rotation in degrees",
+          "exclusiveMaximum": 360.0,
+          "minimum": 0.0,
+          "title": "Rotation",
+          "type": "number"
+        },
+        "stroke_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Stroke color as hex string (#RRGGBB)",
+          "title": "Stroke Color"
+        },
+        "stroke_width": {
+          "default": 0.0,
+          "description": "Stroke width in points",
+          "minimum": 0.0,
+          "title": "Stroke Width",
+          "type": "number"
+        },
+        "type": {
+          "const": "star",
+          "default": "star",
+          "title": "Type",
+          "type": "string"
+        },
+        "z_index": {
+          "default": 0,
+          "description": "Rendering layer (higher = on top)",
+          "title": "Z Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "center_x",
+        "center_y",
+        "outer_radius",
+        "inner_radius"
+      ],
+      "title": "Star",
+      "type": "object"
+    },
+    "StarClipMask": {
+      "additionalProperties": false,
+      "description": "Star-shaped clipping mask for images.",
+      "properties": {
+        "center_x": {
+          "description": "Center X position in inches (relative to image)",
+          "minimum": 0.0,
+          "title": "Center X",
+          "type": "number"
+        },
+        "center_y": {
+          "description": "Center Y position in inches (relative to image)",
+          "minimum": 0.0,
+          "title": "Center Y",
+          "type": "number"
+        },
+        "inner_radius": {
+          "description": "Inner point radius in inches",
+          "exclusiveMinimum": 0.0,
+          "title": "Inner Radius",
+          "type": "number"
+        },
+        "outer_radius": {
+          "description": "Outer point radius in inches",
+          "exclusiveMinimum": 0.0,
+          "title": "Outer Radius",
+          "type": "number"
+        },
+        "points": {
+          "default": 5,
+          "description": "Number of star points",
+          "maximum": 20,
+          "minimum": 3,
+          "title": "Points",
+          "type": "integer"
+        },
+        "type": {
+          "const": "star",
+          "default": "star",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "center_x",
+        "center_y",
+        "outer_radius",
+        "inner_radius"
+      ],
+      "title": "StarClipMask",
+      "type": "object"
+    },
+    "StyledRun": {
+      "additionalProperties": false,
+      "description": "A continuous span of text in a single style.",
+      "properties": {
+        "bold": {
+          "default": false,
+          "title": "Bold",
+          "type": "boolean"
+        },
+        "italic": {
+          "default": false,
+          "title": "Italic",
+          "type": "boolean"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "StyledRun",
+      "type": "object"
+    },
+    "TextAlignment": {
+      "description": "Text alignment options.",
+      "enum": [
+        "left",
+        "center",
+        "right"
+      ],
+      "title": "TextAlignment",
+      "type": "string"
+    },
+    "TextElement": {
+      "additionalProperties": false,
+      "description": "Text content with positioning and styling.\n\nPositions are relative to the panel, in inches.\n\nThe element supports three authoring surfaces, picked in this\npriority order at compile time:\n\n1. **letter_content** \u2014 structured five-part inside letter\n   (salutation / body / signoff / signature / P.S.). The\n   ``--salutation`` / ``--signoff`` / ``--signature`` / ``--ps``\n   CLI flags route through here.\n2. **rich_content** \u2014 paragraphs of styled runs from the\n   ``--inside-message-md`` / Christmas-letter Markdown mode.\n3. **content** \u2014 plain text with ``\\n`` for hard line breaks.\n\n``letter_content`` and ``rich_content`` are mutually exclusive\n(the two represent different authoring surfaces and have\ndifferent compiler layout passes). A model-level validator\nenforces this.",
+      "properties": {
+        "alignment": {
+          "$ref": "#/$defs/TextAlignment",
+          "default": "left",
+          "description": "Text alignment"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Color"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Text color (uses theme if None)"
+        },
+        "content": {
+          "description": "Text content. Use '\\n' for hard line breaks (poems, addresses, stanzas). Empty string is allowed (for blank-inside cards).",
+          "maxLength": 1000,
+          "title": "Content",
+          "type": "string"
+        },
+        "font_family": {
+          "default": "Helvetica",
+          "description": "Font family name",
+          "title": "Font Family",
+          "type": "string"
+        },
+        "font_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to TTF/OTF font file for custom fonts",
+          "title": "Font File"
+        },
+        "font_size": {
+          "default": 12,
+          "description": "Font size in points",
+          "maximum": 144,
+          "minimum": 6,
+          "title": "Font Size",
+          "type": "integer"
+        },
+        "font_style": {
+          "$ref": "#/$defs/FontStyle",
+          "default": "normal",
+          "description": "Font style"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "letter_content": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LetterContent"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional structured letter content (salutation / body / signoff / signature / P.S.). When set, takes priority over `rich_content` and `content`. Mutually exclusive with `rich_content`."
+        },
+        "max_lines": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum lines when using WRAP strategy (None = unlimited)",
+          "title": "Max Lines"
+        },
+        "min_font_size": {
+          "default": 8,
+          "description": "Minimum font size for SHRINK strategy (points)",
+          "maximum": 72,
+          "minimum": 6,
+          "title": "Min Font Size",
+          "type": "integer"
+        },
+        "overflow_strategy": {
+          "$ref": "#/$defs/OverflowStrategy",
+          "default": "auto",
+          "description": "Strategy for handling text overflow"
+        },
+        "paragraph_spacing": {
+          "default": 0.6,
+          "description": "Vertical space between paragraphs as a multiple of the line height. Only meaningful when rich_content is set.",
+          "maximum": 3.0,
+          "minimum": 0.0,
+          "title": "Paragraph Spacing",
+          "type": "number"
+        },
+        "rich_content": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RichTextContent"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional rich-text override. When set, takes priority over `content`. Used by the Markdown / 'Christmas letter' inside-panel mode."
+        },
+        "rotation": {
+          "default": 0.0,
+          "description": "Rotation in degrees",
+          "title": "Rotation",
+          "type": "number"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Max width for text wrapping",
+          "title": "Width"
+        },
+        "x": {
+          "description": "X position in inches from panel left",
+          "minimum": 0.0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "description": "Y position in inches from panel bottom",
+          "minimum": 0.0,
+          "title": "Y",
+          "type": "number"
+        },
+        "z_index": {
+          "default": 100,
+          "description": "Rendering layer (higher = on top)",
+          "title": "Z Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "content",
+        "x",
+        "y"
+      ],
+      "title": "TextElement",
+      "type": "object"
+    },
+    "Triangle": {
+      "additionalProperties": false,
+      "description": "Triangle shape with three vertices.",
+      "properties": {
+        "fill": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "linear_gradient": "#/$defs/LinearGradientFill",
+                  "pattern": "#/$defs/PatternFill",
+                  "radial_gradient": "#/$defs/RadialGradientFill",
+                  "solid": "#/$defs/SolidFill"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SolidFill"
+                },
+                {
+                  "$ref": "#/$defs/LinearGradientFill"
+                },
+                {
+                  "$ref": "#/$defs/RadialGradientFill"
+                },
+                {
+                  "$ref": "#/$defs/PatternFill"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fill style (solid, gradient, or pattern)",
+          "title": "Fill"
+        },
+        "fill_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fill color as hex string (#RRGGBB) - legacy support",
+          "title": "Fill Color"
+        },
+        "id": {
+          "description": "Unique shape identifier",
+          "title": "Id",
+          "type": "string"
+        },
+        "opacity": {
+          "default": 1.0,
+          "description": "Opacity 0.0-1.0",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Opacity",
+          "type": "number"
+        },
+        "rotation": {
+          "default": 0.0,
+          "description": "Rotation in degrees",
+          "exclusiveMaximum": 360.0,
+          "minimum": 0.0,
+          "title": "Rotation",
+          "type": "number"
+        },
+        "stroke_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Stroke color as hex string (#RRGGBB)",
+          "title": "Stroke Color"
+        },
+        "stroke_width": {
+          "default": 0.0,
+          "description": "Stroke width in points",
+          "minimum": 0.0,
+          "title": "Stroke Width",
+          "type": "number"
+        },
+        "type": {
+          "const": "triangle",
+          "default": "triangle",
+          "title": "Type",
+          "type": "string"
+        },
+        "x1": {
+          "description": "Vertex 1 X position in inches",
+          "minimum": 0.0,
+          "title": "X1",
+          "type": "number"
+        },
+        "x2": {
+          "description": "Vertex 2 X position in inches",
+          "minimum": 0.0,
+          "title": "X2",
+          "type": "number"
+        },
+        "x3": {
+          "description": "Vertex 3 X position in inches",
+          "minimum": 0.0,
+          "title": "X3",
+          "type": "number"
+        },
+        "y1": {
+          "description": "Vertex 1 Y position in inches",
+          "minimum": 0.0,
+          "title": "Y1",
+          "type": "number"
+        },
+        "y2": {
+          "description": "Vertex 2 Y position in inches",
+          "minimum": 0.0,
+          "title": "Y2",
+          "type": "number"
+        },
+        "y3": {
+          "description": "Vertex 3 Y position in inches",
+          "minimum": 0.0,
+          "title": "Y3",
+          "type": "number"
+        },
+        "z_index": {
+          "default": 0,
+          "description": "Rendering layer (higher = on top)",
+          "title": "Z Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "x1",
+        "y1",
+        "x2",
+        "y2",
+        "x3",
+        "y3"
+      ],
+      "title": "Triangle",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Pre-designed card layout with placeholder areas.\n\nTemplates define the structure and default content for a card design.",
+  "properties": {
+    "bleed": {
+      "default": 0.125,
+      "description": "Default bleed in inches applied to every panel that doesn't set its own. 0.125 is the industry default accepted by all major POD services.",
+      "maximum": 0.5,
+      "minimum": 0.0,
+      "title": "Bleed",
+      "type": "number"
+    },
+    "default_theme_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Default theme ID",
+      "title": "Default Theme Id"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Template description",
+      "title": "Description"
+    },
+    "fold_type": {
+      "$ref": "#/$defs/FoldType",
+      "description": "Default fold type"
+    },
+    "id": {
+      "description": "Unique template identifier",
+      "title": "Id",
+      "type": "string"
+    },
+    "name": {
+      "description": "Display name",
+      "maxLength": 50,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "occasion": {
+      "$ref": "#/$defs/OccasionType",
+      "description": "Occasion type"
+    },
+    "panels": {
+      "description": "Panel configurations",
+      "items": {
+        "$ref": "#/$defs/Panel"
+      },
+      "title": "Panels",
+      "type": "array"
+    },
+    "preview_image": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Path to preview image",
+      "title": "Preview Image"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "occasion",
+    "fold_type",
+    "panels"
+  ],
+  "title": "Template",
+  "type": "object"
+}

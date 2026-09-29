@@ -9,6 +9,7 @@ template reference, whether an id or a file path (#79).
 
 import logging
 import os
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -31,9 +32,21 @@ class TemplateNotFoundError(Exception):
 
 
 class TemplateLoadError(Exception):
-    """Raised when a template fails to load."""
+    """Raised when a template fails to load.
 
-    pass
+    ``problems`` holds every ``(path, message)`` found, e.g.
+    ``("panels[0].text_elements[0].colr", "Extra inputs are not permitted")``;
+    a file that can't be read or parsed as YAML is one ``"<file>"`` problem.
+    """
+
+    def __init__(self, message: str, problems: Sequence[tuple[str, str]] = ()) -> None:
+        super().__init__(message)
+        self.problems = list(problems)
+
+
+def _load_error(path: Path, problems: list[tuple[str, str]]) -> TemplateLoadError:
+    lines = "\n".join(f"  {loc}: {message}" for loc, message in problems)
+    return TemplateLoadError(f"Failed to parse template {path}:\n{lines}", problems)
 
 
 TEMPLATES_ENV_VAR = "HOLIDAY_CARD_TEMPLATES"
@@ -214,14 +227,14 @@ def load_template_from_file(path: Path) -> Template:
         with open(path) as f:
             data = yaml.safe_load(f)
     except (yaml.YAMLError, OSError) as e:
-        raise TemplateLoadError(f"Failed to read template file {path}: {e}") from e
+        raise TemplateLoadError(
+            f"Failed to read template file {path}: {e}", [("<file>", str(e))]
+        ) from e
 
     try:
         template = Template.model_validate(data)
     except ValidationError as e:
-        raise TemplateLoadError(
-            f"Failed to parse template {path}:\n{_format_validation_error(e)}"
-        ) from e
+        raise _load_error(path, _validation_problems(e)) from e
     _check_panel_coordinates(template, data, path)
     _resolve_image_paths(template, path)
     return template
@@ -233,7 +246,7 @@ def _check_panel_coordinates(template: Template, data: Any, path: Path) -> None:
     raw_panels = data.get("panels") if isinstance(data, dict) else None
     if not isinstance(raw_panels, list):
         return
-    errors: list[str] = []
+    errors: list[tuple[str, str]] = []
     for index, (raw, panel) in enumerate(zip(raw_panels, template.panels, strict=False)):
         if not isinstance(raw, dict):
             continue
@@ -250,16 +263,19 @@ def _check_panel_coordinates(template: Template, data: Any, path: Path) -> None:
         ]
         if mismatched:
             errors.append(
-                f"  panels.{index} ({panel.position.value}): {', '.join(mismatched)}; "
-                f"delete x/y/rotation; imposition is computed from fold_type"
+                (
+                    f"panels[{index}] ({panel.position.value})",
+                    f"{', '.join(mismatched)}; "
+                    f"delete x/y/rotation; imposition is computed from fold_type",
+                )
             )
     if errors:
-        raise TemplateLoadError(f"Failed to parse template {path}:\n" + "\n".join(errors))
+        raise _load_error(path, errors)
 
 
 def _resolve_image_paths(template: Template, path: Path) -> None:
     # D5: image paths are relative to the template file, never to cwd.
-    errors: list[str] = []
+    errors: list[tuple[str, str]] = []
     for p, panel in enumerate(template.panels):
         for i, image in enumerate(panel.image_elements):
             try:
@@ -267,14 +283,16 @@ def _resolve_image_paths(template: Template, path: Path) -> None:
                     resolve_template_image_path(image.source_path, path.parent)
                 )
             except ImageSourceError as e:
-                errors.append(f"  panels.{p}.image_elements.{i}.source_path: {e}")
+                errors.append((f"panels[{p}].image_elements[{i}].source_path", str(e)))
     if errors:
-        raise TemplateLoadError(f"Failed to parse template {path}:\n" + "\n".join(errors))
+        raise _load_error(path, errors)
 
 
-def _format_validation_error(error: ValidationError) -> str:
-    # One line per error, keyed by its dotted location (e.g. ``panels.0.colr``).
-    return "\n".join(
-        f"  {'.'.join(str(part) for part in err['loc']) or '<root>'}: {err['msg']}"
-        for err in error.errors()
-    )
+def _validation_problems(error: ValidationError) -> list[tuple[str, str]]:
+    # One problem per error, keyed by its location (e.g. ``panels[0].colr``).
+    return [(_format_loc(err["loc"]), err["msg"]) for err in error.errors()]
+
+
+def _format_loc(loc: tuple[int | str, ...]) -> str:
+    text = "".join(f"[{part}]" if isinstance(part, int) else f".{part}" for part in loc)
+    return text.removeprefix(".") or "<root>"

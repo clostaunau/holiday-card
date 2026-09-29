@@ -255,9 +255,91 @@ class TestValidateCommand:
         bad.write_text("this: is: not: a: template:\n  - oops")
         result = runner.invoke(app, ["validate", str(bad)])
         assert result.exit_code == 2
-        # Either yaml-parse error or template-validation error — both acceptable.
-        assert ("invalid" in result.stderr.lower()
-                or "error" in result.stderr.lower())
+        assert result.stdout.startswith(f"Template invalid: {bad}\n")
+        assert "  - <file>: " in result.stdout
+
+    @staticmethod
+    def _bad_classic(tmp_path: Path, **greeting_changes: object) -> Path:
+        import yaml
+
+        from holiday_card.core.data_paths import data_path
+
+        data = yaml.safe_load(
+            (data_path("templates") / "christmas" / "classic.yaml").read_text()
+        )
+        front = next(p for p in data["panels"] if p["position"] == "front")
+        front["text_elements"][0].update(greeting_changes)
+        path = tmp_path / "bad.yaml"
+        path.write_text(yaml.safe_dump(data))
+        return path
+
+    def test_issue_reproduction_lists_every_problem(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        # The #57 reproduction: typo'd keys, an unknown font and x: 99.
+        bad = self._bad_classic(
+            tmp_path, colr="red", font_famly="Lato", font_family="NotAFont", x=99
+        )
+        result = runner.invoke(app, ["validate", str(bad)])
+
+        assert result.exit_code == 2
+        assert result.stdout.startswith(f"Template invalid: {bad}\n")
+        lines = [ln for ln in result.stdout.splitlines() if ln.startswith("  - ")]
+        assert lines == [
+            "  - panels[0].text_elements[0].colr: Extra inputs are not permitted",
+            "  - panels[0].text_elements[0].font_famly: Extra inputs are not permitted",
+        ]
+        assert "Traceback" not in result.output
+
+    def test_font_and_bounds_problems_exit_two(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        bad = self._bad_classic(tmp_path, font_family="NotAFont", x=99)
+        result = runner.invoke(app, ["validate", str(bad)])
+
+        assert result.exit_code == 2
+        lines = [ln for ln in result.stdout.splitlines() if ln.startswith("  - ")]
+        assert len(lines) == 2
+        assert lines[0].startswith(
+            "  - panels[front].text_elements[greeting].font_family: unknown font 'NotAFont'"
+        )
+        assert lines[1].startswith(
+            "  - panels[front].text_elements[greeting]: text anchor (99, 2.75) in is outside"
+        )
+        assert "Template valid" not in result.stdout
+
+    def test_every_listed_template_validates(self, runner: CliRunner) -> None:
+        listing = runner.invoke(app, ["templates", "--format", "json"])
+        ids = [t["id"] for t in json.loads(listing.stdout)["templates"]]
+        assert len(ids) == 21
+        for template_id in ids:
+            result = runner.invoke(app, ["validate", template_id])
+            assert result.exit_code == 0, (template_id, result.output)
+
+
+# ---------------------------------------------------------------------------
+# schema (#57)
+# ---------------------------------------------------------------------------
+
+class TestSchemaCommand:
+    def test_schema_prints_json_that_forbids_unknown_text_keys(
+        self, runner: CliRunner
+    ) -> None:
+        result = runner.invoke(app, ["schema"])
+        assert result.exit_code == 0
+        schema = json.loads(result.stdout)
+        assert schema["title"] == "Template"
+        assert schema["$defs"]["TextElement"]["additionalProperties"] is False
+
+    def test_schema_output_writes_the_file(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        out = tmp_path / "p.json"
+        result = runner.invoke(app, ["schema", "-o", str(out)])
+        assert result.exit_code == 0
+        assert json.loads(out.read_text())["title"] == "Template"
+        stdout_schema = runner.invoke(app, ["schema"]).stdout
+        assert out.read_text() == stdout_schema
 
 
 # ---------------------------------------------------------------------------

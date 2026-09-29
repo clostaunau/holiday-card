@@ -3,7 +3,7 @@ name: "Geometric Christmas Tree"
 occasion: christmas
 fold_type: "quarter_fold"
 description: "Modern geometric Christmas card with overlapping triangles and elegant earth tones"
-default_theme_id: christmas-earth-tones
+default_theme_id: christmas-gold
 
 panels:
   # Front panel - Main geometric tree design (bottom right of the sheet; placement is computed from fold_type)

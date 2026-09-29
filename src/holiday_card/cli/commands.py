@@ -41,6 +41,8 @@ from holiday_card.core.export_targets import (
 from holiday_card.core.generators import CardGenerator, PhotoSlotError
 from holiday_card.core.images import ImageSourceError, LowResolutionWarning
 from holiday_card.core.models import Card, OccasionType
+from holiday_card.core.template_checks import check_template
+from holiday_card.core.template_schema import render_template_schema
 from holiday_card.core.templates import (
     TemplateLoadError,
     TemplateNotFoundError,
@@ -815,9 +817,10 @@ def init(
 def validate(
     template: str = typer.Argument(..., help="Template name or path to validate"),
 ) -> None:
-    """Validate a template file.
+    """Validate a template: schema, fonts, element bounds, theme, and a compile.
 
-    Checks that a template YAML file is correctly formatted and can be loaded.
+    Lists every problem at once as `  - <path>: <message>` and exits 2, or
+    prints `Template valid` and a summary. Run it before `create`.
 
     Examples:
 
@@ -826,7 +829,13 @@ def validate(
         holiday-card validate ./my-template.yaml
     """
     try:
-        loaded, template_path = resolve_template(template)
+        try:
+            loaded, template_path = resolve_template(template)
+        except TemplateLoadError as e:
+            _report_invalid(template, e.problems or [("<file>", str(e))])
+        problems = check_template(loaded)
+        if problems:
+            _report_invalid(template, [(p.path, p.message) for p in problems])
         typer.secho(f"Template valid: {template}", fg=typer.colors.GREEN)
         typer.echo(f"  Path: {template_path}")
         typer.echo(f"  Name: {loaded.name}")
@@ -841,12 +850,41 @@ def validate(
         typer.secho(f"Template not found: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(ExitCode.USAGE) from e
 
-    except TemplateLoadError as e:
-        typer.secho(f"Template invalid: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(ExitCode.USAGE) from e
-
     except Exception as e:
         _unexpected_error("Validation error", e)
+
+
+def _report_invalid(source: str, problems: list[tuple[str, str]]) -> NoReturn:
+    typer.secho(f"Template invalid: {source}", fg=typer.colors.RED)
+    for path, message in problems:
+        typer.echo(f"  - {path}: {message}")
+    raise typer.Exit(ExitCode.USAGE)
+
+
+@app.command()
+def schema(
+    output: Path | None = typer.Option(
+        None, "--output", "-o", help="Write the schema here instead of stdout."
+    ),
+) -> None:
+    """Print the template JSON Schema (generated from the models).
+
+    Point an editor at it for completion and checking, e.g. a first line of
+    `# yaml-language-server: $schema=<path>/template-schema.json`.
+
+    Examples:
+
+        holiday-card schema -o template-schema.json
+    """
+    text = render_template_schema()
+    if output is None:
+        typer.echo(text, nl=False)
+        return
+    try:
+        output.write_text(text)
+    except OSError as e:
+        _fail(f"cannot write {output}: {e}")
+    typer.echo(f"Wrote {output}", err=True)
 
 
 # ---------------------------------------------------------------------------
