@@ -101,6 +101,8 @@ class _Painted:
     # The opaque colour this draw leaves everywhere inside ``box``, or None.
     covers: Callable[[Box], RGBA | None]
     groups: frozenset[int]
+    # An opaque solid fill: a backdrop wherever its geometry contains the box.
+    solid: bool = False
 
 
 @dataclass(frozen=True)
@@ -142,7 +144,10 @@ class Flattener:
             elif isinstance(cmd, EndClip):
                 clips.pop()
             elif isinstance(cmd, (DrawShape, DrawText, DrawImage)):
-                cmd = self._draw(cmd, matrices[-1], clips, groups, where)
+                flat = self._draw(cmd, matrices[-1], clips, groups, where)
+                if flat is None:
+                    continue  # fully transparent or clipped away: paints nothing
+                cmd = flat
             out.append(cmd)
         return out
 
@@ -155,12 +160,14 @@ class Flattener:
         clips: list[_Clip],
         groups: list[tuple[int | None, float]],
         where: str,
-    ) -> DrawShape | DrawText | DrawImage:
+    ) -> DrawShape | DrawText | DrawImage | None:
         group_alpha = math.prod(op for _t, op in groups)
+        if all(a <= 0.0 for a in _alphas(cmd, group_alpha)):
+            return None
         tokens = frozenset(t for t, _op in groups if t is not None)
         box = _clip_box(_transform_box(_local_box(cmd), matrix), clips)
         if box is None:
-            return cmd  # clipped away entirely: paints nothing
+            return None  # clipped away entirely
         what = _describe(cmd)
 
         def backdrop(alpha: float) -> RGBA:
@@ -208,9 +215,12 @@ class Flattener:
                 )
             colour = painted.covers(box)
             if colour is None:
+                below = painted.kind
+                if painted.solid:
+                    below += " that does not fully contain it"
                 raise UnsupportedFeatureError(
                     f"{where}: translucent {what} (alpha {alpha:.2f}) sits over a "
-                    f"{painted.kind}; PDF/X targets need a solid backdrop that "
+                    f"{below}; PDF/X targets need a solid backdrop that "
                     f"fully contains it. Put it over a solid fill or give it an "
                     f"opaque pre-blended colour"
                 )
@@ -230,6 +240,16 @@ def _blend(src: RGBA, alpha: float, backdrop: RGBA) -> RGBA:
         g=a * src.g + (1 - a) * backdrop.g,
         b=a * src.b + (1 - a) * backdrop.b,
     )
+
+
+def _alphas(cmd: DrawShape | DrawText | DrawImage, group_alpha: float) -> list[float]:
+    alpha = group_alpha * cmd.opacity
+    if isinstance(cmd, DrawShape):
+        colours = _paint_colours(cmd.fill) + ([cmd.stroke.color] if cmd.stroke else [])
+        return [alpha * c.a for c in colours]
+    if isinstance(cmd, DrawText):
+        return [alpha * cmd.run.color.a]
+    return [alpha]
 
 
 def _paint_colours(paint: PaintU | None) -> list[RGBA]:
@@ -340,7 +360,7 @@ def _record(
             return None
         return colour if _geom_contains(geom, other, inset) else None
 
-    return _Painted(box, kind, hits, covers, tokens)
+    return _Painted(box, kind, hits, covers, tokens, solid=True)
 
 
 def _paint_kind(paint: PaintU | None) -> str:
@@ -448,8 +468,6 @@ def _transform_matrix(t: Transform) -> Matrix:
     # Backends apply translate(t); rotate; translate(-t); scale (see render_ir).
     rad = math.radians(t.rotate_deg)
     cos, sin = math.cos(rad), math.sin(rad)
-    if t.rotate_deg == 0:
-        cos, sin = 1.0, 0.0
     tx, ty = t.translate_x, t.translate_y
     rotate = (cos, sin, -sin, cos, tx - cos * tx + sin * ty, ty - sin * tx - cos * ty)
     return _compose(rotate, (t.scale_x, 0.0, 0.0, t.scale_y, 0.0, 0.0))

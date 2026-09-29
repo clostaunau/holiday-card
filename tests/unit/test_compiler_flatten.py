@@ -121,6 +121,13 @@ class TestSolidBackdrop:
         assert isinstance(veil.fill, SolidPaint)
         assert _approx(veil.fill.color, 1.0, 0.5, 0.5)
 
+    def test_fully_transparent_shape_is_dropped_whatever_is_below(self) -> None:
+        sky = Rectangle(x=0, y=0, width=4, height=5, fill=LinearGradientFill(
+            angle=90, stops=[ColorStop(position=0, color="#000000"),
+                             ColorStop(position=1, color="#FFFFFF")]))
+        draws = _shapes(compile_card(_card(sky, _veil(opacity=0.0, z_index=1)), _FLAT))
+        assert len(draws) == 2  # background + sky; the invisible veil paints nothing
+
     def test_stroke_colour_is_preblended_too(self) -> None:
         veil = _shapes(compile_card(
             _card(_veil(stroke_color="#0000FF", stroke_width=2.0)), _FLAT))[-1]
@@ -161,8 +168,9 @@ class TestRefusals:
 
     def test_partial_overlap_of_a_solid_shape_raises(self) -> None:
         half = Rectangle(id="half", x=0, y=0, width=1.5, height=5, fill_color="#00FF00")
-        with pytest.raises(UnsupportedFeatureError, match="veil"):
+        with pytest.raises(UnsupportedFeatureError, match="veil") as err:
             compile_card(_card(half, _veil(z_index=1)), _FLAT)
+        assert "solid rect that does not fully contain it" in str(err.value)
 
     def test_bbox_corner_outside_a_circle_backdrop_raises(self) -> None:
         disc = Circle(center_x=1.5, center_y=1.5, radius=0.6, fill_color="#0000FF")
@@ -305,6 +313,17 @@ class TestIRFlattening:
         shape = _shapes(out)[-1]
         assert isinstance(shape.fill, SolidPaint)
         assert _approx(shape.fill.color, 0.5, 0.5, 0.0)
+
+    def test_translucent_draw_clipped_away_entirely_is_dropped(self) -> None:
+        cmds = [
+            _white_page(),
+            BeginClip(geometry=RectGeom(x=0, y=0, width=10, height=10)),
+            DrawShape(geometry=RectGeom(x=100, y=100, width=10, height=10),
+                      fill=SolidPaint(color=RED), opacity=0.5),
+            EndClip(),
+        ]
+        out = flatten_transparency(cmds, where="t/front/hidden")
+        assert len(_shapes(out)) == 1
 
     def test_stroke_only_border_is_not_a_backdrop_for_interior_elements(self) -> None:
         border = DrawShape(geometry=RectGeom(x=0, y=0, width=300, height=300),
