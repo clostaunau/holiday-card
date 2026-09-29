@@ -622,3 +622,209 @@ class TestDebugFlag:
             app, ["--debug", "preview", "christmas-classic", "--no-open", "-o", "p.png"]
         )
         assert isinstance(result.exception, RuntimeError)
+
+
+# ---------------------------------------------------------------------------
+# One pipeline behind create, preview and --debug-emit-ir (#78, D15)
+# ---------------------------------------------------------------------------
+
+_CONTENT_FLAGS = [
+    "--voice", "spare", "--seed", "3", "--theme", "christmas-red-green",
+    "--salutation", "Dear A,", "--ps", "P",
+]
+_OUTPUT_FIELDS = {"output", "output_format", "export_for", "fold_marks"}
+
+
+@pytest.mark.usefixtures("workdir")
+class TestPipelineParity:
+    @pytest.fixture
+    def captured(self, monkeypatch: pytest.MonkeyPatch) -> list[object]:
+        """Record every CardRequest the CLI hands to the core builder."""
+        import holiday_card.cli.commands as commands
+
+        seen: list[object] = []
+
+        def _wrap(real):  # type: ignore[no-untyped-def]
+            def _spy(request, **kwargs):  # type: ignore[no-untyped-def]
+                seen.append(request)
+                return real(request, **kwargs)
+            return _spy
+
+        monkeypatch.setattr(commands, "build_card", _wrap(commands.build_card))
+        monkeypatch.setattr(
+            commands, "build_card_with_report", _wrap(commands.build_card_with_report)
+        )
+        return seen
+
+    def test_create_preview_and_debug_ir_build_the_same_request(
+        self, runner: CliRunner, captured: list[object]
+    ) -> None:
+        invocations = [
+            ["create", "christmas-classic", "-o", "c.pdf", *_CONTENT_FLAGS],
+            ["preview", "christmas-classic", "--no-open", "-o", "p.png", *_CONTENT_FLAGS],
+            ["create", "christmas-classic", "--debug-emit-ir", *_CONTENT_FLAGS],
+        ]
+        for args in invocations:
+            result = runner.invoke(app, args)
+            assert result.exit_code == 0, (args, result.output)
+        assert len(captured) == 3
+        projections = [r.model_dump(exclude=_OUTPUT_FIELDS) for r in captured]  # type: ignore[attr-defined]
+        assert projections[0] == projections[1] == projections[2]
+        assert projections[0]["voice"] == "spare"
+        assert projections[0]["salutation"] == "Dear A,"
+
+    def test_debug_emit_ir_equals_compile_of_build_card(self, runner: CliRunner) -> None:
+        from holiday_card.core.card_request import CardRequest, build_card
+        from holiday_card.core.compiler import compile_card
+
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "--debug-emit-ir", *_CONTENT_FLAGS]
+        )
+        assert result.exit_code == 0, result.output
+        request = CardRequest(
+            template="christmas-classic", voice="spare", seed=3,
+            theme="christmas-red-green", salutation="Dear A,", postscript="P",
+        )
+        expected = [json.loads(c.model_dump_json()) for c in compile_card(build_card(request))]
+        assert json.loads(result.stdout) == expected
+
+    def test_debug_emit_ir_refuses_a_bad_fold_type(self, runner: CliRunner, workdir: Path) -> None:
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "--debug-emit-ir", "--fold-type", "octa_fold"]
+        )
+        _refused(
+            result, workdir,
+            "Error: Invalid fold type 'octa_fold'. Valid options: half_fold, quarter_fold, tri_fold",
+        )
+
+    def test_debug_emit_ir_sees_the_letter_flags(self, runner: CliRunner) -> None:
+        result = runner.invoke(
+            app,
+            ["create", "christmas-classic", "--debug-emit-ir", "--signature", "Chris"],
+        )
+        assert result.exit_code == 0, result.output
+        texts = [c["run"]["text"] for c in json.loads(result.stdout) if c["cmd"] == "draw_text"]
+        assert "Chris" in texts
+
+    def test_preview_accepts_every_content_flag(self, runner: CliRunner, workdir: Path) -> None:
+        result = runner.invoke(
+            app,
+            [
+                "preview", "christmas-classic", "--no-open", "-o", "p.png",
+                "-m", "Hi", "--inside-message", "Body", "-t", "christmas-red-green",
+                "-f", "half_fold", "--signoff", "Love,", "--signature", "C",
+                "--signature-font", "Caveat",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert (workdir / "p.png").is_file()
+
+    def test_preview_refuses_contradictory_flags_like_create(
+        self, runner: CliRunner, workdir: Path
+    ) -> None:
+        result = runner.invoke(
+            app,
+            ["preview", "christmas-classic", "--no-open", "-o", "p.png",
+             "--blank-inside", "--inside-message", "HI"],
+        )
+        _refused(result, workdir, "Error: --blank-inside cannot be combined with --inside-message")
+
+    def test_preview_reports_a_missing_photo_slot(
+        self, runner: CliRunner, workdir: Path
+    ) -> None:
+        photo = Path(__file__).resolve().parents[2] / (
+            "src/holiday_card/data/templates/christmas/placeholder-photo.jpg"
+        )
+        result = runner.invoke(
+            app, ["preview", "christmas-classic", "--no-open", "-o", "p.png", "-i", str(photo)]
+        )
+        _refused(result, workdir, "Error: christmas-classic has no photo slot", "Templates with photo slots:")
+
+    def test_create_export_target_listing_is_unchanged(
+        self, runner: CliRunner, workdir: Path
+    ) -> None:
+        result = runner.invoke(app, ["create", "christmas-classic", "--export-for", "nope"])
+        _refused(
+            result, workdir,
+            "Error: \"unknown export target 'nope'. Available: letter, moo-a6, per-panel-pdf\"",
+            "Available --export-for targets:",
+            "  moo-a6: ",
+        )
+
+    def test_create_bad_format_message_is_unchanged(
+        self, runner: CliRunner, workdir: Path
+    ) -> None:
+        result = runner.invoke(app, ["create", "christmas-classic", "--format", "png"])
+        _refused(
+            result, workdir,
+            "Error: --format must be one of ('pdf', 'svg') or 'auto', got 'png'",
+        )
+
+    def test_create_unknown_voice_message_is_unchanged(
+        self, runner: CliRunner, workdir: Path
+    ) -> None:
+        result = runner.invoke(app, ["create", "christmas-classic", "--voice", "yelling"])
+        _refused(
+            result, workdir,
+            "Error: Unknown --voice value 'yelling'. "
+            "Available: warm, witty, spare, devotional, irreverent",
+        )
+
+    def test_create_letter_with_markdown_message_is_unchanged(
+        self, runner: CliRunner, workdir: Path, tmp_path: Path
+    ) -> None:
+        md = tmp_path / "l.md"
+        md.write_text("Hi\n")
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "--ps", "x", "--inside-message-md", str(md)]
+        )
+        _refused(
+            result, workdir,
+            "Error: --inside-message-md cannot be combined with "
+            "--salutation / --signoff / --signature / --ps "
+            "(letter parts use a separate authoring surface). "
+            "Either drop the Markdown file or move the letter "
+            "structure into the body of the Markdown.",
+        )
+
+    def test_create_empty_markdown_message_is_unchanged(
+        self, runner: CliRunner, workdir: Path, tmp_path: Path
+    ) -> None:
+        md = tmp_path / "empty.md"
+        md.write_text("  \n\n ")
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "--inside-message-md", str(md)]
+        )
+        _refused(result, workdir, f"Error reading {md}: ")
+
+    def test_create_missing_markdown_message_is_unchanged(
+        self, runner: CliRunner, workdir: Path, tmp_path: Path
+    ) -> None:
+        md = tmp_path / "missing.md"
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "--inside-message-md", str(md)]
+        )
+        _refused(result, workdir, f"Error: --inside-message-md file not found: {md}")
+
+    def test_create_summary_still_reports_picks_and_letter(
+        self, runner: CliRunner
+    ) -> None:
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "-o", "c.pdf", *_CONTENT_FLAGS]
+        )
+        assert result.exit_code == 0, result.output
+        assert "  Voice: spare" in result.output
+        assert "  Picked cover: " in result.output
+        assert "  Picked inside: " in result.output
+        assert "  Inside: letter (salutation, body, P.S.)" in result.output
+
+    def test_create_summary_counts_markdown_paragraphs(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        md = tmp_path / "l.md"
+        md.write_text("One.\n\nTwo.\n")
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "-o", "c.pdf", "--inside-message-md", str(md)]
+        )
+        assert result.exit_code == 0, result.output
+        assert "  Inside: Markdown (2 paragraphs)" in result.output

@@ -12,28 +12,32 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 import typer
+from pydantic import ValidationError
 from typer.core import TyperGroup
 
 from holiday_card import __version__
 from holiday_card.core.ai_openai import make_image_client
+from holiday_card.core.card_request import (
+    BuildReport,
+    CardRequest,
+    UnknownExportTargetError,
+    build_card,
+    build_card_with_report,
+    plan_output,
+    unwrap_validation_error,
+    validation_message,
+)
 from holiday_card.core.compiler import UnsupportedFeatureError
 from holiday_card.core.export_targets import (
     REGISTRY as EXPORT_TARGET_REGISTRY,
 )
 from holiday_card.core.export_targets import (
-    ExportTarget,
     ExportTargetNotFoundError,
     get_target,
 )
 from holiday_card.core.generators import CardGenerator, PhotoSlotError
 from holiday_card.core.images import ImageSourceError
-from holiday_card.core.models import Card, FoldType, OccasionType
-from holiday_card.core.sentiments import (
-    VOICES,
-    SentimentNotFoundError,
-    available_voices,
-    pick_sentiment,
-)
+from holiday_card.core.models import Card, OccasionType
 from holiday_card.core.templates import (
     TemplateLoadError,
     TemplateNotFoundError,
@@ -269,45 +273,117 @@ def list_themes(
         _unexpected_error("Error listing themes", e)
 
 
+# --- content options shared by ``create`` and ``preview`` (#78: same names, same short flags)
+
+_MESSAGE_OPTION = typer.Option(None, "--message", "-m", help="Greeting message text")
+_FOLD_TYPE_OPTION = typer.Option(
+    None, "--fold-type", "-f", help="Override fold type: half_fold, quarter_fold, tri_fold"
+)
+_IMAGE_OPTION = typer.Option(
+    None,
+    "--image",
+    "-i",
+    help=(
+        "Photo for the template's photo slots (PNG/JPEG, any path). "
+        "Repeat to fill slot 2, 3, …; unfilled slots keep the placeholder."
+    ),
+)
+_THEME_OPTION = typer.Option(
+    None, "--theme", "-t", help="Color theme to apply (e.g., christmas-red-green)"
+)
+_INSIDE_MESSAGE_OPTION = typer.Option(
+    None, "--inside-message", help="Message for the inside panel"
+)
+_INSIDE_MESSAGE_MD_OPTION = typer.Option(
+    None,
+    "--inside-message-md",
+    help=(
+        "Path to a Markdown file for the inside panel ('Christmas "
+        "letter' mode). Supports paragraphs, **bold**, and hard line "
+        "breaks. Mutually exclusive with --inside-message and "
+        "overrides --voice's inside pick. For best bold rendering, "
+        "use a template whose inside font is 'Lato' (the only "
+        "curated font with a registered Bold variant today)."
+    ),
+)
+_VOICE_OPTION = typer.Option(
+    None,
+    "--voice",
+    help=(
+        "Pick a curated cover greeting and inside message in the "
+        "given voice. One of: warm, witty, spare, devotional, "
+        "irreverent. Explicit --message / --inside-message override "
+        "the picked sentiment."
+    ),
+)
+_BLANK_INSIDE_OPTION = typer.Option(
+    False,
+    "--blank-inside",
+    help="Render the inside panel with no message text.",
+)
+_SEED_OPTION = typer.Option(
+    None,
+    "--seed",
+    help=(
+        "Reproducible sentiment selection: same seed + same template "
+        "+ same voice → same picked line. Default is random."
+    ),
+)
+_SALUTATION_OPTION = typer.Option(
+    None,
+    "--salutation",
+    help=(
+        "Inside-letter salutation, e.g. 'Dear Aunt Margaret,'. "
+        "Renders as the top line of the inside panel."
+    ),
+)
+_SIGNOFF_OPTION = typer.Option(
+    None,
+    "--signoff",
+    help=(
+        "Inside-letter signoff line, e.g. 'Love,' or 'Always,'. "
+        "Renders below the body with extra vertical breathing room."
+    ),
+)
+_SIGNATURE_OPTION = typer.Option(
+    None,
+    "--signature",
+    help=(
+        "Inside-letter signature (the writer's name). Pair with "
+        "--signature-font for the handwritten-feel convention."
+    ),
+)
+_PS_OPTION = typer.Option(
+    None,
+    "--ps",
+    help=(
+        "Inside-letter P.S. line — renders at 85% of body size, "
+        "below the signature. Conventionally the most-read line."
+    ),
+)
+_SIGNATURE_FONT_OPTION = typer.Option(
+    None,
+    "--signature-font",
+    help=(
+        "Font family for the signature line. Defaults to the "
+        "template's inside font; 'Caveat' (curated handwritten) "
+        "is the conventional pick."
+    ),
+)
+
+
 @app.command()
 def create(
     template: str = typer.Argument(..., help="Template name or path"),
-    message: str | None = typer.Option(
-        None, "--message", "-m", help="Greeting message text"
-    ),
+    message: str | None = _MESSAGE_OPTION,
     output: Path | None = typer.Option(
         None, "--output", "-o", help="Output PDF file path"
     ),
-    fold_type: str | None = typer.Option(
-        None, "--fold-type", "-f", help="Override fold type: half_fold, quarter_fold, tri_fold"
-    ),
-    image: list[Path] | None = typer.Option(
-        None,
-        "--image",
-        "-i",
-        help=(
-            "Photo for the template's photo slots (PNG/JPEG, any path). "
-            "Repeat to fill slot 2, 3, …; unfilled slots keep the placeholder."
-        ),
-    ),
-    theme: str | None = typer.Option(
-        None, "--theme", "-t", help="Color theme to apply (e.g., christmas-red-green)"
-    ),
-    inside_message: str | None = typer.Option(
-        None, "--inside-message", help="Message for the inside panel"
-    ),
-    inside_message_md: Path | None = typer.Option(
-        None,
-        "--inside-message-md",
-        help=(
-            "Path to a Markdown file for the inside panel ('Christmas "
-            "letter' mode). Supports paragraphs, **bold**, and hard line "
-            "breaks. Mutually exclusive with --inside-message and "
-            "overrides --voice's inside pick. For best bold rendering, "
-            "use a template whose inside font is 'Lato' (the only "
-            "curated font with a registered Bold variant today)."
-        ),
-    ),
+    fold_type: str | None = _FOLD_TYPE_OPTION,
+    image: list[Path] | None = _IMAGE_OPTION,
+    theme: str | None = _THEME_OPTION,
+    inside_message: str | None = _INSIDE_MESSAGE_OPTION,
+    inside_message_md: Path | None = _INSIDE_MESSAGE_MD_OPTION,
     debug_emit_ir: bool = typer.Option(
         False,
         "--debug-emit-ir",
@@ -329,70 +405,14 @@ def create(
             "registry."
         ),
     ),
-    voice: str | None = typer.Option(
-        None,
-        "--voice",
-        help=(
-            "Pick a curated cover greeting and inside message in the "
-            "given voice. One of: warm, witty, spare, devotional, "
-            "irreverent. Explicit --message / --inside-message override "
-            "the picked sentiment."
-        ),
-    ),
-    blank_inside: bool = typer.Option(
-        False,
-        "--blank-inside",
-        help="Render the inside panel with no message text.",
-    ),
-    seed: int | None = typer.Option(
-        None,
-        "--seed",
-        help=(
-            "Reproducible sentiment selection: same seed + same template "
-            "+ same voice → same picked line. Default is random."
-        ),
-    ),
-    salutation: str | None = typer.Option(
-        None,
-        "--salutation",
-        help=(
-            "Inside-letter salutation, e.g. 'Dear Aunt Margaret,'. "
-            "Renders as the top line of the inside panel."
-        ),
-    ),
-    signoff: str | None = typer.Option(
-        None,
-        "--signoff",
-        help=(
-            "Inside-letter signoff line, e.g. 'Love,' or 'Always,'. "
-            "Renders below the body with extra vertical breathing room."
-        ),
-    ),
-    signature: str | None = typer.Option(
-        None,
-        "--signature",
-        help=(
-            "Inside-letter signature (the writer's name). Pair with "
-            "--signature-font for the handwritten-feel convention."
-        ),
-    ),
-    ps: str | None = typer.Option(
-        None,
-        "--ps",
-        help=(
-            "Inside-letter P.S. line — renders at 85% of body size, "
-            "below the signature. Conventionally the most-read line."
-        ),
-    ),
-    signature_font: str | None = typer.Option(
-        None,
-        "--signature-font",
-        help=(
-            "Font family for the signature line. Defaults to the "
-            "template's inside font; 'Caveat' (curated handwritten) "
-            "is the conventional pick."
-        ),
-    ),
+    voice: str | None = _VOICE_OPTION,
+    blank_inside: bool = _BLANK_INSIDE_OPTION,
+    seed: int | None = _SEED_OPTION,
+    salutation: str | None = _SALUTATION_OPTION,
+    signoff: str | None = _SIGNOFF_OPTION,
+    signature: str | None = _SIGNATURE_OPTION,
+    ps: str | None = _PS_OPTION,
+    signature_font: str | None = _SIGNATURE_FONT_OPTION,
     with_fold_marks: bool | None = typer.Option(
         None,
         "--with-fold-marks/--no-fold-marks",
@@ -418,204 +438,46 @@ def create(
         holiday-card create christmas-classic --export-for moo-a6 --output ./moo-card/
     """
     try:
-        if debug_emit_ir:
-            _emit_ir_debug(template, message, theme, fold_type, inside_message)
-            return
-
-        # Resolve the export target up-front; bad target = early exit.
-        try:
-            target = get_target(export_for)
-        except ExportTargetNotFoundError as e:
-            typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
-            typer.echo("\nAvailable --export-for targets:", err=True)
-            for name in sorted(EXPORT_TARGET_REGISTRY):
-                typer.echo(f"  {name}: {EXPORT_TARGET_REGISTRY[name].description}", err=True)
-            raise typer.Exit(2) from e
-
-        # Validate --voice up-front; bad value = early exit. The actual
-        # sentiment lookup happens after the template loads (we need
-        # the template's occasion to know which sentiment file to pick).
-        if voice is not None and voice not in VOICES:
-            typer.secho(
-                f"Error: Unknown --voice value {voice!r}. "
-                f"Available: {', '.join(VOICES)}",
-                fg=typer.colors.RED,
-                err=True,
-            )
-            raise typer.Exit(2)
-
-        # --inside-message and --inside-message-md are mutually
-        # exclusive (the user picked one or the other; doing both is
-        # almost certainly a mistake worth surfacing).
-        if inside_message is not None and inside_message_md is not None:
-            typer.secho(
-                "Error: --inside-message and --inside-message-md are "
-                "mutually exclusive (pick one).",
-                fg=typer.colors.RED,
-                err=True,
-            )
-            raise typer.Exit(2)
-        if theme is not None:
-            theme_ids = sorted(t["id"] for t in discover_themes())
-            if theme not in theme_ids:
-                _fail(f"Unknown theme {theme!r}. Available: {', '.join(theme_ids)}")
-        _check_flag_combinations(
-            blank_inside=blank_inside,
+        request = _build_request(
+            template=template,
+            message=message,
             inside_message=inside_message,
             inside_message_md=inside_message_md,
             voice=voice,
             seed=seed,
+            blank_inside=blank_inside,
+            salutation=salutation,
+            signoff=signoff,
             signature=signature,
+            postscript=ps,
             signature_font=signature_font,
+            theme=theme,
+            fold_type=fold_type,
+            images=image,
+            output=output,
+            output_format=output_format,
+            export_for=export_for,
+            fold_marks=with_fold_marks,
         )
-        # Letter-part flags (--salutation / --signoff / --signature /
-        # --ps) and --inside-message-md represent two different
-        # authoring surfaces for the inside panel and have separate
-        # compiler passes. Allowing both at once would force an
-        # ad-hoc precedence rule; refuse the combination so the user
-        # can pick the right tool. Letter parts compose freely with
-        # --inside-message and --voice (those just supply the body).
-        letter_flags_set = any(
-            v is not None for v in (salutation, signoff, signature, ps)
-        )
-        if letter_flags_set and inside_message_md is not None:
-            typer.secho(
-                "Error: --inside-message-md cannot be combined with "
-                "--salutation / --signoff / --signature / --ps "
-                "(letter parts use a separate authoring surface). "
-                "Either drop the Markdown file or move the letter "
-                "structure into the body of the Markdown.",
-                fg=typer.colors.RED,
-                err=True,
-            )
-            raise typer.Exit(2)
-        # Read the Markdown file up-front so a missing/unreadable file
-        # fails fast before we render anything.
-        rich_inside = None
-        if inside_message_md is not None:
-            from holiday_card.core.markdown import parse_markdown
-            if not inside_message_md.exists():
-                typer.secho(
-                    f"Error: --inside-message-md file not found: {inside_message_md}",
-                    fg=typer.colors.RED,
-                    err=True,
-                )
-                raise typer.Exit(2)
-            try:
-                rich_inside = parse_markdown(inside_message_md.read_text())
-            except (OSError, ValueError) as e:
-                typer.secho(
-                    f"Error reading {inside_message_md}: {e}",
-                    fg=typer.colors.RED,
-                    err=True,
-                )
-                raise typer.Exit(2) from e
+        if debug_emit_ir:
+            _emit_ir_debug(request)
+            return
 
-        # Resolve output format and extension
-        chosen_format = _resolve_output_format(output_format, output)
-        ext = ".pdf" if chosen_format == "pdf" else ".svg"
-
-        # Default output path; the generator creates ``output/`` on write.
-        if output is None:
-            output_dir = Path("output")
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-            if target.layout == "per-panel":
-                # Per-panel mode writes a directory of files; the timestamp
-                # becomes the directory name.
-                output = output_dir / f"{template}-{timestamp}"
-            else:
-                output = output_dir / f"{template}-{timestamp}{ext}"
-
-        output = _validate_output_path(output, chosen_format, target)
-
-        generator = CardGenerator(renderer=_make_renderer(chosen_format))
+        plan = plan_output(request, now=datetime.now())
+        output = plan.path
+        target = plan.target
 
         typer.echo(f"Creating card from template: {template}")
 
-        # Parse fold type if provided
-        fold_type_enum = None
-        if fold_type:
-            try:
-                fold_type_enum = FoldType(fold_type)
-            except ValueError as e:
-                typer.secho(
-                    f"Error: Invalid fold type '{fold_type}'. "
-                    f"Valid options: half_fold, quarter_fold, tri_fold",
-                    fg=typer.colors.RED,
-                    err=True,
-                )
-                raise typer.Exit(2) from e
-
-        # Resolve --voice into picked sentiments, only filling slots the
-        # user didn't explicitly set. Explicit --message and --inside-message
-        # always win; --blank-inside trumps both.
-        effective_message = message
-        effective_inside = inside_message
-        picked_voice_message: str | None = None
-        picked_voice_inside: str | None = None
-        if voice is not None:
-            occasion_str = _template_occasion(template)
-            shipped = available_voices(occasion_str)
-            if voice not in shipped:
-                _fail(
-                    f"voice {voice!r} is not available for occasion "
-                    f"{occasion_str!r}. Available: {', '.join(shipped) or '(none)'}"
-                )
-            if effective_message is None:
-                picked_voice_message = _pick_voice_line(occasion_str, voice, "cover", seed)
-                effective_message = picked_voice_message
-            if effective_inside is None and not blank_inside:
-                picked_voice_inside = _pick_voice_line(occasion_str, voice, "inside", seed)
-                effective_inside = picked_voice_inside
-        if blank_inside:
-            effective_inside = ""
-
-        # Letter mode wins over both rich_content and plain inside_message
-        # when any letter-part flag is set. The body of the letter is the
-        # effective_inside string (so --inside-message / --voice / --blank-inside
-        # still flow through normally; they just become the body).
-        letter_content = None
-        if letter_flags_set:
-            from holiday_card.core.letter import LetterContent
-            letter_content = LetterContent(
-                salutation=salutation or "",
-                body=effective_inside or "",
-                signoff=signoff or "",
-                signature=signature or "",
-                postscript=ps or "",
-                signature_font_family=signature_font,
-            )
-
-        # Generate the card. If --inside-message-md was used, skip the
-        # plain inside_message path; the rich content is applied below.
-        # Letter mode also bypasses the plain inside_message path — the
-        # body is part of the letter_content payload.
-        card = generator.create_card(
-            template_id=template,
-            message=effective_message,
-            output_path=output,
-            theme_id=theme,
-            fold_type=fold_type_enum,
-            photos=image,
-            inside_message=(
-                None
-                if (rich_inside is not None or letter_content is not None)
-                else effective_inside
-            ),
-        )
-        if fold_type_enum is not None:
-            _check_fold_type_fits(fold_type_enum, card)
-        if rich_inside is not None:
-            generator.apply_inside_rich_content(card, rich_inside)
-        if letter_content is not None:
-            generator.apply_inside_letter(card, letter_content)
+        card, report = build_card_with_report(request)
+        generator = CardGenerator(renderer=_make_renderer(plan.output_format))
         written = generator.generate(
-            card, output, target, emit_fold_lines=with_fold_marks,
+            card, plan.path, target, emit_fold_lines=request.fold_marks,
         )
 
         # Success output
         if target.layout == "per-panel":
-            typer.secho(f"Card created ({len(written)} files): {output}", fg=typer.colors.GREEN)
+            typer.secho(f"Card created ({len(written)} files): {plan.path}", fg=typer.colors.GREEN)
             for path in written:
                 typer.echo(f"  - {path.name}")
         else:
@@ -623,65 +485,12 @@ def create(
         typer.echo(f"  Template: {template}")
         typer.echo(f"  Fold: {card.fold_type.value}")
         typer.echo(f"  Target: {target.name} ({target.layout})")
-        if voice:
-            typer.echo(f"  Voice: {voice}")
-            if picked_voice_message is not None:
-                typer.echo(f"  Picked cover: {_truncate(picked_voice_message, 60)}")
-            if picked_voice_inside is not None:
-                typer.echo(f"  Picked inside: {_truncate(picked_voice_inside, 60)}")
-        if blank_inside:
-            typer.echo("  Inside: (blank)")
-        if rich_inside is not None:
-            n_paragraphs = len(rich_inside.paragraphs)
-            typer.echo(f"  Inside: Markdown ({n_paragraphs} paragraph{'s' if n_paragraphs != 1 else ''})")
-        if letter_content is not None:
-            parts = [
-                name for name, val in (
-                    ("salutation", letter_content.salutation),
-                    ("body", letter_content.body),
-                    ("signoff", letter_content.signoff),
-                    ("signature", letter_content.signature),
-                    ("P.S.", letter_content.postscript),
-                ) if val
-            ]
-            typer.echo(f"  Inside: letter ({', '.join(parts)})")
-        if effective_message and not voice:
-            typer.echo(f"  Message: {_truncate(effective_message, 50)}")
+        _echo_content_summary(request, report, card)
 
     except (typer.Exit, BrokenPipeError):
         # Preserve intentional exit codes from inner validation
         # (invalid fold type, missing image, etc.).
         raise
-
-    except TemplateNotFoundError as e:
-        typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
-        typer.echo("\nAvailable templates:", err=True)
-        templates_list = discover_templates()
-        for t in templates_list[:5]:
-            typer.echo(f"  - {t['id']}", err=True)
-        if len(templates_list) > 5:
-            typer.echo(f"  ... and {len(templates_list) - 5} more", err=True)
-        typer.echo("\nRun 'holiday-card templates' to see all options.", err=True)
-        raise typer.Exit(2) from e
-
-    except TemplateLoadError as e:
-        typer.secho(f"Error loading template: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(2) from e
-
-    except ImageSourceError as e:
-        typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(2) from e
-
-    except PhotoSlotError as e:
-        typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
-        slotted = templates_with_photo_slots()
-        if slotted:
-            typer.echo(f"Templates with photo slots: {', '.join(slotted)}", err=True)
-        raise typer.Exit(2) from e
-
-    except UnsupportedFeatureError as e:
-        typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(2) from e
 
     except PermissionError as e:
         typer.secho(f"Error: Cannot write to {output}", fg=typer.colors.RED, err=True)
@@ -689,15 +498,13 @@ def create(
         raise typer.Exit(4) from e
 
     except Exception as e:
-        _unexpected_error("Error creating card", e)
+        _exit_for_card_error("Error creating card", e)
 
 
 @app.command()
 def preview(
     template: str = typer.Argument(..., help="Template name or path"),
-    message: str | None = typer.Option(
-        None, "--message", "-m", help="Greeting message text"
-    ),
+    message: str | None = _MESSAGE_OPTION,
     output: Path | None = typer.Option(
         None, "--output", "-o", help="Output PNG file path"
     ),
@@ -707,11 +514,27 @@ def preview(
     open_after: bool = typer.Option(
         True, "--open/--no-open", help="Open the preview in your default image viewer."
     ),
+    fold_type: str | None = _FOLD_TYPE_OPTION,
+    image: list[Path] | None = _IMAGE_OPTION,
+    theme: str | None = _THEME_OPTION,
+    inside_message: str | None = _INSIDE_MESSAGE_OPTION,
+    inside_message_md: Path | None = _INSIDE_MESSAGE_MD_OPTION,
+    voice: str | None = _VOICE_OPTION,
+    blank_inside: bool = _BLANK_INSIDE_OPTION,
+    seed: int | None = _SEED_OPTION,
+    salutation: str | None = _SALUTATION_OPTION,
+    signoff: str | None = _SIGNOFF_OPTION,
+    signature: str | None = _SIGNATURE_OPTION,
+    ps: str | None = _PS_OPTION,
+    signature_font: str | None = _SIGNATURE_FONT_OPTION,
 ) -> None:
     """Generate a fast PNG preview of a card and open it in your default viewer.
 
-    Uses the same Wave 2 RenderCommand IR as the PDF and SVG backends, so
-    what you see in the preview is what you'll get when you print.
+    Takes every content option ``create`` takes (message, inside text,
+    Markdown, letter parts, voice, theme, fold type, photos) and builds
+    the card through the same pipeline, so the preview shows the card
+    ``create`` would write for the same flags. It renders the default
+    ``letter`` sheet; ``--export-for`` and ``--format`` are ``create``-only.
 
     Examples:
 
@@ -719,12 +542,30 @@ def preview(
 
         holiday-card preview christmas-classic -m "Merry Christmas!" --dpi 300
 
-        holiday-card preview christmas-classic --no-open -o out/preview.png
+        holiday-card preview christmas-classic --voice spare --seed 1 --no-open -o out/preview.png
     """
     from holiday_card.core.compiler import compile_card
     from holiday_card.renderers.png_backend import PNGRenderer
 
     try:
+        request = _build_request(
+            template=template,
+            message=message,
+            inside_message=inside_message,
+            inside_message_md=inside_message_md,
+            voice=voice,
+            seed=seed,
+            blank_inside=blank_inside,
+            salutation=salutation,
+            signoff=signoff,
+            signature=signature,
+            postscript=ps,
+            signature_font=signature_font,
+            theme=theme,
+            fold_type=fold_type,
+            images=image,
+        )
+
         # Default output path
         if output is None:
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -736,7 +577,7 @@ def preview(
 
         typer.echo(f"Generating preview for template: {template}")
 
-        card = CardGenerator().create_card(template_id=template, message=message)
+        card, report = build_card_with_report(request)
         commands = compile_card(card)
         output.parent.mkdir(parents=True, exist_ok=True)
         PNGRenderer(dpi=dpi).render(commands, output)
@@ -744,6 +585,7 @@ def preview(
         typer.secho(f"Preview generated: {output}", fg=typer.colors.GREEN)
         typer.echo(f"  Template: {template}")
         typer.echo(f"  Resolution: {dpi} DPI")
+        _echo_content_summary(request, report, card)
 
         if open_after:
             _open_in_default_viewer(output)
@@ -751,12 +593,8 @@ def preview(
     except (typer.Exit, BrokenPipeError):
         raise
 
-    except (TemplateNotFoundError, ImageSourceError, UnsupportedFeatureError) as e:
-        typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(2) from e
-
     except Exception as e:
-        _unexpected_error("Error generating preview", e)
+        _exit_for_card_error("Error generating preview", e)
 
 
 @app.command()
@@ -1148,128 +986,112 @@ def _open_in_default_viewer(path: Path) -> None:
         typer.secho(f"  (could not auto-open: {e})", fg=typer.colors.YELLOW, err=True)
 
 
-_SUPPORTED_FORMATS = ("pdf", "svg")
-
-
-def _template_occasion(template_id: str) -> str:
-    """Look up a template's occasion string for sentiment selection.
-
-    Templates whose ID isn't found discover_templates() (e.g. a path
-    to a YAML file the user passed) fall back to ``"generic"``; the
-    sentiment library always has a generic fallback.
-    """
-    for entry in discover_templates():
-        if entry.get("id") == template_id:
-            occasion = entry.get("occasion") or "generic"
-            return occasion
-    return "generic"
-
-
 def _truncate(s: str, n: int) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
-def _resolve_output_format(requested: str, output: Path | None) -> str:
-    """Pick the actual output format from --format and the output path.
+def _read_markdown(path: Path) -> str:
+    """Read ``--inside-message-md`` up front so a bad file fails before anything renders."""
+    from holiday_card.core.markdown import parse_markdown
 
-    Precedence:
-    - explicit ``--format pdf|svg`` wins
-    - ``--format auto`` infers from the output path's suffix
-    - default is ``pdf``
-    """
-    requested = requested.lower()
-    if requested in _SUPPORTED_FORMATS:
-        return requested
-    if requested != "auto":
-        typer.secho(
-            f"Error: --format must be one of {_SUPPORTED_FORMATS} or 'auto', got {requested!r}",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(2)
-    if output is not None:
-        suffix = output.suffix.lower().lstrip(".")
-        if suffix in _SUPPORTED_FORMATS:
-            return suffix
-    return "pdf"
-
-
-def _check_flag_combinations(
-    *,
-    blank_inside: bool,
-    inside_message: str | None,
-    inside_message_md: Path | None,
-    voice: str | None,
-    seed: int | None,
-    signature: str | None,
-    signature_font: str | None,
-) -> None:
-    """Refuse flags that would otherwise be silently ignored (#60)."""
-    if blank_inside and inside_message is not None:
-        _fail("--blank-inside cannot be combined with --inside-message")
-    if blank_inside and inside_message_md is not None:
-        _fail("--blank-inside cannot be combined with --inside-message-md")
-    if seed is not None and voice is None:
-        _fail("--seed only applies with --voice")
-    if signature_font is not None and signature is None:
-        _fail("--signature-font requires --signature")
-
-
-def _pick_voice_line(occasion: str, voice: str, role: str, seed: int | None) -> str:
+    if not path.exists():
+        _fail(f"--inside-message-md file not found: {path}")
     try:
-        return pick_sentiment(occasion, voice, role, seed=seed)
-    except SentimentNotFoundError as e:
-        # The error names the absolute library path; keep it out of the CLI.
-        typer.secho(
-            f"Error: voice {voice!r} has no {role} sentiment for occasion {occasion!r}",
-            fg=typer.colors.RED,
-            err=True,
-        )
+        text = path.read_text()
+        parse_markdown(text)
+    except (OSError, ValueError) as e:
+        typer.secho(f"Error reading {path}: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(2) from e
+    return text
 
 
-_FOLD_PANELS: dict[FoldType, tuple[str, ...]] = {
-    FoldType.HALF_FOLD: ("front", "back", "inside_left", "inside_right"),
-    FoldType.QUARTER_FOLD: ("front", "back", "inside_left", "inside_right"),
-    FoldType.TRI_FOLD: ("left", "center", "right"),
-}
+def _build_request(
+    *,
+    inside_message_md: Path | None,
+    images: list[Path] | None,
+    **fields: Any,
+) -> CardRequest:
+    """Turn parsed options into a :class:`CardRequest`; a refusal is exit 2."""
+    inside_markdown = _read_markdown(inside_message_md) if inside_message_md is not None else None
+    try:
+        return CardRequest(inside_markdown=inside_markdown, images=tuple(images or ()), **fields)
+    except ValidationError as e:
+        error = unwrap_validation_error(e)
+        if isinstance(error, UnknownExportTargetError):
+            typer.secho(f"Error: {error}", fg=typer.colors.RED, err=True)
+            typer.echo("\nAvailable --export-for targets:", err=True)
+            for name in sorted(EXPORT_TARGET_REGISTRY):
+                typer.echo(f"  {name}: {EXPORT_TARGET_REGISTRY[name].description}", err=True)
+            raise typer.Exit(2) from e
+        _fail(str(error))
 
 
-def _check_fold_type_fits(fold_type: FoldType, card: Card) -> None:
-    """Refuse a ``--fold-type`` whose panel set the template doesn't have."""
-    needed = _FOLD_PANELS[fold_type]
-    has = [p.position.value for p in card.panels]
-    if set(has) != set(needed):
-        _fail(
-            f"fold type {fold_type.value!r} needs panels {'/'.join(needed)}; "
-            f"template has {'/'.join(has)}"
-        )
+def _exit_for_card_error(prefix: str, e: Exception) -> NoReturn:
+    """Map a card-building error to its exit code (the shared tail of create / preview)."""
+    if isinstance(e, TemplateNotFoundError):
+        typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
+        typer.echo("\nAvailable templates:", err=True)
+        templates_list = discover_templates()
+        for t in templates_list[:5]:
+            typer.echo(f"  - {t['id']}", err=True)
+        if len(templates_list) > 5:
+            typer.echo(f"  ... and {len(templates_list) - 5} more", err=True)
+        typer.echo("\nRun 'holiday-card templates' to see all options.", err=True)
+        raise typer.Exit(2) from e
+    if isinstance(e, TemplateLoadError):
+        typer.secho(f"Error loading template: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from e
+    if isinstance(e, PhotoSlotError):
+        typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
+        slotted = templates_with_photo_slots()
+        if slotted:
+            typer.echo(f"Templates with photo slots: {', '.join(slotted)}", err=True)
+        raise typer.Exit(2) from e
+    if isinstance(e, ImageSourceError | UnsupportedFeatureError | ValidationError | ValueError):
+        # Bad or contradictory input (D4): the message is already user-facing.
+        message = validation_message(e) if isinstance(e, ValidationError) else str(e)
+        typer.secho(f"Error: {message}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from e
+    _unexpected_error(prefix, e)
 
 
-def _validate_output_path(output: Path, fmt: str, target: ExportTarget) -> Path:
-    """Check ``-o`` against the output format and target; return the final path.
-
-    Per-panel targets need a directory. Single-file targets need a
-    ``.pdf``/``.svg`` suffix matching ``fmt``; a path with no suffix
-    gets one appended.
-    """
-    if target.layout == "per-panel":
-        if output.is_file() or (output.suffix and not output.is_dir()):
-            _fail(
-                f"--export-for {target.name} writes one file per panel; "
-                f"-o must be a directory, not {str(output)!r}"
-            )
-        return output
-    ext = f".{fmt}"
-    suffix = output.suffix.lower()
-    if not suffix:
-        return Path(f"{output}{ext}")
-    if suffix == ext:
-        return output
-    if suffix in {f".{f}" for f in _SUPPORTED_FORMATS}:
-        _fail(f"--format {fmt} conflicts with output extension {output.suffix!r}")
-    hint = "; use 'holiday-card preview' for PNG" if suffix == ".png" else ""
-    _fail(f"unsupported output extension {output.suffix!r} (use .pdf or .svg{hint})")
+def _echo_content_summary(request: CardRequest, report: BuildReport, card: Card) -> None:
+    """The per-content lines of the success summary, shared by create / preview."""
+    if request.voice:
+        typer.echo(f"  Voice: {request.voice}")
+        if report.picked_cover is not None:
+            typer.echo(f"  Picked cover: {_truncate(report.picked_cover, 60)}")
+        if report.picked_inside is not None:
+            typer.echo(f"  Picked inside: {_truncate(report.picked_inside, 60)}")
+    if request.blank_inside:
+        typer.echo("  Inside: (blank)")
+    inside = next(
+        (
+            t
+            for p in card.panels
+            for t in p.text_elements
+            if t.rich_content is not None or t.letter_content is not None
+        ),
+        None,
+    )
+    if report.inside_mode == "markdown" and inside is not None and inside.rich_content is not None:
+        n_paragraphs = len(inside.rich_content.paragraphs)
+        typer.echo(f"  Inside: Markdown ({n_paragraphs} paragraph{'s' if n_paragraphs != 1 else ''})")
+    if report.inside_mode == "letter" and inside is not None and inside.letter_content is not None:
+        letter = inside.letter_content
+        parts = [
+            name for name, val in (
+                ("salutation", letter.salutation),
+                ("body", letter.body),
+                ("signoff", letter.signoff),
+                ("signature", letter.signature),
+                ("P.S.", letter.postscript),
+            ) if val
+        ]
+        typer.echo(f"  Inside: letter ({', '.join(parts)})")
+    front_message = request.message if request.message is not None else report.picked_cover
+    if front_message and not request.voice:
+        typer.echo(f"  Message: {_truncate(front_message, 50)}")
 
 
 def _make_renderer(output_format: str) -> "IRReportLabRenderer | SVGRenderer":
@@ -1279,32 +1101,11 @@ def _make_renderer(output_format: str) -> "IRReportLabRenderer | SVGRenderer":
     return IRReportLabRenderer()
 
 
-def _emit_ir_debug(
-    template: str,
-    message: str | None,
-    theme: str | None,
-    fold_type: str | None,
-    inside_message: str | None,
-) -> None:
-    """Implementation of the hidden ``--debug-emit-ir`` flag.
-
-    Loads the template, builds a Card via CardGenerator (no PDF written),
-    runs the Wave 2 compiler, and prints the resulting RenderCommand list
-    as a JSON array to stdout. For developer use only — Wave 2 follow-up
-    PRs validate the output via snapshot tests.
-    """
+def _emit_ir_debug(request: CardRequest) -> None:
+    """The hidden ``--debug-emit-ir`` flag: print ``compile_card(build_card(request))`` as JSON."""
     from holiday_card.core.compiler import compile_card
 
-    fold_type_enum = FoldType(fold_type) if fold_type else None
-    generator = CardGenerator()
-    card = generator.create_card(
-        template_id=template,
-        message=message,
-        theme_id=theme,
-        fold_type=fold_type_enum,
-        inside_message=inside_message,
-    )
-    commands = compile_card(card)
+    commands = compile_card(build_card(request))
     payload = [json.loads(c.model_dump_json()) for c in commands]
     typer.echo(json.dumps(payload, indent=2))
 

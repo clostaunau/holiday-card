@@ -145,3 +145,23 @@ class TestSeedReproducibility:
         a = pick_sentiment("christmas", "irreverent", "cover", seed=999)
         b = pick_sentiment("christmas", "irreverent", "cover", seed=999)
         assert a == b
+
+
+# ---------------------------------------------------------------------------
+# preview shares the create pipeline (#78)
+# ---------------------------------------------------------------------------
+
+
+class TestPreviewVoiceFlag:
+    def test_preview_with_voice_and_seed_exits_zero(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        out = tmp_path / "p.png"
+        result = runner.invoke(
+            app,
+            ["preview", "christmas-classic", "--voice", "spare", "--seed", "1",
+             "--no-open", "-o", str(out)],
+        )
+        assert result.exit_code == 0, result.output
+        assert out.is_file()
+        assert out.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
