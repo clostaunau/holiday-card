@@ -32,7 +32,7 @@ holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," -
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 1261 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 1297 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -172,7 +172,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 1261 tests pass
+uv run pytest                            # All 1297 tests pass
 ```
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit
@@ -318,6 +318,34 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Recent changes
 
+- **2026-09-29 — ReportLab backend: correct quadratics, dash arrays and
+  scoped alpha (expert-panel §P7 / D4 / D12, issue #62)**: Four latent
+  `IRReportLabRenderer` bugs that shipped templates dodged only because the
+  compiler drops colour alpha. (1) Quadratic path ops lifted from the
+  control point (`path.contour` doesn't exist on ReportLab paths);
+  `_geometry_to_path` now tracks the current point and subpath start
+  (`close` returns to it) and a `quadratic` with no current point raises
+  `ValueError`. (2) `_apply_fill` called `setFillAlpha(c.a)` and nothing
+  reset it, so one translucent fill made every later fill and text
+  translucent; `opacity` replaced the colour alpha instead of multiplying;
+  stroke colour alpha, text colour alpha and `DrawImage.opacity` were
+  ignored. Now each draw whose effective alpha is < 1 (fill / stroke / text
+  = `opacity × color.a`, image = `opacity`) is wrapped in
+  `saveState`/`restoreState` (q/Q); no manual "reset to 1.0". `opacity`
+  scales both `/ca` and `/CA`. (3) `setDash(*dash)` emitted `[4 0]` (solid)
+  for a 1-element dash and raised `TypeError` for 3–4 elements; it is now
+  `setDash(list(dash), 0)`. (4) `BeginGroup.opacity != 1` raises
+  `NotImplementedError` (needs a transparency-group XObject), matching the
+  PNG backend. New `tests/integration/test_pdf_ir_fixtures.py`: importable
+  module-level IR fixtures (`QUAD_*`, `FILL_ALPHA_NO_LEAK`,
+  `ALPHA_MULTIPLY`, `STROKE_ALPHA`, `TEXT_ALPHA`, `IMAGE_OPACITY`,
+  `DASH_ARRAYS`, `GROUP_OPACITY`) for the #67 parity matrix, an
+  `ops_with_alpha` pikepdf walker that tracks (ca, CA) across q/Q/gs, and a
+  golden (`__golden__/pdf_alpha_sequence.json`, captured before the fix)
+  of the `(op, ca, CA)` sequence for every paint op in all 21 templates'
+  letter PDFs. That golden is unchanged. Regenerate it only on purpose,
+  with `HOLIDAY_CARD_REGEN_PDF_ALPHA_GOLDEN=1`. Group scale about the pivot
+  is left to #72.
 - **2026-09-29 — Text `font_style` and `rotation` are honoured (expert-panel
   §P3 / D4, issue #63)**: after #56 the loader passed `font_style` and
   `rotation` through, but the compiler still used `text.font_family`
