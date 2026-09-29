@@ -1,12 +1,12 @@
 # Birthday Photo Card
-# Playful half-fold: circle-clipped cover photo, confetti accents,
+# Playful quarter-fold: circle-clipped cover photo, confetti accents,
 # Comfortaa + Caveat pairing. Inside-right message composes with
 # --voice / letter flags.
 
 id: "birthday-photo"
 name: "Birthday Photo"
 occasion: "birthday"
-fold_type: "half_fold"
+fold_type: "quarter_fold"
 default_theme_id: "birthday-pastel"
 description: "Cheerful birthday photo card with a circular portrait and confetti accents"
 
@@ -14,8 +14,6 @@ panels:
   # Front panel (right half, bottom — visible when folded)
   - id: "front"
     position: "front"
-    x: 4.25
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -142,8 +140,6 @@ panels:
   # Back panel
   - id: "back"
     position: "back"
-    x: 0
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -154,11 +150,8 @@ panels:
   # Inside left
   - id: "inside_left"
     position: "inside_left"
-    x: 0
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180  # half-fold imposition
     background_color:
       r: 0.99
       g: 0.97
@@ -167,11 +160,8 @@ panels:
   # Inside right — message slot
   - id: "inside_right"
     position: "inside_right"
-    x: 4.25
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180  # half-fold imposition
     background_color:
       r: 0.99
       g: 0.97

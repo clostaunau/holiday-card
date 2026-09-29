@@ -75,6 +75,7 @@ Section IDs (§P1 …) are what issues cite.
 - Templates (e.g. `templates/christmas/classic.yaml:14-71`): front BR (x 4.25, y 0), back BL, `inside_left` TL (x 0, y 5.5, rot 180), `inside_right` TR (x 4.25, y 5.5, rot 180). Folding print-side-out (top half back, then left half back so front BR is the cover): **TR ends up behind the front cover = the left inside page.** The 180° rotation is right; left/right positions are mirrored. Affects every 4-panel template.
 - Labelled `fold_type: half_fold` but 4 panels on Letter is a quarter-fold; only the horizontal fold mark is drawn.
 - Letter PDF MediaBox is 630×810 pt (8.75×11.25") because bleed is added; CropBox = MediaBox (`renderers/reportlab_backend.py:144`). Home printers "fit" → ~2.9% shrink.
+- **Status (2026-09-29): imposition bullets closed by #58.** `core/imposition.py` computes the slots from the fold type (front BR, back BL, inside_left TR r180, inside_right TL r180); templates carry no panel coordinates; `half_fold` is a legacy alias of `quarter_fold` and both draw two fold marks. The MediaBox / bleed bullet remains with #59.
 
 ### §P5 Fail-loud violations — ARCH F6, UX F4, REND F1, SEC P1 [partly verified]
 - **[closed by #60]** `core/generators.py:198-199` `except ThemeNotFoundError: pass` [verified] — `--theme nope` exits 0; `SetMetadata` still records the theme id (`core/compiler.py:201`).
@@ -207,7 +208,7 @@ version; this section records the corrections so the spec stays the source of tr
   `rotation`, `font_file`, `paragraph_spacing`; `_parse_panel` drops `border`.
   The compiler independently ignores `TextElement.font_style` (33 uses in 20
   templates, `core/compiler.py:1023`) and text `rotation` — new issue (P1-8).
-- **§P4:** all 21 shipped templates are 4-panel; 20 use `half_fold` with mirrored
+- **§P4 [closed by #58]:** all 21 shipped templates are 4-panel; 20 use `half_fold` with mirrored
   inside panels, and `christmas-modern` uses `quarter_fold` with a different wrong
   layout. The `init` scaffold (`cli/commands.py:740-790`) omits the 180° rotation.
 - **§P5 [closed by #60]:** additional silent ignores — `--signature-font` without `--signature`;

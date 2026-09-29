@@ -205,10 +205,10 @@ def _count_fold_lines(card: object, target: str, **gen_kwargs) -> int:
 class TestFoldMarksGate:
     def test_letter_target_emits_fold_marks_by_default(self) -> None:
         """Letter is a home-printer target; the dashed grey guide helps
-        the user fold by hand. Default ON; christmas-classic is half-fold
-        so exactly one horizontal fold line."""
+        the user fold by hand. Default ON; christmas-classic is a 4-up
+        quarter fold so both fold lines are drawn (#58)."""
         card = CardGenerator().create_card(template_id=TEMPLATE_ID)
-        assert _count_fold_lines(card, "letter") == 1
+        assert _count_fold_lines(card, "letter") == 2
 
     def test_no_fold_marks_override_suppresses_for_letter(self) -> None:
         card = CardGenerator().create_card(template_id=TEMPLATE_ID)

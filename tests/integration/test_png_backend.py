@@ -12,9 +12,10 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from holiday_card.core.compiler import compile_card
+from holiday_card.core.compiler import CompileContext, compile_card
 from holiday_card.core.generators import CardGenerator
 from holiday_card.renderers.png_backend import PNGRenderer
+from holiday_card.utils.measurements import PageGeometry
 
 PNG_TEMPLATES = (
     "christmas-classic",
@@ -216,3 +217,84 @@ def test_png_downscales_large_photo_to_fit_rect(tmp_path: Path) -> None:
     # 2" = 144 px wide; aspect 2:1 → 72 px tall, centred.
     assert abs((bbox[2] - bbox[0]) - 144) <= 1
     assert abs((bbox[3] - bbox[1]) - 72) <= 1
+
+
+# ---------------------------------------------------------------------------
+# Letter imposition (#58): inside panels land on the correct pages
+# ---------------------------------------------------------------------------
+
+
+def _four_colour_card() -> object:
+    """A 4-panel card whose panels have distinct background colours plus a
+    black marker in inside_left's panel-local top-left corner."""
+    from holiday_card.core.models import (
+        Card,
+        FoldType,
+        Panel,
+        PanelPosition,
+        Rectangle,
+        ShapeType,
+    )
+
+    marker = Rectangle(
+        type=ShapeType.RECTANGLE, x=0.05, y=5.25, width=0.2, height=0.2, fill_color="#000000"
+    )
+    colours = {
+        PanelPosition.FRONT: {"r": 1, "g": 0, "b": 0},
+        PanelPosition.BACK: {"r": 0, "g": 1, "b": 0},
+        PanelPosition.INSIDE_LEFT: {"r": 0, "g": 0, "b": 1},
+        PanelPosition.INSIDE_RIGHT: {"r": 1, "g": 1, "b": 0},
+    }
+    panels = [
+        Panel(
+            position=position,
+            width=4.25,
+            height=5.5,
+            background_color=colour,
+            shape_elements=[marker] if position is PanelPosition.INSIDE_LEFT else [],
+        )
+        for position, colour in colours.items()
+    ]
+    return Card(
+        name="imposition", template_id="imposition", fold_type=FoldType.QUARTER_FOLD,
+        bleed=0.0, panels=panels,
+    )
+
+
+_NO_BLEED = CompileContext(geometry=PageGeometry.us_letter(bleed_in=0.0))
+
+
+def _sample(img: Image.Image, x_in: float, y_in: float, dpi: int) -> tuple[int, int, int]:
+    """Sample the pixel at sheet coords (inches, bottom-left origin)."""
+    px = int(x_in * dpi)
+    py = img.height - 1 - int(y_in * dpi)
+    r, g, b = img.getpixel((px, py))  # type: ignore[misc]
+    return r, g, b
+
+
+def test_png_inside_panels_land_in_the_correct_quadrants(tmp_path: Path) -> None:
+    """After a quarter fold, inside_left is the top-right quadrant of the
+    sheet and inside_right the top-left (#58)."""
+    dpi = 36
+    out = tmp_path / "imposition.png"
+    PNGRenderer(dpi=dpi).render(compile_card(_four_colour_card(), _NO_BLEED), out)  # type: ignore[arg-type]
+    img = Image.open(out).convert("RGB")
+    assert img.size == (int(8.5 * dpi), int(11 * dpi))
+
+    assert _sample(img, 6.375, 2.75, dpi) == (255, 0, 0), "front should be bottom-right"
+    assert _sample(img, 2.125, 2.75, dpi) == (0, 255, 0), "back should be bottom-left"
+    assert _sample(img, 6.375, 8.25, dpi) == (0, 0, 255), "inside_left should be top-right"
+    assert _sample(img, 2.125, 8.25, dpi) == (255, 255, 0), "inside_right should be top-left"
+
+
+def test_png_inside_left_prints_rotated_180(tmp_path: Path) -> None:
+    """A marker in inside_left's panel-local top-left corner lands near the
+    sheet point (8.5 - eps, 5.5 + eps): the panel prints upside down."""
+    dpi = 36
+    out = tmp_path / "rotation.png"
+    PNGRenderer(dpi=dpi).render(compile_card(_four_colour_card(), _NO_BLEED), out)  # type: ignore[arg-type]
+    img = Image.open(out).convert("RGB")
+
+    assert _sample(img, 8.5 - 0.15, 5.5 + 0.15, dpi) == (0, 0, 0)
+    # Where the marker would sit without the rotation: still plain blue.
+    assert _sample(img, 4.25 + 0.15, 11.0 - 0.15, dpi) == (0, 0, 255)

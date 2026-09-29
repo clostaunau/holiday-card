@@ -36,7 +36,7 @@ class TestFullGeneration:
 
         assert pdf_path.exists()
         assert pdf_path.stat().st_size > 0
-        assert card.fold_type == FoldType.HALF_FOLD
+        assert card.fold_type == FoldType.QUARTER_FOLD
         assert card.template_id == "christmas-classic"
 
     def test_create_card_with_theme(self, generator, temp_output):

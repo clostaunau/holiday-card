@@ -4,7 +4,7 @@
 id: christmas-holiday-masterpiece
 name: "Holiday Masterpiece"
 occasion: christmas
-fold_type: half_fold
+fold_type: "quarter_fold"
 description: "Showcase card combining SVG paths, gradients, patterns, and photo clipping"
 default_theme_id: christmas-winter-blue
 
@@ -12,8 +12,6 @@ panels:
   # Front panel - The ultimate showcase
   - id: front
     position: front
-    x: 4.25
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -220,11 +218,8 @@ panels:
   # Inside left - Pattern showcase
   - id: inside_left
     position: inside_left
-    x: 0.0
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180
     background_color:
       r: 1.0
       g: 1.0
@@ -310,11 +305,8 @@ panels:
   # Inside right - Star-clipped photo with gradients
   - id: inside_right
     position: inside_right
-    x: 4.25
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180
     background_color:
       r: 1.0
       g: 1.0
@@ -405,8 +397,6 @@ panels:
   # Back panel - Simple pattern
   - id: back
     position: back
-    x: 0.0
-    y: 0.0
     width: 4.25
     height: 5.5
     background_color:

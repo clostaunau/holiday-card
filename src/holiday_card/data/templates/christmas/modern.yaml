@@ -9,11 +9,9 @@ default_theme_id: "christmas-gold"
 description: "Contemporary Christmas card with elegant gold accents"
 
 panels:
-  # Front panel (bottom right quadrant when unfolded)
+  # Front panel (bottom right of the sheet; placement is computed from fold_type)
   - id: "front"
     position: "front"
-    x: 4.25  # Right half of page
-    y: 0     # Bottom half
     width: 4.25
     height: 5.5
     background_color:
@@ -37,37 +35,29 @@ panels:
           g: 0.84
           b: 0.0
 
-  # Back panel (bottom left quadrant when unfolded) - rotated 180
+  # Back panel (bottom left of the sheet; placement is computed from fold_type)
   - id: "back"
     position: "back"
-    x: 0
-    y: 0
     width: 4.25
     height: 5.5
-    rotation: 180
     background_color:
       r: 1.0
       g: 1.0
       b: 1.0
 
-  # Inside left panel (top left when unfolded) - rotated 180
+  # Inside left panel (top right of the sheet, upside down; placement is computed from fold_type)
   - id: "inside_left"
     position: "inside_left"
-    x: 0
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180
     background_color:
       r: 0.98
       g: 0.98
       b: 0.96
 
-  # Inside right panel (top right when unfolded)
+  # Inside right panel (top left of the sheet, upside down; placement is computed from fold_type)
   - id: "inside_right"
     position: "inside_right"
-    x: 4.25
-    y: 5.5
     width: 4.25
     height: 5.5
     background_color:

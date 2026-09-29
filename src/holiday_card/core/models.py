@@ -133,9 +133,14 @@ class FoldType(StrEnum):
     """Card fold format types.
 
     Each fold type defines how the 8.5" x 11" paper is folded:
-    - half_fold: Single horizontal fold (5.5" x 8.5" when folded)
-    - quarter_fold: Two folds - horizontal and vertical (4.25" x 5.5" when folded)
-    - tri_fold: Two vertical folds (3.67" x 8.5" panels)
+    - quarter_fold: Two folds - horizontal then vertical (4.25" x 5.5" when
+      folded). Four panels printed on one side; the compiler computes where
+      each panel lands (``core/imposition.py``).
+    - half_fold: Legacy alias for the 4-panel single-sided quarter fold.
+      Every shipped template used this spelling before issue #58; it loads
+      and imposes exactly like ``quarter_fold``.
+    - tri_fold: Two vertical folds (3.67" x 8.5" panels). No letter
+      imposition is implemented; the compiler raises.
     """
 
     HALF_FOLD = "half_fold"
@@ -851,11 +856,31 @@ class Panel(BaseModel):
 
     id: str = Field(default_factory=lambda: str(uuid4()))
     position: PanelPosition = Field(description="Panel position identifier")
-    x: float = Field(ge=0.0, description="X position in inches from page left")
-    y: float = Field(ge=0.0, description="Y position in inches from page bottom")
+    x: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=(
+            "X position in inches from page left. Derived by the compiler "
+            "from the fold type for letter output (D6); templates leave it out."
+        ),
+    )
+    y: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=(
+            "Y position in inches from page bottom. Derived by the compiler "
+            "from the fold type for letter output (D6); templates leave it out."
+        ),
+    )
     width: float = Field(gt=0.0, description="Panel width in inches")
     height: float = Field(gt=0.0, description="Panel height in inches")
-    rotation: float = Field(default=0.0, description="Rotation in degrees (for quarter-fold)")
+    rotation: float = Field(
+        default=0.0,
+        description=(
+            "Rotation in degrees about the panel centre. Derived by the "
+            "compiler from the fold type for letter output; templates leave it out."
+        ),
+    )
     bleed: float | None = Field(
         default=None,
         ge=0.0,

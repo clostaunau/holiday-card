@@ -4,14 +4,12 @@
 id: "miscarriage-spare"
 name: "After a loss (spare)"
 occasion: "miscarriage"
-fold_type: "half_fold"
+fold_type: "quarter_fold"
 description: "Restrained card for pregnancy loss. Soft cream, italic serif. Inside blank for a personal message."
 
 panels:
   - id: "front"
     position: "front"
-    x: 4.25
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -35,8 +33,6 @@ panels:
 
   - id: "back"
     position: "back"
-    x: 0
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -46,11 +42,8 @@ panels:
 
   - id: "inside_left"
     position: "inside_left"
-    x: 0
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180
     background_color:
       r: 0.98
       g: 0.96
@@ -58,11 +51,8 @@ panels:
 
   - id: "inside_right"
     position: "inside_right"
-    x: 4.25
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180
     background_color:
       r: 0.98
       g: 0.96

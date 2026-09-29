@@ -73,8 +73,8 @@ def build_per_panel_context(panel: Panel, target: ExportTarget) -> CompileContex
     For ``scale_panels_to_fit`` targets, the context geometry is the
     target trim. For native-dim targets, the context geometry is the
     panel's own dimensions (with the target's bleed and safe margin).
-    Fold lines are always disabled in per-panel mode — each panel is a
-    finished card, not part of an imposition.
+    Fold lines and letter imposition are always disabled in per-panel
+    mode — each panel is a finished card, not part of a folded sheet.
     """
     if target.scale_panels_to_fit and target.geometry is not None:
         geometry = target.geometry
@@ -87,7 +87,7 @@ def build_per_panel_context(panel: Panel, target: ExportTarget) -> CompileContex
             bleed_in=target.bleed_in,
             safe_margin_in=target.safe_margin_in,
         )
-    return CompileContext(geometry=geometry, emit_fold_lines=False)
+    return CompileContext(geometry=geometry, emit_fold_lines=False, impose=False)
 
 
 def prepare_native_panel(panel: Panel) -> Panel:

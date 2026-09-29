@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from holiday_card.core.compiler import UnsupportedFeatureError, compile_card
+from holiday_card.core.compiler import CompileContext, UnsupportedFeatureError, compile_card
 from holiday_card.core.images import ImageSourceError
 from holiday_card.core.models import (
     Card,
@@ -65,6 +65,10 @@ def _make_card(image: ImageElement) -> Card:
     )
 
 
+# Fixture panels are hand-placed; opt out of the letter imposition (#58).
+_NO_IMPOSE = CompileContext(impose=False)
+
+
 def _images(commands: list) -> list[DrawImage]:
     return [c for c in commands if isinstance(c, DrawImage)]
 
@@ -75,7 +79,7 @@ class TestCompileImage:
             source_path=str(FIXTURE_IMAGE),
             x=0.5, y=1.0, width=2.0, height=2.0,
         )
-        draws = _images(compile_card(_make_card(img)))
+        draws = _images(compile_card(_make_card(img), _NO_IMPOSE))
         assert len(draws) == 1
         d = draws[0]
         assert d.image.source == str(FIXTURE_IMAGE.resolve())
@@ -92,7 +96,7 @@ class TestCompileImage:
             source_path=str(FIXTURE_IMAGE),
             x=0.5, y=1.0, width=2.0, height=2.0,
         )
-        d = _images(compile_card(_make_card(img)))[0]
+        d = _images(compile_card(_make_card(img), _NO_IMPOSE))[0]
         assert (d.image.format, d.image.width_px, d.image.height_px) == ("jpeg", 400, 400)
 
     def test_relative_source_path_is_rejected(
@@ -105,7 +109,7 @@ class TestCompileImage:
             x=0.0, y=0.0, width=1.0, height=1.0,
         )
         with pytest.raises(ImageSourceError, match="relative"):
-            compile_card(_make_card(img))
+            compile_card(_make_card(img), _NO_IMPOSE)
 
     def test_non_image_source_is_rejected(self, tmp_path: Path) -> None:
         fake = tmp_path / "photo.jpg"
@@ -115,7 +119,7 @@ class TestCompileImage:
             x=0.0, y=0.0, width=1.0, height=1.0,
         )
         with pytest.raises(ImageSourceError, match="photo.jpg"):
-            compile_card(_make_card(img))
+            compile_card(_make_card(img), _NO_IMPOSE)
 
     def test_image_with_opacity_passes_through(self) -> None:
         img = ImageElement(
@@ -123,7 +127,7 @@ class TestCompileImage:
             x=0.0, y=0.0, width=1.0, height=1.0,
             opacity=0.5,
         )
-        draws = _images(compile_card(_make_card(img)))
+        draws = _images(compile_card(_make_card(img), _NO_IMPOSE))
         assert draws[0].opacity == 0.5
 
     def test_image_with_rotation_wraps_in_group(self) -> None:
@@ -132,7 +136,7 @@ class TestCompileImage:
             x=1.0, y=1.0, width=2.0, height=2.0,
             rotation=45.0,
         )
-        commands = compile_card(_make_card(img))
+        commands = compile_card(_make_card(img), _NO_IMPOSE)
         # Find the image-related commands inside the panel's group
         # (every panel itself is wrapped in a group, so image rotation
         # adds a *nested* BeginGroup/EndGroup pair).
@@ -159,7 +163,7 @@ class TestClipMaskConversion:
             x=0.0, y=0.0, width=2.0, height=2.0,
             clip_mask=CircleClipMask(center_x=1.0, center_y=1.0, radius=0.5),
         )
-        commands = compile_card(_make_card(img))
+        commands = compile_card(_make_card(img), _NO_IMPOSE)
         clips = [c for c in commands if isinstance(c, BeginClip)]
         assert len(clips) == 1
         assert isinstance(clips[0].geometry, CircleGeom)
@@ -177,7 +181,7 @@ class TestClipMaskConversion:
             x=0.0, y=0.0, width=2.0, height=2.0,
             clip_mask=RectangleClipMask(x=0.1, y=0.2, width=1.5, height=1.6),
         )
-        clips = [c for c in compile_card(_make_card(img)) if isinstance(c, BeginClip)]
+        clips = [c for c in compile_card(_make_card(img), _NO_IMPOSE) if isinstance(c, BeginClip)]
         assert isinstance(clips[0].geometry, RectGeom)
         g = clips[0].geometry
         assert g.x == pytest.approx(7.2)
@@ -193,7 +197,7 @@ class TestClipMaskConversion:
                 center_x=1.0, center_y=1.0, radius_x=0.8, radius_y=0.5,
             ),
         )
-        clips = [c for c in compile_card(_make_card(img)) if isinstance(c, BeginClip)]
+        clips = [c for c in compile_card(_make_card(img), _NO_IMPOSE) if isinstance(c, BeginClip)]
         assert isinstance(clips[0].geometry, EllipseGeom)
         g = clips[0].geometry
         assert g.rx == pytest.approx(57.6)
@@ -208,7 +212,7 @@ class TestClipMaskConversion:
                 outer_radius=0.8, inner_radius=0.4, points=5,
             ),
         )
-        clips = [c for c in compile_card(_make_card(img)) if isinstance(c, BeginClip)]
+        clips = [c for c in compile_card(_make_card(img), _NO_IMPOSE) if isinstance(c, BeginClip)]
         assert isinstance(clips[0].geometry, PolygonGeom)
         # 5-pointed star = 10 polygon vertices (alternating outer/inner)
         assert len(clips[0].geometry.points) == 10
@@ -223,7 +227,7 @@ class TestUnsupportedFeatures:
             effects=ImageEffects(grayscale=True),
         )
         with pytest.raises(UnsupportedFeatureError, match="effects"):
-            compile_card(_make_card(img))
+            compile_card(_make_card(img), _NO_IMPOSE)
 
     def test_frame_style_unsupported(self) -> None:
         img = ImageElement(
@@ -232,7 +236,7 @@ class TestUnsupportedFeatures:
             frame_style=PhotoFrameStyle.SHADOW,
         )
         with pytest.raises(UnsupportedFeatureError, match="frame_style"):
-            compile_card(_make_card(img))
+            compile_card(_make_card(img), _NO_IMPOSE)
 
     def test_missing_width_unsupported(self) -> None:
         img = ImageElement(
@@ -240,4 +244,4 @@ class TestUnsupportedFeatures:
             x=0.0, y=0.0, height=2.0,  # width omitted
         )
         with pytest.raises(UnsupportedFeatureError, match="explicit width"):
-            compile_card(_make_card(img))
+            compile_card(_make_card(img), _NO_IMPOSE)

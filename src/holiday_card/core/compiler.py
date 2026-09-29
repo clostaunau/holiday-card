@@ -37,7 +37,9 @@ from pathlib import Path
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas as _reportlab_canvas
 
+from holiday_card.core.errors import UnsupportedFeatureError
 from holiday_card.core.images import ImageSourceError, probe_image
+from holiday_card.core.imposition import impose_letter
 from holiday_card.core.models import (
     Border,
     BorderStyle,
@@ -116,13 +118,6 @@ _FOLD_LINE_GREY = RGBA(r=0.7, g=0.7, b=0.7)
 _EDGE_TOUCH_EPSILON: float = 1e-3
 
 
-class UnsupportedFeatureError(NotImplementedError):
-    """Raised when the compiler encounters a Card feature not yet ported.
-
-    The error message names the feature and the element for easy triage.
-    """
-
-
 class UnknownFontError(UnsupportedFeatureError):
     """Raised when a text element names a font no backend can render."""
 
@@ -140,6 +135,10 @@ class CompileContext:
 
     geometry: PageGeometry = field(default_factory=PageGeometry.us_letter)
     emit_fold_lines: bool = True
+    # Place each panel in its letter-sheet slot from the fold type (D6).
+    # Per-panel output (``per_panel.build_per_panel_context``) turns this
+    # off because each panel becomes its own page.
+    impose: bool = True
 
     @property
     def page_width_inches(self) -> float:
@@ -182,7 +181,8 @@ def compile_card(card: Card, ctx: CompileContext | None = None) -> list[RenderCo
     ))
     commands.extend(_emit_metadata(card))
 
-    for panel in card.panels:
+    panels = impose_letter(card.panels, card.fold_type) if ctx.impose else card.panels
+    for panel in panels:
         commands.extend(_compile_panel(panel, card, geometry, measurer))
 
     if ctx.emit_fold_lines:
@@ -1594,10 +1594,9 @@ def _clip_mask_to_geom(
 def _emit_fold_lines(fold_type: FoldType, ctx: CompileContext) -> list[RenderCommand]:
     width = inches_to_points(ctx.page_width_inches)
     height = inches_to_points(ctx.page_height_inches)
-    if fold_type == FoldType.HALF_FOLD:
-        mid_y = height / 2
-        return [DrawFoldLine(start=Point(x=0, y=mid_y), end=Point(x=width, y=mid_y))]
-    if fold_type == FoldType.QUARTER_FOLD:
+    # ``half_fold`` is the legacy spelling of the 4-up quarter fold (#58):
+    # a single-sided letter sheet needs both folds.
+    if fold_type in (FoldType.HALF_FOLD, FoldType.QUARTER_FOLD):
         mid_x = width / 2
         mid_y = height / 2
         return [

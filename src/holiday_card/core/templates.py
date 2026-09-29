@@ -6,12 +6,15 @@ available templates in the templates directory.
 
 import logging
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import ValidationError
 
 from holiday_card.core.data_paths import data_path
+from holiday_card.core.errors import UnsupportedFeatureError
 from holiday_card.core.images import ImageSourceError, resolve_template_image_path
+from holiday_card.core.imposition import letter_slot
 from holiday_card.core.models import Template
 
 logger = logging.getLogger(__name__)
@@ -165,8 +168,39 @@ def load_template_from_file(path: Path) -> Template:
         raise TemplateLoadError(
             f"Failed to parse template {path}:\n{_format_validation_error(e)}"
         ) from e
+    _check_panel_coordinates(template, data, path)
     _resolve_image_paths(template, path)
     return template
+
+
+def _check_panel_coordinates(template: Template, data: Any, path: Path) -> None:
+    # D6: panel x/y/rotation are computed from fold_type. A YAML that still
+    # sets them is accepted only when it agrees with the computed slot.
+    raw_panels = data.get("panels") if isinstance(data, dict) else None
+    if not isinstance(raw_panels, list):
+        return
+    errors: list[str] = []
+    for index, (raw, panel) in enumerate(zip(raw_panels, template.panels, strict=False)):
+        if not isinstance(raw, dict):
+            continue
+        try:
+            slot = letter_slot(template.fold_type, panel.position)
+        except UnsupportedFeatureError:
+            continue  # no letter imposition to disagree with
+        computed = {"x": slot.x_in, "y": slot.y_in, "rotation": slot.rotation_deg % 360.0}
+        given = {"x": panel.x, "y": panel.y, "rotation": panel.rotation % 360.0}
+        mismatched = [
+            f"{key}={given[key]} (computed {computed[key]})"
+            for key in ("x", "y", "rotation")
+            if key in raw and abs(given[key] - computed[key]) > 1e-9
+        ]
+        if mismatched:
+            errors.append(
+                f"  panels.{index} ({panel.position.value}): {', '.join(mismatched)}; "
+                f"delete x/y/rotation; imposition is computed from fold_type"
+            )
+    if errors:
+        raise TemplateLoadError(f"Failed to parse template {path}:\n" + "\n".join(errors))
 
 
 def _resolve_image_paths(template: Template, path: Path) -> None:

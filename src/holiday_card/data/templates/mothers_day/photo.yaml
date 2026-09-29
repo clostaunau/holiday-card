@@ -1,5 +1,5 @@
 # Mother's Day Photo Card
-# Soft-elegance half-fold: ellipse-clipped cover photo gives a vintage
+# Soft-elegance quarter-fold: ellipse-clipped cover photo gives a vintage
 # cameo feel, Playfair Display + Caveat pairing carries the affection.
 # Inside-right is laid out for the structured letter flags
 # (--salutation / --signoff / --signature / --ps) — heading slot leaves
@@ -8,7 +8,7 @@
 id: "mothers-day-photo"
 name: "Mother's Day Photo"
 occasion: "mothers_day"
-fold_type: "half_fold"
+fold_type: "quarter_fold"
 default_theme_id: "generic-celebration"
 description: "Soft floral Mother's Day photo card with an ellipse-clipped portrait and handwritten accent"
 
@@ -16,8 +16,6 @@ panels:
   # Front panel (right half, bottom — visible when folded)
   - id: "front"
     position: "front"
-    x: 4.25
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -109,8 +107,6 @@ panels:
   # Back panel (left half, bottom — blank blush)
   - id: "back"
     position: "back"
-    x: 0
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -121,11 +117,8 @@ panels:
   # Inside left (left half, top — blank cream)
   - id: "inside_left"
     position: "inside_left"
-    x: 0
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180  # half-fold imposition
     background_color:
       r: 1.0
       g: 0.98
@@ -134,11 +127,8 @@ panels:
   # Inside right (right half, top — letter slot)
   - id: "inside_right"
     position: "inside_right"
-    x: 4.25
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180  # half-fold imposition
     background_color:
       r: 1.0
       g: 0.98

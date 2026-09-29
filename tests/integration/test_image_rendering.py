@@ -23,7 +23,7 @@ import pikepdf
 import pytest
 from PIL import Image
 
-from holiday_card.core.compiler import compile_card
+from holiday_card.core.compiler import CompileContext, compile_card
 from holiday_card.core.models import (
     Card,
     CircleClipMask,
@@ -106,7 +106,7 @@ class TestPNGImageRendering:
         # 144 DPI for the test; the fixture image's red/blue pixels
         # should land in the clipped region.
         renderer = PNGRenderer(dpi=72)  # 1 pt = 1 px → easy math
-        renderer.render(compile_card(image_card), out)
+        renderer.render(compile_card(image_card, CompileContext(impose=False)), out)
         assert out.exists() and out.stat().st_size > 0
         with Image.open(out) as img:
             # Page: bleed extends canvas; trim corners at (bleed, bleed).
