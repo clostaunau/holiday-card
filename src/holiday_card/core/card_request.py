@@ -106,6 +106,7 @@ class CardRequest(BaseModel):
     export_for: str = "letter"                      # --export-for
     fold_marks: bool | None = None                  # --with-fold-marks / --no-fold-marks
     panel_fit: Literal["fill", "letterbox"] | None = None   # --panel-fit (None: target's)
+    allow_low_res: bool = False                     # --allow-low-res (#66; proofs only)
 
     @field_validator("fold_type", mode="before")
     @classmethod

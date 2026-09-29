@@ -154,6 +154,7 @@ class TestCardRequestModel:
             "export_for": "letter",
             "fold_marks": None,
             "panel_fit": None,
+            "allow_low_res": False,
         }
 
     def test_images_are_a_tuple_of_paths(self) -> None:

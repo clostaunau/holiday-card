@@ -31,8 +31,9 @@ holiday-card create christmas-classic --inside-message-md letter.md   # Markdown
 holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," --signature "C" --ps "PS hi"   # structured letter
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
+                                    # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 1948 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 2040 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -100,6 +101,7 @@ src/holiday_card/
     ai_assets.py        # L3 POD-aware sizing + generate orchestration (injectable client)
     ai_openai.py        # L3 OpenAI image-client adapter (only module importing openai)
     images.py           # Template image path containment + PNG/JPEG content probe (D5)
+                        #   + effective-PPI print check on the IR (#66)
     validators.py       # Domain validation helpers
   renderers/
     reportlab_backend.py  # IR → PDF (default; sRGB or CMYK mode)
@@ -185,7 +187,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 1948 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 2040 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
 
@@ -340,6 +342,41 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — Print targets warn below 300 and refuse below 150
+  effective PPI (expert-panel §P8 / D4 / D8, issue #66)**: nothing checked
+  photo resolution, so `create -i thumb.jpg --export-for moo-a6` shipped a
+  soft print silently (the 400 px `tests/fixtures/sample_photo.jpg` in
+  family-photo's 2.95" slot is 136 PPI). `core/images.py` gains
+  `RECOMMENDED_PRINT_PPI = 300`, `MIN_PRINT_PPI = MIN_DPI` (150;
+  `utils/measurements.MIN_DPI` stays as the one value), the frozen
+  `ResolutionFinding(source, ppi, level, needed_width_px,
+  needed_height_px)` (pixels needed at 300 PPI at the placed size),
+  `effective_ppi(ref, group_scale=1.0)` (`preserve_aspect` "meet" → `max`
+  of the axis PPIs, stretch → `min`; rotation ignored),
+  `check_print_resolution(commands, *, warn_below=300, fail_below=150)`
+  (a `BeginGroup` stack of `sqrt(|scale_x·scale_y|)`, so the #73 fill
+  scale counts: 136 → 128 PPI under moo-a6; fail beats warn),
+  `describe_finding`, `LowResolutionWarning(UserWarning)` and
+  `LowResolutionImageError(ValueError)` (carries `.findings`).
+  `ExportTarget.checks_print_resolution: bool = True` (all three targets).
+  `CardGenerator.generate(..., allow_low_res: bool = False)` checks the
+  compiled IR in `_generate_imposition` / `_generate_per_panel` (all
+  panels, before any file or directory is written) only when
+  `renderer.file_extension == ".pdf"` and the target opts in: any `fail`
+  raises `LowResolutionImageError` unless `allow_low_res`, and every
+  remaining finding (deduplicated by message) is a
+  `warnings.warn(..., LowResolutionWarning)`, the same channel as
+  `SafeZoneWarning`. SVG, PNG and `preview` are never checked. CLI
+  `create --allow-low-res` (`CardRequest.allow_low_res`) is for proofs
+  only; warnings print as `Warning: me.jpg is 237 PPI at its placed size
+  (300 recommended; need ≥ 885×885 px)` and the error maps to exit 2 via
+  the existing `ValueError` branch. The shipped placeholders are ≥ 375 PPI
+  on letter. Guarded by `tests/unit/test_images_resolution.py`,
+  `TestPrintResolutionGate` in `test_image_rendering.py` (CLI exit codes,
+  no file written, moo-a6 fill scale, SVG skip, target opt-out) and
+  `TestShippedTemplatesPrintResolution` in `test_full_generation.py`
+  (21 templates × 3 targets, zero findings).
 
 - **2026-09-29 — moo-a6 fills the A6 trim via one compiler scale group;
   letterbox is opt-in (expert-panel §P11 / §P8 / D8, issue #73)**: MOO A6
