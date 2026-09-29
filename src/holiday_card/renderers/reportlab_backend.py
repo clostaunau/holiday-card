@@ -149,6 +149,11 @@ class IRReportLabRenderer:
         elif isinstance(cmd, SetMetadata):
             self._apply_metadata(canvas, cmd)
         elif isinstance(cmd, BeginGroup):
+            if cmd.opacity != 1.0:
+                raise NotImplementedError(
+                    "IRReportLabRenderer does not support group opacity "
+                    "(needs a transparency-group XObject)"
+                )
             canvas.saveState()
             self._apply_transform(canvas, cmd)
         elif isinstance(cmd, EndGroup):
@@ -196,9 +201,7 @@ class IRReportLabRenderer:
                 and t.scale_x == 1.0 and t.scale_y == 1.0:
             return
         # Order: translate to pivot, rotate, translate back. The compiler
-        # records the pivot as the translate target, so this matches the
-        # legacy renderer's `translate(cx, cy); rotate; translate(-cx, -cy)`
-        # sequence (reportlab_renderer.py:96-102).
+        # records the pivot as the translate target.
         if t.translate_x or t.translate_y:
             canvas.translate(t.translate_x, t.translate_y)
         if t.rotate_deg:
@@ -229,15 +232,24 @@ class IRReportLabRenderer:
             self._draw_shape_with_complex_fill(canvas, cmd)
             return
 
+        if cmd.fill is None and cmd.stroke is None:
+            return  # nothing to draw
+        # Effective alpha = command opacity x paint alpha. Any alpha < 1 is
+        # scoped with q/Q so it can never leak into later draws.
+        fill_a = cmd.opacity * (cmd.fill.color.a if isinstance(cmd.fill, SolidPaint) else 1.0)
+        stroke_a = cmd.opacity * (cmd.stroke.color.a if cmd.stroke is not None else 1.0)
+        scoped = fill_a < 1.0 or stroke_a < 1.0
+        if scoped:
+            canvas.saveState()
+            self._set_alpha(canvas, fill=fill_a, stroke=stroke_a)
+        self._draw_solid_shape(canvas, cmd)
+        if scoped:
+            canvas.restoreState()
+
+    def _draw_solid_shape(self, canvas: _canvas.Canvas, cmd: DrawShape) -> None:
         geom = cmd.geometry
         has_fill = self._apply_fill(canvas, cmd.fill)
         has_stroke = self._apply_stroke(canvas, cmd.stroke)
-        if not has_fill and not has_stroke:
-            return  # nothing to draw
-
-        if cmd.opacity != 1.0:
-            canvas.setFillAlpha(cmd.opacity)
-            canvas.setStrokeAlpha(cmd.opacity)
 
         if isinstance(geom, RectGeom):
             if geom.corner_radius > 0:
@@ -266,12 +278,15 @@ class IRReportLabRenderer:
             path = self._geometry_to_path(canvas, geom)
             canvas.drawPath(path, stroke=int(has_stroke), fill=int(has_fill))
 
-        # Reset alpha to 1.0 for subsequent draws (the legacy renderer's
-        # state is grouped in saveState/restoreState; per-draw alpha is
-        # safer here because compiler emits paint per-shape).
-        if cmd.opacity != 1.0:
-            canvas.setFillAlpha(1.0)
-            canvas.setStrokeAlpha(1.0)
+    @staticmethod
+    def _set_alpha(
+        canvas: _canvas.Canvas, *, fill: float = 1.0, stroke: float = 1.0
+    ) -> None:
+        # Caller owns the enclosing saveState/restoreState.
+        if fill < 1.0:
+            canvas.setFillAlpha(fill)
+        if stroke < 1.0:
+            canvas.setStrokeAlpha(stroke)
 
     def _draw_shape_with_complex_fill(
         self,
@@ -304,9 +319,8 @@ class IRReportLabRenderer:
             )
 
         canvas.saveState()
-        if cmd.opacity != 1.0:
-            canvas.setFillAlpha(cmd.opacity)
-            canvas.setStrokeAlpha(cmd.opacity)
+        # Pattern tiles paint with both fills and strokes (grid lines).
+        self._set_alpha(canvas, fill=cmd.opacity, stroke=cmd.opacity)
 
         # Clip to the shape so the gradient/pattern only paints inside.
         clip_path = self._geometry_to_path(canvas, cmd.geometry)
@@ -346,8 +360,7 @@ class IRReportLabRenderer:
         # Stroke pass on top of the fill (if any).
         if cmd.stroke is not None:
             canvas.saveState()
-            if cmd.opacity != 1.0:
-                canvas.setStrokeAlpha(cmd.opacity)
+            self._set_alpha(canvas, stroke=cmd.opacity * cmd.stroke.color.a)
             self._apply_stroke(canvas, cmd.stroke)
             stroke_path = self._geometry_to_path(canvas, cmd.geometry)
             canvas.drawPath(stroke_path, stroke=1, fill=0)
@@ -498,28 +511,44 @@ class IRReportLabRenderer:
             for p in pts[1:]:
                 path.lineTo(p.x, p.y)
         elif isinstance(geom, PathGeom):
+            # ReportLab's path object doesn't expose its current point, so
+            # track it (and the subpath start ``close`` returns to) here.
+            current: tuple[float, float] | None = None
+            start: tuple[float, float] | None = None
             for op in geom.ops:
                 if op.op == "move":
-                    path.moveTo(op.points[0].x, op.points[0].y)
+                    p = op.points[0]
+                    path.moveTo(p.x, p.y)
+                    current = start = (p.x, p.y)
                 elif op.op == "line":
-                    path.lineTo(op.points[0].x, op.points[0].y)
+                    p = op.points[0]
+                    path.lineTo(p.x, p.y)
+                    current = (p.x, p.y)
                 elif op.op == "cubic":
                     cp1, cp2, end = op.points
                     path.curveTo(cp1.x, cp1.y, cp2.x, cp2.y, end.x, end.y)
+                    current = (end.x, end.y)
                 elif op.op == "quadratic":
-                    # ReportLab Path doesn't expose quadraticTo; convert to
-                    # cubic with the standard 2/3 control-point lift.
+                    if current is None:
+                        raise ValueError(
+                            "quadratic path op has no current point; "
+                            "the path must start with a move"
+                        )
+                    # ReportLab Path has no quadraticTo; elevate (P0, cp, P3)
+                    # to a cubic with the standard 2/3 control-point lift.
                     cp, end = op.points
-                    last_x, last_y = path.contour[-1] if hasattr(path, "contour") else (cp.x, cp.y)
+                    x0, y0 = current
                     path.curveTo(
-                        last_x + 2 / 3 * (cp.x - last_x),
-                        last_y + 2 / 3 * (cp.y - last_y),
+                        x0 + 2 / 3 * (cp.x - x0),
+                        y0 + 2 / 3 * (cp.y - y0),
                         end.x + 2 / 3 * (cp.x - end.x),
                         end.y + 2 / 3 * (cp.y - end.y),
                         end.x, end.y,
                     )
+                    current = (end.x, end.y)
                 elif op.op == "close":
                     path.close()
+                    current = start
         return path
 
     # ------------------------------------------------------------------
@@ -532,8 +561,6 @@ class IRReportLabRenderer:
         if isinstance(fill, SolidPaint):
             c = fill.color
             self._set_fill(canvas, c.r, c.g, c.b)
-            if c.a != 1.0:
-                canvas.setFillAlpha(c.a)
             return True
         # Gradient + pattern paints aren't emitted by the compiler yet.
         # If they slip through, fail loud rather than silently drop.
@@ -548,7 +575,8 @@ class IRReportLabRenderer:
         self._set_stroke(canvas, c.r, c.g, c.b)
         canvas.setLineWidth(stroke.width)
         if stroke.dash:
-            canvas.setDash(*stroke.dash)
+            # setDash(array, phase): a bare number would become (array, phase).
+            canvas.setDash(list(stroke.dash), 0)
         else:
             canvas.setDash()
         return True
@@ -559,20 +587,22 @@ class IRReportLabRenderer:
 
     def _draw_text(self, canvas: _canvas.Canvas, cmd: DrawText) -> None:
         run = cmd.run
+        alpha = cmd.opacity * run.color.a
+        if alpha < 1.0:
+            canvas.saveState()
+            self._set_alpha(canvas, fill=alpha)
         # font_id is canonicalized (e.g. "Helvetica" → "LiberationSans")
         # so the default base-14 names map to the embedded TTFs.
         canvas.setFont(resolve_font_id(run.font_id), run.size_pt)
         self._set_fill(canvas, run.color.r, run.color.g, run.color.b)
-        if cmd.opacity != 1.0:
-            canvas.setFillAlpha(cmd.opacity)
         if run.align == "center":
             canvas.drawCentredString(run.origin.x, run.origin.y, run.text)
         elif run.align == "right":
             canvas.drawRightString(run.origin.x, run.origin.y, run.text)
         else:
             canvas.drawString(run.origin.x, run.origin.y, run.text)
-        if cmd.opacity != 1.0:
-            canvas.setFillAlpha(1.0)
+        if alpha < 1.0:
+            canvas.restoreState()
 
     # ------------------------------------------------------------------
     # Images
@@ -580,6 +610,10 @@ class IRReportLabRenderer:
 
     def _draw_image(self, canvas: _canvas.Canvas, cmd: DrawImage) -> None:
         rect = cmd.image.rect
+        # Image XObjects paint with the non-stroking alpha (/ca).
+        if cmd.opacity < 1.0:
+            canvas.saveState()
+            self._set_alpha(canvas, fill=cmd.opacity)
         canvas.drawImage(
             cmd.image.source,
             rect.x, rect.y,
@@ -587,6 +621,8 @@ class IRReportLabRenderer:
             preserveAspectRatio=cmd.image.preserve_aspect,
             mask="auto",
         )
+        if cmd.opacity < 1.0:
+            canvas.restoreState()
 
     # ------------------------------------------------------------------
     # Fold lines

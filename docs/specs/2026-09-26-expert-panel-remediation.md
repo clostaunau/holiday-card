@@ -102,6 +102,7 @@ Section IDs (§P1 …) are what issues cite.
 - `preview` (the authoring loop) uses this backend.
 
 ### §P7 PDF backend latent bugs — REND F6, F7, F9
+- **Status (2026-09-29): quadratic, dash and alpha bullets closed by #62.** `_geometry_to_path` tracks the current point / subpath start (quadratic with no current point raises `ValueError`); `setDash(list(dash), 0)`; every draw with effective alpha < 1 (fill/stroke/text = `opacity × color.a`, image = `opacity`) is scoped in q/Q; `BeginGroup.opacity != 1` raises `NotImplementedError`. Fixtures in `tests/integration/test_pdf_ir_fixtures.py`. Group scale stays with P4-4 / #72.
 - Quadratic curves: `reportlab_backend.py:513` looks up `path.contour` (doesn't exist on ReportLab path) → falls back to control point as start. Any user `Q`/`T` renders wrong.
 - `setFillAlpha(c.a)` (`:536`) never reset → next fill inherits alpha. `BeginGroup.opacity` ignored; `DrawImage.opacity` ignored (`_draw_image` `:581`); `cmd.opacity` replaces rather than multiplies color alpha.
 - Group scale: PDF scales about origin after un-translate (`:206-209`); SVG about pivot (`svg_backend.py:237`); PNG raises (`png_backend.py:329`).
@@ -218,7 +219,7 @@ version; this section records the corrections so the spec stays the source of tr
   `Panel.background_image` parsed but never drawn.
 - **§P6:** nested PNG clips combine by union, not intersection
   (`png_backend.py:753-756`).
-- **§P7:** `reportlab_backend.py:551` `setDash(*stroke.dash)` misuses ReportLab's
+- **§P7 [closed by #62]:** `reportlab_backend.py:551` `setDash(*stroke.dash)` misuses ReportLab's
   signature (1-element dash draws solid; 3–4 elements raise `TypeError`). Stroke
   and text colour alpha are never applied; all alpha bugs are masked today because
   `_color_to_rgba` (`compiler.py:1575-1576`) drops colour alpha.
