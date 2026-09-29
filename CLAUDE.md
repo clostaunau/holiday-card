@@ -32,7 +32,7 @@ holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," -
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 1557 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 1710 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -92,6 +92,7 @@ src/holiday_card/
     card_request.py     # CardRequest + build_card / plan_output: the ONE owner of CLI precedence (D15)
     imposition.py       # letter_slot / impose_letter / panel_placements: where panels land on the sheet (D6, #58)
     errors.py           # UnsupportedFeatureError (re-exported by compiler.py)
+    flatten.py          # PDF/X transparency flattening against a known solid backdrop (D10, #71)
     color_management.py # CMYKConverter (ICC sRGB→GRACoL2013, 300% ink cap, black rules) + ICC path resolution
     data_paths.py       # data_path(kind): the ONE resolver for bundled data (+ env overrides)
     ai_rails.py         # L3 hard category rails (occasion + prompt blocklists)
@@ -142,6 +143,7 @@ tests/
                         # L3 AI imagery: test_ai_rails, test_ai_provenance, test_ai_assets
                         # Loader: test_templates_loading (extra="forbid", fail-loud keys)
                         # CLI seam: test_card_request (precedence rules 1-18, #78)
+                        # PDF/X flattening: test_compiler_flatten (backdrop rule, refusals, IR alpha)
                         # Imposition: test_imposition (slot table, paper-fold oracle,
                         #   panel_placements, stale-coordinate loader check, #58)
     __snapshots__/      # JSON snapshots of compile_card() output per template (16 files)
@@ -179,7 +181,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 1557 tests pass
+uv run pytest                            # All 1710 tests pass
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
 
@@ -331,6 +333,67 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — PDF/X output has no transparency and no RGB images;
+  every PDF/X file is preflighted (expert-panel §P9 / D10, issue #71)**:
+  moo-a6 files carried ExtGState `/ca`/`/CA` < 1 (13 templates) and
+  DeviceRGB photos with SMasks (5), both forbidden by PDF/X-1a.
+  (1) New `CompileContext.flatten_transparency` (set by
+  `build_per_panel_context` and `_generate_imposition` when
+  `target.pdfx` is set) runs each panel's draws through
+  `core/flatten.Flattener`: effective alpha = opacity × paint alpha ×
+  every enclosing group opacity (groups are re-emitted at 1). A draw
+  below 1 needs a known solid backdrop: the topmost earlier draw whose
+  box meets the draw's box (panel frame; group transforms and clips
+  applied as axis-aligned boxes; a stroke-only untransformed rect only
+  "meets" boxes that touch its stroke band) must be an opaque solid
+  rect / circle / ellipse fill that contains the box (rect: box
+  inside, circle/ellipse: 4 corners inside, both inset by half the
+  stroke); nothing earlier → paper white. The colour is composited in
+  sRGB (`a·src + (1−a)·backdrop`, gradient stops and pattern colours
+  too) and emitted opaque. Anything else (gradient, pattern, polygon,
+  path, image or text backdrop, partial overlap, rotated or
+  non-rect-clipped backdrop, a translucent group whose children
+  overlap) raises `UnsupportedFeatureError` naming
+  `<template>/<panel>/<list>[i] (<type>, id '…')` and the backdrop, e.g.
+  "sits over a solid rect that does not fully contain it". A fully
+  transparent draw is dropped. `flatten_transparency(commands, where=)`
+  flattens hand-built IR. `DrawImage` records the solid backdrop on the
+  new `ImageRef.backdrop: RGBA | None` (and carries the effective
+  opacity); an image with alpha or opacity < 1 and no solid backdrop
+  raises. (2) `IRReportLabRenderer(color_space="cmyk")` raises
+  `NotImplementedError` ("compile with …flatten_transparency=True") for
+  any alpha < 1 (shape, stroke, text, gradient stop, pattern colour)
+  and never sets alpha; `CMYKColor` no longer takes `alpha`.
+  `_draw_cmyk_image` opens the source with Pillow, composites alpha ×
+  opacity over `ImageRef.backdrop` (raises without one), converts with
+  `CMYKConverter.convert_image` (embedded ICC honoured) and embeds the
+  CMYK image unmasked. The sRGB path is unchanged. (3)
+  `CardGenerator._maybe_apply_pdfx` runs `preflight_pdfx1a` after
+  `apply_pdfx1a` and raises the new
+  `pdfx_preflight.PDFXConformanceError(path, violations)`; the CLI maps
+  it to exit 2 listing each rule. (4) Templates: christmas-winter-sky
+  (hills, trees, snowflakes), christmas-geometric (tiers, baubles),
+  christmas-artist (one tree), christmas-holiday-masterpiece (two
+  snowflakes; an invisible `opacity: 0` "star border" deleted) and
+  birthday-photo (the photo halo) replaced `opacity` with colours
+  pre-blended against the sampled preview backdrop. Previews differ by
+  at most 29/255 on 0.6% of pixels (overlap tints of stacked
+  translucent shapes are gone); the winter-sky and geometric visual
+  baselines were regenerated and eyeballed, 3 compile snapshots and the
+  5 affected entries of the letter content / PDF alpha goldens were
+  regenerated. birthday-balloons, metallic-ornaments and the other
+  translucent templates flatten automatically and keep live alpha in
+  `letter`/SVG/PNG. The `test_pdfx_preflight_all_templates.py` xfails
+  are gone: every moo-a6 file preflights clean and `pdfimages -list`
+  says `cmyk`. Guarded by `tests/unit/test_compiler_flatten.py`,
+  `TestCmykImages` / `TestCmykRefusesLiveAlpha` in
+  `test_cmyk_operators.py`, `TestFlattenWiring` / `TestPhotoOrnamentFront`
+  / `TestPdfxSelfCheck` / `TestLiveAlphaOutsidePdfx` in
+  `test_pdfx_moo_a6.py` and `TestTranslucencyOnPdfxTargets` in
+  `test_cli.py`. **Template authors: translucency over anything but a
+  containing solid fill is refused for POD targets** (to be noted in the
+  #57 authoring guide).
 
 - **2026-09-29 — ICC-managed sRGB → CMYK with a 300% ink cap and
   press black rules (expert-panel §P10 / D9, issue #70)**: `moo-a6`
