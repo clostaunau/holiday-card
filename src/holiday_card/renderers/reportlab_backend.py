@@ -23,14 +23,17 @@ PR. ``CardGenerator`` still uses the legacy path; Step 4 is the cutover.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from functools import cache
 from pathlib import Path
 from typing import Literal
 
+from reportlab.lib import colors as _rl_colors
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas as _canvas
 
-from holiday_card.core.color_management import rgb_to_cmyk
+from holiday_card.core.color_management import CMYKConverter, ColorRole
 from holiday_card.core.render_ir import (
+    RGBA,
     BeginClip,
     BeginGroup,
     BeginPage,
@@ -63,6 +66,12 @@ from holiday_card.renderers.font_registry import (
 __all__ = ["IRReportLabRenderer"]
 
 
+@cache
+def _default_cmyk_converter() -> CMYKConverter:
+    # One per process: its per-colour memo then spans every panel rendered.
+    return CMYKConverter()
+
+
 class IRReportLabRenderer:
     """Renderer that visits a ``RenderCommand`` stream and writes a PDF.
 
@@ -72,11 +81,13 @@ class IRReportLabRenderer:
     * ``color_space="srgb"`` (default) — today's behavior; emits RGB
       color operators (rg/RG) suitable for home-printer / browser
       / on-screen consumption.
-    * ``color_space="cmyk"`` — emits DeviceCMYK operators (k/K) using a
-      naive sRGB→CMYK conversion at the boundary. Intended to be paired
-      with a PDF/X-1a post-processor that attaches the destination
-      OutputIntent ICC profile; the colorimetric work happens on the
-      printer's RIP. See ``core/color_management.py``.
+    * ``color_space="cmyk"`` — emits DeviceCMYK operators (k/K). Every
+      colour goes through one ``CMYKConverter`` (LittleCMS, sRGB →
+      GRACoL2013, relative colorimetric + BPC, 300% ink cap, K-only
+      black text/strokes, rich black for large black fills). The numbers
+      emitted are the numbers printed: a RIP does not re-interpret
+      DeviceCMYK through the PDF/X OutputIntent. See
+      ``core/color_management.py``.
     """
 
     name: str = "reportlab"
@@ -84,6 +95,7 @@ class IRReportLabRenderer:
 
     def __init__(self, color_space: Literal["srgb", "cmyk"] = "srgb") -> None:
         self.color_space: Literal["srgb", "cmyk"] = color_space
+        self._cmyk = _default_cmyk_converter() if color_space == "cmyk" else None
 
     def render(self, commands: Iterable[RenderCommand], output: Path) -> None:
         """Consume ``commands`` and write a PDF at ``output``."""
@@ -108,19 +120,41 @@ class IRReportLabRenderer:
     # Color emission helpers (color-space-aware)
     # ------------------------------------------------------------------
 
-    def _set_fill(self, canvas: _canvas.Canvas, r: float, g: float, b: float) -> None:
-        if self.color_space == "cmyk":
-            c, m, y, k = rgb_to_cmyk(r, g, b)
+    def _set_fill(
+        self,
+        canvas: _canvas.Canvas,
+        r: float,
+        g: float,
+        b: float,
+        *,
+        role: ColorRole = "fill",
+        area_pt2: float | None = None,
+    ) -> None:
+        if self._cmyk is not None:
+            c, m, y, k = self._cmyk.convert(r, g, b, role=role, area_pt2=area_pt2)
             canvas.setFillColorCMYK(c, m, y, k)
         else:
             canvas.setFillColorRGB(r, g, b)
 
     def _set_stroke(self, canvas: _canvas.Canvas, r: float, g: float, b: float) -> None:
-        if self.color_space == "cmyk":
-            c, m, y, k = rgb_to_cmyk(r, g, b)
+        if self._cmyk is not None:
+            c, m, y, k = self._cmyk.convert(r, g, b, role="stroke")
             canvas.setStrokeColorCMYK(c, m, y, k)
         else:
             canvas.setStrokeColorRGB(r, g, b)
+
+    def _rl_color(
+        self,
+        rgba: RGBA,
+        *,
+        role: ColorRole = "fill",
+        area_pt2: float | None = None,
+    ) -> _rl_colors.Color:
+        """A ReportLab colour object for gradient stops and pattern tiles."""
+        if self._cmyk is not None:
+            c, m, y, k = self._cmyk.convert(rgba.r, rgba.g, rgba.b, role=role, area_pt2=area_pt2)
+            return _rl_colors.CMYKColor(c, m, y, k, alpha=rgba.a)
+        return _rl_colors.Color(rgba.r, rgba.g, rgba.b, alpha=rgba.a)
 
     # ------------------------------------------------------------------
     # Dispatch
@@ -253,7 +287,9 @@ class IRReportLabRenderer:
 
     def _draw_solid_shape(self, canvas: _canvas.Canvas, cmd: DrawShape) -> None:
         geom = cmd.geometry
-        has_fill = self._apply_fill(canvas, cmd.fill)
+        bbox = self._shape_bbox(geom)
+        area = bbox[2] * bbox[3] if bbox is not None else None
+        has_fill = self._apply_fill(canvas, cmd.fill, area_pt2=area)
         has_stroke = self._apply_stroke(canvas, cmd.stroke)
 
         if isinstance(geom, RectGeom):
@@ -311,8 +347,6 @@ class IRReportLabRenderer:
         so the outline lands on top of the fill. Opacity wraps the
         whole operation.
         """
-        from reportlab.lib import colors as _rl_colors
-
         fill = cmd.fill
         # Compute the bounding box for pattern tiling and gradient
         # extent fallbacks.
@@ -331,29 +365,21 @@ class IRReportLabRenderer:
         clip_path = self._geometry_to_path(canvas, cmd.geometry)
         canvas.clipPath(clip_path, stroke=0, fill=0)
 
-        # Convert each RGB stop / color to a ReportLab color, honoring
-        # the renderer's color_space mode so CMYK PDFs emit CMYK gradients.
-        def to_rl_color(rgba: object) -> object:
-            r, g, b = rgba.r, rgba.g, rgba.b  # type: ignore[attr-defined]
-            a = rgba.a  # type: ignore[attr-defined]
-            if self.color_space == "cmyk":
-                from holiday_card.core.color_management import rgb_to_cmyk
-                c, m, y, k = rgb_to_cmyk(r, g, b)
-                return _rl_colors.CMYKColor(c, m, y, k, alpha=a)
-            return _rl_colors.Color(r, g, b, alpha=a)
+        # Stops fill the whole shape, so they carry its bbox area.
+        area = bbox[2] * bbox[3]
 
         if isinstance(fill, LinearGradientPaint):
             canvas.linearGradient(
                 fill.start.x, fill.start.y,
                 fill.end.x, fill.end.y,
-                colors=[to_rl_color(s.color) for s in fill.stops],
+                colors=[self._rl_color(s.color, area_pt2=area) for s in fill.stops],
                 positions=[s.position for s in fill.stops],
                 extend=True,
             )
         elif isinstance(fill, RadialGradientPaint):
             canvas.radialGradient(
                 fill.center.x, fill.center.y, fill.radius,
-                colors=[to_rl_color(s.color) for s in fill.stops],
+                colors=[self._rl_color(s.color, area_pt2=area) for s in fill.stops],
                 positions=[s.position for s in fill.stops],
                 extend=True,
             )
@@ -385,8 +411,6 @@ class IRReportLabRenderer:
         color if only one is supplied). ``rotation_deg`` rotates the
         entire pattern around the bbox center.
         """
-        from reportlab.lib import colors as _rl_colors
-
         x, y, w, h = bbox
         spacing = pattern.spacing * pattern.scale
         if spacing < 0.1:
@@ -394,17 +418,8 @@ class IRReportLabRenderer:
         c0 = pattern.colors[0]
         c1 = pattern.colors[1] if len(pattern.colors) > 1 else c0
 
-        def rl(rgba: object) -> object:
-            r, g, b = rgba.r, rgba.g, rgba.b  # type: ignore[attr-defined]
-            a = rgba.a  # type: ignore[attr-defined]
-            if self.color_space == "cmyk":
-                from holiday_card.core.color_management import rgb_to_cmyk
-                c, m, y_, k = rgb_to_cmyk(r, g, b)
-                return _rl_colors.CMYKColor(c, m, y_, k, alpha=a)
-            return _rl_colors.Color(r, g, b, alpha=a)
-
-        # Background fill (color 0).
-        canvas.setFillColor(rl(c0))
+        # Background fill (color 0) covers the bbox; the tiles are small.
+        canvas.setFillColor(self._rl_color(c0, area_pt2=w * h))
         canvas.rect(x, y, w, h, stroke=0, fill=1)
 
         # Rotate around bbox center if requested.
@@ -415,8 +430,8 @@ class IRReportLabRenderer:
             canvas.rotate(pattern.rotation_deg)
             canvas.translate(-cx, -cy)
 
-        canvas.setFillColor(rl(c1))
-        canvas.setStrokeColor(rl(c1))
+        canvas.setFillColor(self._rl_color(c1))
+        canvas.setStrokeColor(self._rl_color(c1, role="stroke"))
 
         if pattern.pattern == "stripes":
             # Horizontal stripes — alternate rows at half-spacing height.
@@ -560,12 +575,14 @@ class IRReportLabRenderer:
     # Paint / stroke setup
     # ------------------------------------------------------------------
 
-    def _apply_fill(self, canvas: _canvas.Canvas, fill: object) -> bool:
+    def _apply_fill(
+        self, canvas: _canvas.Canvas, fill: object, *, area_pt2: float | None = None
+    ) -> bool:
         if fill is None:
             return False
         if isinstance(fill, SolidPaint):
             c = fill.color
-            self._set_fill(canvas, c.r, c.g, c.b)
+            self._set_fill(canvas, c.r, c.g, c.b, area_pt2=area_pt2)
             return True
         # Gradient + pattern paints aren't emitted by the compiler yet.
         # If they slip through, fail loud rather than silently drop.
@@ -599,7 +616,7 @@ class IRReportLabRenderer:
         # font_id is canonicalized (e.g. "Helvetica" → "LiberationSans")
         # so the default base-14 names map to the embedded TTFs.
         canvas.setFont(resolve_font_id(run.font_id), run.size_pt)
-        self._set_fill(canvas, run.color.r, run.color.g, run.color.b)
+        self._set_fill(canvas, run.color.r, run.color.g, run.color.b, role="text")
         if run.align == "center":
             canvas.drawCentredString(run.origin.x, run.origin.y, run.text)
         elif run.align == "right":

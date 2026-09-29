@@ -123,6 +123,7 @@ Section IDs (§P1 …) are what issues cite.
 - Keep: page boxes (TrimBox inset 9 pt, BleedBox = MediaBox, ArtBox safe area), header 1.4, `/ID`, CMYK shading dicts.
 
 ### §P10 Naive CMYK — PRINT P5
+- **Status (2026-09-29): resolved by #70.** `rgb_to_cmyk` is deleted; `core/color_management.CMYKConverter` converts sRGB → GRACoL2013 through LittleCMS (relative colorimetric + BPC), caps TAC at 300% (C/M/Y scaled, K kept), prints pure-black text/strokes K-only and pure-black fills ≥ 1 in² as rich black 60/40/40/100. `IRReportLabRenderer(color_space="cmyk")` routes every solid, stroke, text, fold-line, gradient-stop and pattern colour through it with a role. `convert_image` is the seam #71 uses for rasters. `letter` (sRGB) content streams are byte-identical.
 - `core/color_management.py:11-18` docstring claims the RIP converts via OutputIntent; for DeviceCMYK it does not.
 - Measured through GRACoL: pure blue → naive 100/100/0/0 prints purple (57,54,134), ICC 100/85/0/0; `#CC1C1C` → naive 0/86/86/20 prints orange-brick, ICC 0/100/100/10; black → 0/0/0/100 prints washed-out grey for large areas. ICC black is 84/75/60/100 (TAC 320%) → needs cap.
 

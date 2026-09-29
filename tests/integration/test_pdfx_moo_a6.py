@@ -36,7 +36,6 @@ from holiday_card.core.color_management import (
     DEFAULT_CMYK_PROFILE_FILENAME,
     ICCProfileNotFoundError,
     default_cmyk_icc_path,
-    rgb_to_cmyk,
 )
 from holiday_card.core.data_paths import data_path
 from holiday_card.core.generators import CardGenerator
@@ -218,31 +217,18 @@ class TestPdfxMooA6:
                         "no CMYK color operators found in content stream."
                     )
 
-
-class TestRgbToCmyk:
-    """``rgb_to_cmyk`` formula correctness."""
-
-    def test_pure_black(self) -> None:
-        assert rgb_to_cmyk(0.0, 0.0, 0.0) == (0.0, 0.0, 0.0, 1.0)
-
-    def test_pure_white(self) -> None:
-        assert rgb_to_cmyk(1.0, 1.0, 1.0) == (0.0, 0.0, 0.0, 0.0)
-
-    def test_pure_red(self) -> None:
-        c, m, y, k = rgb_to_cmyk(1.0, 0.0, 0.0)
-        assert (c, m, y, k) == (0.0, 1.0, 1.0, 0.0)
-
-    def test_pure_green(self) -> None:
-        c, m, y, k = rgb_to_cmyk(0.0, 1.0, 0.0)
-        assert (c, m, y, k) == (1.0, 0.0, 1.0, 0.0)
-
-    def test_pure_blue(self) -> None:
-        c, m, y, k = rgb_to_cmyk(0.0, 0.0, 1.0)
-        assert (c, m, y, k) == (1.0, 1.0, 0.0, 0.0)
-
-    def test_clamping(self) -> None:
-        # Out-of-range inputs are clamped rather than crashing.
-        assert rgb_to_cmyk(-0.5, 0.5, 1.5) == rgb_to_cmyk(0.0, 0.5, 1.0)
+    def test_front_background_is_icc_converted(self, rendered_dir: Path) -> None:
+        # The classic front bg is rgb(0.8, 0.1, 0.1). LittleCMS (rel. col. + BPC)
+        # into GRACoL2013 gives 0/98.8/92.5/12.2; the naive formula gave
+        # 0/.875/.875/.2 (brick-orange on press), observed 2026-09-26 (#70).
+        with pikepdf.open(rendered_dir / "front.pdf") as pdf:
+            first_k = next(
+                [float(o) for o in operands]
+                for operands, op in pikepdf.parse_content_stream(pdf.pages[0])
+                if str(op) == "k"
+            )
+        assert first_k == pytest.approx([0.0, 0.988, 0.925, 0.122], abs=0.02)
+        assert first_k != pytest.approx([0.0, 0.875, 0.875, 0.2], abs=0.005)
 
 
 class TestIccProfile:
