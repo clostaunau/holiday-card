@@ -130,6 +130,7 @@ src/holiday_card/
                         #   + NOTICE (verbatim redistribution terms)
   cli/
     commands.py         # Typer CLI: create, preview, templates, themes, validate
+    exit_codes.py       # ExitCode (0-5) + the root --help epilog (#80)
   utils/
     measurements.py     # inch ↔ point conversions; page constants
     svg_parser.py       # SVG path parser (preserved for future IR support)
@@ -342,6 +343,31 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — BREAKING: `-o` means `--output` everywhere; listing
+  tables lead with the ID; grouped help; documented exit codes
+  (expert-panel §P14 / D16, issue #80)**: `templates`, `themes` and
+  `init` used `-o` for `--occasion` while `create`, `preview` and
+  `ai-asset generate` used it for output. Now `--occasion` has **no short
+  flag** (`templates -o christmas` is `No such option: -o`, exit 2),
+  `init -o DIR` is `--output`, and `ai-asset generate --out` is renamed
+  `--output` (no alias, D17). The `templates` table is `ID OCCASION FOLD
+  [SOURCE] NAME` (SOURCE only when a user / env layer contributes, #79),
+  `themes` is `ID OCCASION NAME`; both are sorted by `(occasion, id)`,
+  sized to their widest cell with nothing truncated, and drop the
+  description (`--format json|yaml` payloads are unchanged).
+  `--format` is a `ListFormat` `StrEnum`, so `--format xml` is a click
+  usage error (exit 2) instead of a silent table. `create` / `preview`
+  options sit in Rich panels Content / Inside letter / Layout / Output
+  (panel order follows parameter order, so the signatures were
+  reordered; `--panel-fit` is Layout, `--allow-low-res` Output).
+  New `cli/exit_codes.py`: `ExitCode` (OK 0, ERROR 1, USAGE 2,
+  CONSENT_REQUIRED 3, ENVIRONMENT 4, RAIL_REFUSED 5; numbers unchanged)
+  and `EXIT_CODES_HELP`, the root `--help` epilog. Every `typer.Exit` in
+  `commands.py` uses `ExitCode.*`; a test greps for `typer.Exit(<digit>`.
+  README gains an "Exit codes" table. Guarded by `TestShortFlags`,
+  `TestListingTables` (every listed id `create`s, all 21),
+  `TestHelpPanels` and `TestExitCodes` in `tests/unit/test_cli.py`.
 
 - **2026-09-29 — Template paths and a layered template search path;
   `init` → `create` works (expert-panel §P14 / D1 / D15, issue #79)**:

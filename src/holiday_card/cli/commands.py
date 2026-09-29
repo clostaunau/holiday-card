@@ -9,6 +9,7 @@ import os
 import sys
 import warnings
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -17,6 +18,7 @@ from pydantic import ValidationError
 from typer.core import TyperGroup
 
 from holiday_card import __version__
+from holiday_card.cli.exit_codes import EXIT_CODES_HELP, ExitCode
 from holiday_card.core.ai_openai import make_image_client
 from holiday_card.core.card_request import (
     BuildReport,
@@ -61,7 +63,7 @@ def _exit_quietly_on_broken_pipe() -> NoReturn:
         os.dup2(devnull, sys.stdout.fileno())
     except (OSError, ValueError):
         pass
-    raise typer.Exit(0)
+    raise typer.Exit(ExitCode.OK)
 
 
 class _CLIGroup(TyperGroup):
@@ -82,6 +84,7 @@ app = typer.Typer(
     help="Create printable holiday greeting cards optimized for laser printing.",
     add_completion=False,
     cls=_CLIGroup,
+    epilog=EXIT_CODES_HELP,
 )
 
 
@@ -137,13 +140,13 @@ def _unexpected_error(prefix: str, e: Exception) -> NoReturn:
         fg=typer.colors.RED,
         err=True,
     )
-    raise typer.Exit(1) from e
+    raise typer.Exit(ExitCode.ERROR) from e
 
 
 def _fail(message: str) -> NoReturn:
     # A bad or contradictory input: fail loud with exit 2 (D4).
     typer.secho(f"Error: {message}", fg=typer.colors.RED, err=True)
-    raise typer.Exit(2)
+    raise typer.Exit(ExitCode.USAGE)
 
 
 def _canonical_fold_type(value: str) -> str:
@@ -151,19 +154,38 @@ def _canonical_fold_type(value: str) -> str:
     return "quarter_fold" if value == "half_fold" else value
 
 
+class ListFormat(StrEnum):
+    """``--format`` of the listing commands; anything else is a usage error (D4)."""
+
+    TABLE = "table"
+    JSON = "json"
+    YAML = "yaml"
+
+
+_LIST_FORMAT_OPTION = typer.Option(
+    ListFormat.TABLE, "--format", help="Output format: table, json or yaml."
+)
+
+
+def _echo_table(headers: list[str], rows: list[list[str]]) -> None:
+    # Left-aligned columns sized to their widest cell; nothing is truncated.
+    widths = [max(len(cell) for cell in column) for column in zip(headers, *rows, strict=True)]
+    for row in [headers, *rows]:
+        typer.echo("  ".join(cell.ljust(w) for cell, w in zip(row, widths, strict=True)).rstrip())
+
+
 @app.command()
 def templates(
-    occasion: str | None = typer.Option(
-        None, "--occasion", "-o", help="Filter by occasion type"
-    ),
+    occasion: str | None = typer.Option(None, "--occasion", help="Filter by occasion type"),
     fold_type: str | None = typer.Option(
         None, "--fold-type", "-f", help="Filter by fold type"
     ),
-    format: str = typer.Option(
-        "table", "--format", help="Output format: table, json, yaml"
-    ),
+    format: ListFormat = _LIST_FORMAT_OPTION,
 ) -> None:
-    """List available card templates."""
+    """List available card templates.
+
+    The ID column is what ``create``, ``preview`` and ``validate`` take.
+    """
     try:
         templates_list = discover_templates()
         if not any(t["source"] == "builtin" for t in templates_list) and not (
@@ -186,12 +208,12 @@ def templates(
             typer.echo("No templates found.")
             if occasion or fold_type:
                 typer.echo("Try removing filters to see all templates.")
-            raise typer.Exit(0)
+            raise typer.Exit(ExitCode.OK)
 
         # Output in requested format
-        if format == "json":
+        if format is ListFormat.JSON:
             typer.echo(json.dumps({"templates": templates_list}, indent=2))
-        elif format == "yaml":
+        elif format is ListFormat.YAML:
             for t in templates_list:
                 typer.echo(f"- id: {t['id']}")
                 typer.echo(f"  name: {t['name']}")
@@ -199,17 +221,14 @@ def templates(
                 typer.echo(f"  fold_type: {t['fold_type']}")
                 if t.get("description"):
                     typer.echo(f"  description: {t['description']}")
-        else:  # table format
-            # Print header
-            typer.echo(f"{'NAME':<25} {'OCCASION':<12} {'FOLD TYPE':<15} {'DESCRIPTION'}")
-            typer.echo("-" * 80)
-
-            # Print each template
-            for t in templates_list:
-                name = t["name"][:24] if len(t["name"]) > 24 else t["name"]
-                desc = t.get("description", "")[:30] if t.get("description") else ""
-                typer.echo(f"{name:<25} {t['occasion']:<12} {t['fold_type']:<15} {desc}")
-
+        else:
+            # SOURCE only when a user / env layer contributes (#79).
+            with_source = any(t["source"] != "builtin" for t in templates_list)
+            rows = [
+                [t["id"], t["occasion"], t["fold_type"], *([t["source"]] if with_source else []), t["name"]]
+                for t in sorted(templates_list, key=lambda t: (t["occasion"], t["id"]))
+            ]
+            _echo_table(["ID", "OCCASION", "FOLD", *(["SOURCE"] if with_source else []), "NAME"], rows)
             typer.echo(f"\n{len(templates_list)} template(s) found.")
 
     except (typer.Exit, BrokenPipeError):
@@ -226,19 +245,18 @@ def _fail_empty_catalog(kind: str, directory: Path) -> NoReturn:
         f"Error: no {kind} found in {directory} — installation is missing bundled data",
         err=True,
     )
-    raise typer.Exit(1)
+    raise typer.Exit(ExitCode.ERROR)
 
 
 @app.command(name="themes")
 def list_themes(
-    occasion: str | None = typer.Option(
-        None, "--occasion", "-o", help="Filter by occasion type"
-    ),
-    format: str = typer.Option(
-        "table", "--format", help="Output format: table, json, yaml"
-    ),
+    occasion: str | None = typer.Option(None, "--occasion", help="Filter by occasion type"),
+    format: ListFormat = _LIST_FORMAT_OPTION,
 ) -> None:
-    """List available color themes."""
+    """List available color themes.
+
+    The ID column is what ``--theme`` takes.
+    """
     try:
         themes_list = discover_themes()
         if not themes_list and not occasion:
@@ -252,29 +270,24 @@ def list_themes(
             typer.echo("No themes found.")
             if occasion:
                 typer.echo("Try removing filters to see all themes.")
-            raise typer.Exit(0)
+            raise typer.Exit(ExitCode.OK)
 
         # Output in requested format
-        if format == "json":
+        if format is ListFormat.JSON:
             typer.echo(json.dumps({"themes": themes_list}, indent=2))
-        elif format == "yaml":
+        elif format is ListFormat.YAML:
             for t in themes_list:
                 typer.echo(f"- id: {t['id']}")
                 typer.echo(f"  name: {t['name']}")
                 typer.echo(f"  occasion: {t['occasion']}")
                 if t.get("description"):
                     typer.echo(f"  description: {t['description']}")
-        else:  # table format
-            # Print header
-            typer.echo(f"{'NAME':<25} {'OCCASION':<12} {'DESCRIPTION'}")
-            typer.echo("-" * 70)
-
-            # Print each theme
-            for t in themes_list:
-                name = t["name"][:24] if len(t["name"]) > 24 else t["name"]
-                desc = t.get("description", "")[:30] if t.get("description") else ""
-                typer.echo(f"{name:<25} {t['occasion']:<12} {desc}")
-
+        else:
+            rows = [
+                [t["id"], t["occasion"], t["name"]]
+                for t in sorted(themes_list, key=lambda t: (t["occasion"], t["id"]))
+            ]
+            _echo_table(["ID", "OCCASION", "NAME"], rows)
             typer.echo(f"\n{len(themes_list)} theme(s) found.")
 
     except (typer.Exit, BrokenPipeError):
@@ -285,11 +298,20 @@ def list_themes(
         _unexpected_error("Error listing themes", e)
 
 
-# --- content options shared by ``create`` and ``preview`` (#78: same names, same short flags)
+# --- content options shared by ``create`` and ``preview`` (#78: same names, same short flags),
+# grouped into the same help panels on both commands (#80).
 
-_MESSAGE_OPTION = typer.Option(None, "--message", "-m", help="Greeting message text")
+_CONTENT = "Content"
+_LETTER = "Inside letter"
+_LAYOUT = "Layout"
+_OUTPUT = "Output"
+
+_MESSAGE_OPTION = typer.Option(
+    None, "--message", "-m", help="Greeting message text", rich_help_panel=_CONTENT
+)
 _FOLD_TYPE_OPTION = typer.Option(
-    None, "--fold-type", "-f", help="Override fold type: half_fold, quarter_fold, tri_fold"
+    None, "--fold-type", "-f", help="Override fold type: half_fold, quarter_fold, tri_fold",
+    rich_help_panel=_LAYOUT,
 )
 _IMAGE_OPTION = typer.Option(
     None,
@@ -299,12 +321,15 @@ _IMAGE_OPTION = typer.Option(
         "Photo for the template's photo slots (PNG/JPEG, any path). "
         "Repeat to fill slot 2, 3, …; unfilled slots keep the placeholder."
     ),
+    rich_help_panel=_CONTENT,
 )
 _THEME_OPTION = typer.Option(
-    None, "--theme", "-t", help="Color theme to apply (e.g., christmas-red-green)"
+    None, "--theme", "-t", help="Color theme to apply (e.g., christmas-red-green)",
+    rich_help_panel=_CONTENT,
 )
 _INSIDE_MESSAGE_OPTION = typer.Option(
-    None, "--inside-message", help="Message for the inside panel"
+    None, "--inside-message", help="Message for the inside panel",
+    rich_help_panel=_CONTENT,
 )
 _INSIDE_MESSAGE_MD_OPTION = typer.Option(
     None,
@@ -317,6 +342,7 @@ _INSIDE_MESSAGE_MD_OPTION = typer.Option(
         "use a template whose inside font is 'Lato' (the only "
         "curated font with a registered Bold variant today)."
     ),
+    rich_help_panel=_CONTENT,
 )
 _VOICE_OPTION = typer.Option(
     None,
@@ -327,11 +353,13 @@ _VOICE_OPTION = typer.Option(
         "irreverent. Explicit --message / --inside-message override "
         "the picked sentiment."
     ),
+    rich_help_panel=_CONTENT,
 )
 _BLANK_INSIDE_OPTION = typer.Option(
     False,
     "--blank-inside",
     help="Render the inside panel with no message text.",
+    rich_help_panel=_CONTENT,
 )
 _SEED_OPTION = typer.Option(
     None,
@@ -340,6 +368,7 @@ _SEED_OPTION = typer.Option(
         "Reproducible sentiment selection: same seed + same template "
         "+ same voice → same picked line. Default is random."
     ),
+    rich_help_panel=_CONTENT,
 )
 _SALUTATION_OPTION = typer.Option(
     None,
@@ -348,6 +377,7 @@ _SALUTATION_OPTION = typer.Option(
         "Inside-letter salutation, e.g. 'Dear Aunt Margaret,'. "
         "Renders as the top line of the inside panel."
     ),
+    rich_help_panel=_LETTER,
 )
 _SIGNOFF_OPTION = typer.Option(
     None,
@@ -356,6 +386,7 @@ _SIGNOFF_OPTION = typer.Option(
         "Inside-letter signoff line, e.g. 'Love,' or 'Always,'. "
         "Renders below the body with extra vertical breathing room."
     ),
+    rich_help_panel=_LETTER,
 )
 _SIGNATURE_OPTION = typer.Option(
     None,
@@ -364,6 +395,7 @@ _SIGNATURE_OPTION = typer.Option(
         "Inside-letter signature (the writer's name). Pair with "
         "--signature-font for the handwritten-feel convention."
     ),
+    rich_help_panel=_LETTER,
 )
 _PS_OPTION = typer.Option(
     None,
@@ -372,6 +404,7 @@ _PS_OPTION = typer.Option(
         "Inside-letter P.S. line — renders at 85% of body size, "
         "below the signature. Conventionally the most-read line."
     ),
+    rich_help_panel=_LETTER,
 )
 _SIGNATURE_FONT_OPTION = typer.Option(
     None,
@@ -381,6 +414,7 @@ _SIGNATURE_FONT_OPTION = typer.Option(
         "template's inside font; 'Caveat' (curated handwritten) "
         "is the conventional pick."
     ),
+    rich_help_panel=_LETTER,
 )
 
 
@@ -388,43 +422,19 @@ _SIGNATURE_FONT_OPTION = typer.Option(
 def create(
     template: str = typer.Argument(..., help="Template name or path"),
     message: str | None = _MESSAGE_OPTION,
-    output: Path | None = typer.Option(
-        None, "--output", "-o", help="Output PDF file path"
-    ),
-    fold_type: str | None = _FOLD_TYPE_OPTION,
-    image: list[Path] | None = _IMAGE_OPTION,
-    theme: str | None = _THEME_OPTION,
     inside_message: str | None = _INSIDE_MESSAGE_OPTION,
     inside_message_md: Path | None = _INSIDE_MESSAGE_MD_OPTION,
-    debug_emit_ir: bool = typer.Option(
-        False,
-        "--debug-emit-ir",
-        hidden=True,
-        help="(Wave 2 dev flag) Compile to RenderCommand IR and print as JSON; skip PDF output.",
-    ),
-    output_format: str = typer.Option(
-        "auto",
-        "--format",
-        help="Output format: 'pdf', 'svg', or 'auto' (infers from --output extension).",
-    ),
-    export_for: str = typer.Option(
-        "letter",
-        "--export-for",
-        help=(
-            "Print target preset. 'letter' (default) emits a single "
-            "imposed sheet; 'per-panel-pdf' and 'moo-a6' emit one file "
-            "per panel into a directory. See README for the full "
-            "registry."
-        ),
-    ),
     voice: str | None = _VOICE_OPTION,
-    blank_inside: bool = _BLANK_INSIDE_OPTION,
     seed: int | None = _SEED_OPTION,
+    blank_inside: bool = _BLANK_INSIDE_OPTION,
+    theme: str | None = _THEME_OPTION,
+    image: list[Path] | None = _IMAGE_OPTION,
     salutation: str | None = _SALUTATION_OPTION,
     signoff: str | None = _SIGNOFF_OPTION,
     signature: str | None = _SIGNATURE_OPTION,
     ps: str | None = _PS_OPTION,
     signature_font: str | None = _SIGNATURE_FONT_OPTION,
+    fold_type: str | None = _FOLD_TYPE_OPTION,
     panel_fit: str | None = typer.Option(
         None,
         "--panel-fit",
@@ -434,6 +444,7 @@ def create(
             "the overflow; 'letterbox' fits it whole and leaves paper bands. "
             "Refused for targets that keep the panel's native size."
         ),
+        rich_help_panel=_LAYOUT,
     ),
     with_fold_marks: bool | None = typer.Option(
         None,
@@ -445,6 +456,28 @@ def create(
             "POD targets suppress it (each output is a finished card "
             "and the guide would print on the product)."
         ),
+        rich_help_panel=_LAYOUT,
+    ),
+    output: Path | None = typer.Option(
+        None, "--output", "-o", help="Output PDF file path",
+        rich_help_panel=_OUTPUT,
+    ),
+    output_format: str = typer.Option(
+        "auto",
+        "--format",
+        help="Output format: 'pdf', 'svg', or 'auto' (infers from --output extension).",
+        rich_help_panel=_OUTPUT,
+    ),
+    export_for: str = typer.Option(
+        "letter",
+        "--export-for",
+        help=(
+            "Print target preset. 'letter' (default) emits a single "
+            "imposed sheet; 'per-panel-pdf' and 'moo-a6' emit one file "
+            "per panel into a directory. See README for the full "
+            "registry."
+        ),
+        rich_help_panel=_OUTPUT,
     ),
     allow_low_res: bool = typer.Option(
         False,
@@ -454,6 +487,13 @@ def create(
             "minimum (it is reported as a warning instead). For proofs only: "
             "the print will be soft. 300 PPI is recommended."
         ),
+        rich_help_panel=_OUTPUT,
+    ),
+    debug_emit_ir: bool = typer.Option(
+        False,
+        "--debug-emit-ir",
+        hidden=True,
+        help="(Wave 2 dev flag) Compile to RenderCommand IR and print as JSON; skip PDF output.",
     ),
 ) -> None:
     """Create a new card from a template.
@@ -539,7 +579,7 @@ def create(
     except PermissionError as e:
         typer.secho(f"Error: Cannot write to {output}", fg=typer.colors.RED, err=True)
         typer.echo("Check that you have write permission to the output directory.", err=True)
-        raise typer.Exit(4) from e
+        raise typer.Exit(ExitCode.ENVIRONMENT) from e
 
     except Exception as e:
         _exit_for_card_error("Error creating card", e)
@@ -549,28 +589,31 @@ def create(
 def preview(
     template: str = typer.Argument(..., help="Template name or path"),
     message: str | None = _MESSAGE_OPTION,
-    output: Path | None = typer.Option(
-        None, "--output", "-o", help="Output PNG file path"
-    ),
-    dpi: int = typer.Option(
-        144, "--dpi", "-d", help="Preview resolution (dots per inch)"
-    ),
-    open_after: bool = typer.Option(
-        True, "--open/--no-open", help="Open the preview in your default image viewer."
-    ),
-    fold_type: str | None = _FOLD_TYPE_OPTION,
-    image: list[Path] | None = _IMAGE_OPTION,
-    theme: str | None = _THEME_OPTION,
     inside_message: str | None = _INSIDE_MESSAGE_OPTION,
     inside_message_md: Path | None = _INSIDE_MESSAGE_MD_OPTION,
     voice: str | None = _VOICE_OPTION,
-    blank_inside: bool = _BLANK_INSIDE_OPTION,
     seed: int | None = _SEED_OPTION,
+    blank_inside: bool = _BLANK_INSIDE_OPTION,
+    theme: str | None = _THEME_OPTION,
+    image: list[Path] | None = _IMAGE_OPTION,
     salutation: str | None = _SALUTATION_OPTION,
     signoff: str | None = _SIGNOFF_OPTION,
     signature: str | None = _SIGNATURE_OPTION,
     ps: str | None = _PS_OPTION,
     signature_font: str | None = _SIGNATURE_FONT_OPTION,
+    fold_type: str | None = _FOLD_TYPE_OPTION,
+    output: Path | None = typer.Option(
+        None, "--output", "-o", help="Output PNG file path",
+        rich_help_panel=_OUTPUT,
+    ),
+    dpi: int = typer.Option(
+        144, "--dpi", "-d", help="Preview resolution (dots per inch)",
+        rich_help_panel=_OUTPUT,
+    ),
+    open_after: bool = typer.Option(
+        True, "--open/--no-open", help="Open the preview in your default image viewer.",
+        rich_help_panel=_OUTPUT,
+    ),
 ) -> None:
     """Generate a fast PNG preview of a card and open it in your default viewer.
 
@@ -645,7 +688,7 @@ def preview(
 def init(
     name: str = typer.Argument(..., help="Template name (e.g., my-template)"),
     occasion: str = typer.Option(
-        "generic", "--occasion", "-o", help="Occasion type: christmas, hanukkah, birthday, generic"
+        "generic", "--occasion", help="Occasion type: christmas, hanukkah, birthday, generic"
     ),
     fold_type: str = typer.Option(
         "quarter_fold", "--fold-type", "-f", help="Fold type: quarter_fold (half_fold is an alias), tri_fold"
@@ -653,6 +696,7 @@ def init(
     output_dir: Path | None = typer.Option(
         None,
         "--output",
+        "-o",
         help="Output directory for template file (default: the user template "
         "dir, $XDG_DATA_HOME/holiday-card/templates/<occasion>)",
     ),
@@ -795,11 +839,11 @@ def validate(
 
     except TemplateNotFoundError as e:
         typer.secho(f"Template not found: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(2) from e
+        raise typer.Exit(ExitCode.USAGE) from e
 
     except TemplateLoadError as e:
         typer.secho(f"Template invalid: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(2) from e
+        raise typer.Exit(ExitCode.USAGE) from e
 
     except Exception as e:
         _unexpected_error("Validation error", e)
@@ -828,7 +872,7 @@ def ai_asset_generate(
         "--prompt",
         help="What to generate, e.g. 'watercolor pine bough border, sage green'.",
     ),
-    out: Path = typer.Option(..., "--out", "-o", help="Output PNG path."),
+    output: Path = typer.Option(..., "--output", "-o", help="Output PNG path."),
     occasion: str = typer.Option(
         "generic",
         "--occasion",
@@ -878,7 +922,7 @@ def ai_asset_generate(
         holiday-card ai-asset generate \\
           --subject "watercolor pine bough border, sage green and burgundy" \\
           --reference fonts/curated/motif.png --style watercolor \\
-          --occasion christmas --export-for moo-a6 --out assets/ai/border.png
+          --occasion christmas --export-for moo-a6 -o assets/ai/border.png
     """
     from holiday_card.core.ai_assets import (
         ConsentRequiredError,
@@ -900,7 +944,7 @@ def ai_asset_generate(
         typer.secho(
             f"Error: unknown occasion {occasion!r}.", fg=typer.colors.RED, err=True
         )
-        raise typer.Exit(2) from e
+        raise typer.Exit(ExitCode.USAGE) from e
 
     # Image-reference mode is the default; a missing reference is an error
     # unless the user explicitly opts into the unsafe no-anchor path.
@@ -912,14 +956,14 @@ def ai_asset_generate(
             fg=typer.colors.RED,
             err=True,
         )
-        raise typer.Exit(2)
+        raise typer.Exit(ExitCode.USAGE)
     if reference is not None and not reference.exists():
         typer.secho(
             f"Error: reference image not found: {reference}",
             fg=typer.colors.RED,
             err=True,
         )
-        raise typer.Exit(2)
+        raise typer.Exit(ExitCode.USAGE)
 
     # First-use consent gate.
     consent_path = default_consent_path()
@@ -936,14 +980,14 @@ def ai_asset_generate(
                 err=True,
             )
             typer.echo(CONSENT_NOTICE.format(path=consent_path), err=True)
-            raise typer.Exit(3)
+            raise typer.Exit(ExitCode.CONSENT_REQUIRED)
 
     # Resolve print geometry → pixel dims.
     try:
         target = get_target(export_for)
     except ExportTargetNotFoundError as e:
         typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(2) from e
+        raise typer.Exit(ExitCode.USAGE) from e
     geom = target.geometry
     if geom is None:
         typer.secho(
@@ -952,7 +996,7 @@ def ai_asset_generate(
             fg=typer.colors.RED,
             err=True,
         )
-        raise typer.Exit(2)
+        raise typer.Exit(ExitCode.USAGE)
 
     request = build_ai_request(
         prompt=subject,
@@ -979,13 +1023,13 @@ def ai_asset_generate(
         client = make_image_client()
     except AIDependencyError as e:
         typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(4) from e
+        raise typer.Exit(ExitCode.ENVIRONMENT) from e
 
     try:
         result = generate_ai_asset(
             prompt=subject,
             occasion=occasion_enum,
-            out_path=out,
+            out_path=output,
             request=request,
             client=client,
             consent_path=consent_path,
@@ -996,7 +1040,7 @@ def ai_asset_generate(
         )
     except ConsentRequiredError as e:
         typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(3) from e
+        raise typer.Exit(ExitCode.CONSENT_REQUIRED) from e
     except RailRefusedError as e:
         typer.secho("Error: AI imagery refused by hard category rails:", fg=typer.colors.RED, err=True)
         for v in e.violations:
@@ -1006,7 +1050,7 @@ def ai_asset_generate(
             "re-run with --i-know-what-im-doing.",
             err=True,
         )
-        raise typer.Exit(5) from e
+        raise typer.Exit(ExitCode.RAIL_REFUSED) from e
 
     typer.secho(f"AI asset written: {result.asset_path}", fg=typer.colors.GREEN)
     typer.echo(f"  Provenance: {result.sidecar_path.name}")
@@ -1052,7 +1096,7 @@ def _read_markdown(path: Path) -> str:
         parse_markdown(text)
     except (OSError, ValueError) as e:
         typer.secho(f"Error reading {path}: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(2) from e
+        raise typer.Exit(ExitCode.USAGE) from e
     return text
 
 
@@ -1073,7 +1117,7 @@ def _build_request(
             typer.echo("\nAvailable --export-for targets:", err=True)
             for name in sorted(EXPORT_TARGET_REGISTRY):
                 typer.echo(f"  {name}: {EXPORT_TARGET_REGISTRY[name].description}", err=True)
-            raise typer.Exit(2) from e
+            raise typer.Exit(ExitCode.USAGE) from e
         _fail(str(error))
 
 
@@ -1088,27 +1132,27 @@ def _exit_for_card_error(prefix: str, e: Exception) -> NoReturn:
         if len(templates_list) > 5:
             typer.echo(f"  ... and {len(templates_list) - 5} more", err=True)
         typer.echo("\nRun 'holiday-card templates' to see all options.", err=True)
-        raise typer.Exit(2) from e
+        raise typer.Exit(ExitCode.USAGE) from e
     if isinstance(e, TemplateLoadError):
         typer.secho(f"Error loading template: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(2) from e
+        raise typer.Exit(ExitCode.USAGE) from e
     if isinstance(e, PhotoSlotError):
         typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
         slotted = templates_with_photo_slots()
         if slotted:
             typer.echo(f"Templates with photo slots: {', '.join(slotted)}", err=True)
-        raise typer.Exit(2) from e
+        raise typer.Exit(ExitCode.USAGE) from e
     from holiday_card.renderers.pdfx_preflight import PDFXConformanceError  # pikepdf: lazy
 
     if isinstance(e, PDFXConformanceError):
         # The self-check after PDF/X post-processing (#71): list every violation.
         typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(2) from e
+        raise typer.Exit(ExitCode.USAGE) from e
     if isinstance(e, ImageSourceError | UnsupportedFeatureError | ValidationError | ValueError):
         # Bad or contradictory input (D4): the message is already user-facing.
         message = validation_message(e) if isinstance(e, ValidationError) else str(e)
         typer.secho(f"Error: {message}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(2) from e
+        raise typer.Exit(ExitCode.USAGE) from e
     _unexpected_error(prefix, e)
 
 

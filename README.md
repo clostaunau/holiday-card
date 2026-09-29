@@ -234,6 +234,23 @@ An unexpected error exits 1 and prints one line. Re-run with `--debug`
 holiday-card --debug create christmas-classic -o card.pdf
 ```
 
+### Exit codes
+
+Scripts can branch on these; `holiday-card --help` lists them too.
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | Unexpected internal error (re-run with `--debug` for a traceback) |
+| 2 | Usage: bad or conflicting flags, unknown template / theme / file, invalid template |
+| 3 | `ai-asset`: first-use consent missing (`--accept-ai-terms`) |
+| 4 | Environment: missing optional extra or API key, or output path not writable |
+| 5 | `ai-asset`: refused by the hard category rails |
+
+`-o` always means `--output`. `templates` and `themes` take `--occasion`
+with no short flag, and their first column is the ID that `create`,
+`preview`, `validate` and `--theme` accept.
+
 ## Hacking on it
 
 ```bash
@@ -287,7 +304,7 @@ holiday-card ai-asset generate \
   --style watercolor \
   --occasion christmas \
   --export-for moo-a6 \
-  --out assets/ai/pine-bough-border.png
+  --output assets/ai/pine-bough-border.png
 ```
 
 Guardrails that ship on by default (see
