@@ -15,9 +15,6 @@ Design properties:
 * **Strict.** Any command this backend can't handle (e.g. an
   ``UnsupportedFeatureError`` was bypassed somehow) raises immediately
   rather than rendering a partial PDF.
-
-This backend lives **alongside** the legacy ``ReportLabRenderer`` in this
-PR. ``CardGenerator`` still uses the legacy path; Step 4 is the cutover.
 """
 
 from __future__ import annotations
@@ -250,20 +247,10 @@ class IRReportLabRenderer:
     def _apply_transform(self, canvas: _canvas.Canvas, cmd: BeginGroup) -> None:
         t = cmd.transform
         # No-op transform is the common case (panel rotation == 0); skip
-        # the canvas calls so the output is byte-stable.
-        if t.translate_x == 0 and t.translate_y == 0 and t.rotate_deg == 0 \
-                and t.scale_x == 1.0 and t.scale_y == 1.0:
+        # the canvas call so the output is byte-stable.
+        if t.is_identity():
             return
-        # Order: translate to pivot, rotate, translate back. The compiler
-        # records the pivot as the translate target.
-        if t.translate_x or t.translate_y:
-            canvas.translate(t.translate_x, t.translate_y)
-        if t.rotate_deg:
-            canvas.rotate(t.rotate_deg)
-        if t.translate_x or t.translate_y:
-            canvas.translate(-t.translate_x, -t.translate_y)
-        if t.scale_x != 1.0 or t.scale_y != 1.0:
-            canvas.scale(t.scale_x, t.scale_y)
+        canvas.transform(*t.to_matrix())
 
     def _apply_clip(self, canvas: _canvas.Canvas, cmd: BeginClip) -> None:
         path = self._geometry_to_path(canvas, cmd.geometry)

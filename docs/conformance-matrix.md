@@ -33,7 +33,11 @@ compared against the SVG backend (the oracle, D12) at 144 DPI.
 | `clip_circle_over_rect` | match | match |
 | `clip_nested` | match | match |
 | `group_rotate_pivot` | match | match |
-| `group_scale_pivot` | known_diff (#72) | raises |
+| `group_scale_pivot` | match | match |
+| `group_square_scale2_pivot` | match | match |
+| `group_square_scale2_rotate30` | match | match |
+| `group_square_scale2_offset` | match | match |
+| `group_square_nested_scale_in_rotate` | match | match |
 | `group_opacity` | raises | raises |
 | `shape_opacity_times_color_alpha` | match | match |
 | `alpha_no_leak` | match | match |

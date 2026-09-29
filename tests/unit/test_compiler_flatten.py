@@ -290,13 +290,29 @@ class TestIRFlattening:
                           fill=SolidPaint(color=RGBA(r=0, g=1, b=0)))
         cmds = [
             _white_page(), green,
-            BeginGroup(transform=Transform(translate_x=100, translate_y=100, rotate_deg=90)),
+            BeginGroup(transform=Transform(pivot_x=100, pivot_y=100, rotate_deg=90)),
             DrawShape(geometry=RectGeom(x=90, y=99, width=20, height=2),
                       fill=SolidPaint(color=RED), opacity=0.5),
             EndGroup(),
         ]
         with pytest.raises(UnsupportedFeatureError):
             flatten_transparency(cmds, where="t/front/bar")
+
+    def test_group_scale_is_about_the_pivot(self) -> None:
+        # #72 / D14: scale 2 about (100, 100) puts the 95..105 square at
+        # 90..110, half over the green rect. Scaling about the page origin
+        # (the pre-#72 PDF order) would put it at 190..210, over paper.
+        green = DrawShape(geometry=RectGeom(x=0, y=0, width=300, height=95),
+                          fill=SolidPaint(color=RGBA(r=0, g=1, b=0)))
+        cmds = [
+            _white_page(), green,
+            BeginGroup(transform=Transform(pivot_x=100, pivot_y=100, scale_x=2, scale_y=2)),
+            DrawShape(geometry=RectGeom(x=95, y=95, width=10, height=10),
+                      fill=SolidPaint(color=RED), opacity=0.5),
+            EndGroup(),
+        ]
+        with pytest.raises(UnsupportedFeatureError):
+            flatten_transparency(cmds, where="t/front/scaled")
 
     def test_clip_limits_the_region_that_needs_a_backdrop(self) -> None:
         # Only the clipped part (inside the green square) is painted.

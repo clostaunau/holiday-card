@@ -246,9 +246,8 @@ def _compile_panel(
 
     out: list[RenderCommand] = []
 
-    # Panel rotation is around its center (matches the legacy renderer's
-    # translate/rotate/translate sequence at reportlab_renderer.py:96-102).
-    # We materialize the pivot here so backends never compute it.
+    # Panel rotation is about its center; the pivot is materialized here so
+    # backends never compute it (see the ``Transform`` docstring).
     transform = _panel_transform(panel)
     out.append(BeginGroup(transform=transform))
 
@@ -304,19 +303,12 @@ def _require_known_font(font_id: str, where: str) -> None:
 
 
 def _panel_transform(panel: Panel) -> Transform:
-    """Resolve panel rotation around its center to an explicit translate+rotate."""
+    """Resolve panel rotation around its center to a pivot-rotate ``Transform``."""
     if panel.rotation == 0:
         return Transform()
     cx_pt = inches_to_points(panel.x + panel.width / 2)
     cy_pt = inches_to_points(panel.y + panel.height / 2)
-    # Compose: translate(cx, cy) ∘ rotate(deg) ∘ translate(-cx, -cy).
-    # Backends apply translate then rotate then scale; for now we collapse
-    # the pivot into a translate+rotate by recording the center as the
-    # translate target. Backends interpret Transform.translate_* as
-    # post-rotation translate and rotate_deg as rotation about the local
-    # origin — this is a known TODO; the legacy renderer encodes it
-    # implicitly. For non-rotated panels (the common case) it's a no-op.
-    return Transform(translate_x=cx_pt, translate_y=cy_pt, rotate_deg=panel.rotation)
+    return Transform(pivot_x=cx_pt, pivot_y=cy_pt, rotate_deg=panel.rotation)
 
 
 def _emit_panel_background(
@@ -658,8 +650,8 @@ def _compile_svg_path(shape: SVGPath, panel: Panel) -> list[RenderCommand]:
         cx_in = offset_x_in + (x_min + x_max) / 2 * scale
         cy_in = offset_y_in + (y_min + y_max) / 2 * scale
         transform_ir = Transform(
-            translate_x=inches_to_points(cx_in),
-            translate_y=inches_to_points(cy_in),
+            pivot_x=inches_to_points(cx_in),
+            pivot_y=inches_to_points(cy_in),
             rotate_deg=shape.rotation,
         )
         return [BeginGroup(transform=transform_ir), draw, EndGroup()]
@@ -1071,8 +1063,8 @@ def _compile_text(
     if text.rotation == 0 or not commands:
         return commands
     pivot = Transform(
-        translate_x=inches_to_points(panel.x + text.x),
-        translate_y=inches_to_points(panel.y + text.y),
+        pivot_x=inches_to_points(panel.x + text.x),
+        pivot_y=inches_to_points(panel.y + text.y),
         rotate_deg=text.rotation,
     )
     return [BeginGroup(transform=pivot), *commands, EndGroup()]
@@ -1583,8 +1575,8 @@ def _compile_image(image: ImageElement, panel: Panel) -> list[RenderCommand]:
         cx_pt = x_pt + width_pt / 2
         cy_pt = y_pt + height_pt / 2
         transform = Transform(
-            translate_x=cx_pt,
-            translate_y=cy_pt,
+            pivot_x=cx_pt,
+            pivot_y=cy_pt,
             rotate_deg=image.rotation,
         )
         return [BeginGroup(transform=transform), *inner, EndGroup()]

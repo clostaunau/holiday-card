@@ -32,7 +32,7 @@ holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," -
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 1710 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 1740 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -181,7 +181,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 1710 tests pass
+uv run pytest                            # All 1740 tests pass
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
 
@@ -282,9 +282,10 @@ The pattern that worked three times in PRs #7, #11, #12:
    exposing `render(commands, output_path) -> None`. Visitor over the
    discriminated union of 11 commands. Convert IR (points, bottom-left)
    to the backend's coordinate system per element.
-2. For stateful drawing (groups with rotation, clipping), maintain a
-   small stack and apply the IR's pivot-rotate idiom (translate; rotate;
-   untranslate) on group close.
+2. For stateful drawing (groups, clipping), maintain a small stack and
+   apply group transforms with `Transform.to_matrix()` (conjugated into
+   the backend's coordinate system); the formula is in the `Transform`
+   docstring.
 3. Strict on unknowns: anything you can't handle (e.g. gradient paints
    for the moment) raises `NotImplementedError` with a useful message.
 4. Add `tests/integration/test_{name}_backend.py`. **Include
@@ -333,6 +334,36 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — IR `Transform` is an explicit affine: pivot, rotate,
+  scale about the pivot, offset (expert-panel §P11 / §P7 / D14, issue
+  #72)**: `Transform.translate_x/y` held the rotation pivot, and the
+  backends disagreed on `scale`: PDF scaled about the page origin, SVG
+  about the pivot, and PNG raised. `core/render_ir.Transform` now has
+  `pivot_x/y`, `rotate_deg`, `scale_x/y` (`gt=0`) and `offset_x/y` and is
+  defined as `p' = T(offset)·T(pivot)·R(rotate, CCW)·S(scale)·T(−pivot)·p`.
+  `is_identity()` ignores the pivot and `to_matrix()` returns the PDF `cm`
+  tuple. The old names are removed, not aliased (D17), so
+  `Transform(translate_x=…)` fails `extra="forbid"`. The four producers
+  (panel, SVGPath, image and text rotation) pass `pivot_*`. PDF emits one
+  `canvas.transform(*t.to_matrix())`. SVG keeps its decomposed string, with
+  `translate(offset_x −offset_y)` in front. PNG replaced `overlay.rotate` with an
+  AFFINE `overlay.transform` whose inverse coefficients come from
+  `to_matrix()` conjugated by the IR→pixel map; its non-unit-scale raise is
+  gone. `core/flatten` uses `to_matrix()` too (its copy of the old PDF
+  order is deleted). The compiler still emits no scale (#73). The 16
+  compile snapshots changed only by key rename plus default `offset_*`
+  (checked with a key-renaming diff). Visual baselines are unchanged, and
+  `christmas-classic` PDF rasterizes pixel-identically to `main`. The one
+  `letter_content_sha256` entry that changed is
+  christmas-holiday-masterpiece: a 45° `cm` translation moved from
+  −29.93745 to −29.93729 (float rounding; ≤ 2/255 of AA noise at 300
+  DPI). Guarded by `TestTransformMatrix` in `test_render_ir.py`, the
+  `group_square_*` conformance cases (scale about the pivot, +rotate,
+  +offset, nested scale-in-rotate; `group_scale_pivot` flipped to `match`
+  for PDF and PNG), `tests/conformance/test_group_transform.py` (the SVG
+  oracle vs a step-by-step formula) and
+  `test_group_scale_is_about_the_pivot` in `test_compiler_flatten.py`.
 
 - **2026-09-29 — PDF/X output has no transparency and no RGB images;
   every PDF/X file is preflighted (expert-panel §P9 / D10, issue #71)**:

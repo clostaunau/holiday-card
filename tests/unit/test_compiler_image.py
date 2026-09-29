@@ -150,8 +150,8 @@ class TestCompileImage:
         inner_begin = [c for c in commands if isinstance(c, BeginGroup) and c.transform.rotate_deg == 45.0]
         assert len(inner_begin) == 1
         t = inner_begin[0].transform
-        assert t.translate_x == pytest.approx(144.0)
-        assert t.translate_y == pytest.approx(144.0)
+        assert t.pivot_x == pytest.approx(144.0)
+        assert t.pivot_y == pytest.approx(144.0)
 
 
 class TestClipMaskConversion:

@@ -59,8 +59,11 @@ CAPABILITIES: dict[str, dict[Backend, Cap]] = {
     "clip_circle_over_rect": _both(_M),
     "clip_nested": _both(_M),
     "group_rotate_pivot": _both(_M),
-    # PDF scales about the page origin instead of the pivot.
-    "group_scale_pivot": {"pdf": Cap("known_diff", "#72"), "png": _R},
+    "group_scale_pivot": _both(_M),
+    "group_square_scale2_pivot": _both(_M),
+    "group_square_scale2_rotate30": _both(_M),
+    "group_square_scale2_offset": _both(_M),
+    "group_square_nested_scale_in_rotate": _both(_M),
     "group_opacity": _both(_R),
     "shape_opacity_times_color_alpha": _both(_M),
     "alpha_no_leak": _both(_M),

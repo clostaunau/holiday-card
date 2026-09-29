@@ -106,7 +106,7 @@ Section IDs (§P1 …) are what issues cite.
 - **Status (2026-09-29): quadratic, dash and alpha bullets closed by #62.** `_geometry_to_path` tracks the current point / subpath start (quadratic with no current point raises `ValueError`); `setDash(list(dash), 0)`; every draw with effective alpha < 1 (fill/stroke/text = `opacity × color.a`, image = `opacity`) is scoped in q/Q; `BeginGroup.opacity != 1` raises `NotImplementedError`. Fixtures in `tests/integration/test_pdf_ir_fixtures.py`. Group scale stays with P4-4 / #72.
 - Quadratic curves: `reportlab_backend.py:513` looks up `path.contour` (doesn't exist on ReportLab path) → falls back to control point as start. Any user `Q`/`T` renders wrong.
 - `setFillAlpha(c.a)` (`:536`) never reset → next fill inherits alpha. `BeginGroup.opacity` ignored; `DrawImage.opacity` ignored (`_draw_image` `:581`); `cmd.opacity` replaces rather than multiplies color alpha.
-- Group scale: PDF scales about origin after un-translate (`:206-209`); SVG about pivot (`svg_backend.py:237`); PNG raises (`png_backend.py:329`).
+- Group scale: PDF scales about origin after un-translate (`:206-209`); SVG about pivot (`svg_backend.py:237`); PNG raises (`png_backend.py:329`). **Resolved by #72:** scale is about the pivot in every backend, all derived from `Transform.to_matrix()`; conformance cases `group_scale_pivot` and `group_square_*` match on PDF and PNG.
 
 ### §P8 Photo pipeline broken [verified in part] — UX F3, REND F2, PRINT P8/P9, SEC P3, ARCH F2
 - `cli/commands.py:477-483` builds `ImageElement(width=3.0, …)` with no height; compiler requires both (`core/compiler.py:1434`) → `create <any> -i me.jpg` fails [verified].
@@ -130,7 +130,7 @@ Section IDs (§P1 …) are what issues cite.
 ### §P11 MOO A6 white bands & per-panel scaling — PRINT P4, ARCH F2, F4
 - Letter panel 4.25×5.5 vs A6 4.13×5.83; `prepare_scaled_panel` (`core/per_panel.py:123-142`) uses `scale=min(...)` (letterbox); bleed only extends edges touching trim (`core/compiler.py:302-307`) → ~0.24" white top & bottom on every MOO card.
 - `core/per_panel.py:105-212` re-implements scaling per domain type and misses: images, SVGPath `x`/`y` (only `scale` multiplied, `:208`), radial-gradient center/radius (panel-relative inches, `compiler.py:904-906`), `stroke_width`, `Border`, pattern spacing, letter/rich-text sizes.
-- `render_ir.py:115-127` names `translate_x/y` but backends treat them as rotation pivot; stale "known TODO" comment `compiler.py:246-253`.
+- `render_ir.py:115-127` names `translate_x/y` but backends treat them as rotation pivot; stale "known TODO" comment `compiler.py:246-253`. **Resolved by #72:** `Transform` now has `pivot_x/y`, `rotate_deg`, `scale_x/y` (> 0) and `offset_x/y` with the formula in its docstring, plus `is_identity()` / `to_matrix()`; the old names are gone (D17) and the stale comment is deleted.
 
 ### §P12 Test gates too weak — TEST F3, F4, F5, F7; REND F5
 - No PDF pixel tests (`grep pdf2image|convert_from_path tests/` → none); PDF gradient tests only assert key presence (`tests/integration/test_gradients_patterns.py:131-158`). `reportlab_backend.py` 66% coverage; pattern fills (`:410-442`, `:456-471`), path/polygon (`:500-522`) never run.
