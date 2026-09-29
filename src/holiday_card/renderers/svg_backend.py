@@ -202,44 +202,30 @@ class SVGRenderer:
         self._stack.append(g)
 
     def _format_transform(self, t: Transform) -> str:
-        """Build the SVG ``transform`` value matching the IR's pivot-rotate
-        semantics.
+        """Build the SVG ``transform`` value for an IR ``Transform``.
 
-        The IR's ``Transform`` represents "rotate ``rotate_deg`` around
-        the pivot ``(translate_x, translate_y)`` in IR coords, with
-        optional uniform scale" — the same idiom the legacy renderer
-        used (``translate; rotate; untranslate``). We emit the SVG
-        equivalent in SVG coordinate space (top-left origin), converting
-        the pivot via ``y_svg = page_height - y_ir`` and negating the
-        rotation to compensate for SVG's y-down direction.
-
-        Returns the empty string for identity transforms so the caller
-        can omit the attribute.
+        Implements the ``Transform`` docstring formula conjugated by the
+        y-flip ``y_svg = page_height - y_ir``: the pivot's y and the offset's
+        y change sign, the rotation is negated (SVG is y-down), and the scale
+        is unchanged. Returns the empty string for identity transforms so
+        the caller can omit the attribute.
         """
-        is_identity = (
-            t.translate_x == 0 and t.translate_y == 0
-            and t.rotate_deg == 0
-            and t.scale_x == 1.0 and t.scale_y == 1.0
-        )
-        if is_identity:
+        if t.is_identity():
             return ""
         parts: list[str] = []
-        pivot_x_svg = t.translate_x
-        pivot_y_svg = self._page_height - t.translate_y
-        if t.translate_x != 0 or t.translate_y != 0:
-            parts.append(
-                f"translate({_fmt(pivot_x_svg)} {_fmt(pivot_y_svg)})"
-            )
+        if t.offset_x != 0 or t.offset_y != 0:
+            parts.append(f"translate({_fmt(t.offset_x)} {_fmt(-t.offset_y)})")
+        pivot_x_svg = t.pivot_x
+        pivot_y_svg = self._page_height - t.pivot_y
+        has_pivot = t.pivot_x != 0 or pivot_y_svg != 0
+        if has_pivot:
+            parts.append(f"translate({_fmt(pivot_x_svg)} {_fmt(pivot_y_svg)})")
         if t.rotate_deg != 0:
-            # SVG positive rotation is CW in screen-space; the IR uses
-            # math convention (CCW positive). Negate.
             parts.append(f"rotate({_fmt(-t.rotate_deg)})")
         if t.scale_x != 1.0 or t.scale_y != 1.0:
             parts.append(f"scale({_fmt(t.scale_x)} {_fmt(t.scale_y)})")
-        if t.translate_x != 0 or t.translate_y != 0:
-            parts.append(
-                f"translate({_fmt(-pivot_x_svg)} {_fmt(-pivot_y_svg)})"
-            )
+        if has_pivot:
+            parts.append(f"translate({_fmt(-pivot_x_svg)} {_fmt(-pivot_y_svg)})")
         return " ".join(parts)
 
     def _end_group(self) -> None:

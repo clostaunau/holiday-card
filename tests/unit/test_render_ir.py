@@ -171,7 +171,7 @@ def _all_command_fixtures() -> list[object]:
                 source="/tmp/x.png", rect=rect, format="png", width_px=10, height_px=5
             )
         ),
-        BeginGroup(transform=Transform(translate_x=5, rotate_deg=15), opacity=0.8),
+        BeginGroup(transform=Transform(pivot_x=5, rotate_deg=15, offset_y=2), opacity=0.8),
         EndGroup(),
         BeginClip(geometry=CircleGeom(center=pt, radius=20)),
         EndClip(),
@@ -283,3 +283,71 @@ class TestAssertBalanced:
 # The "no production callers" guard from Step 1 has been removed: Step 2b
 # (core/compiler.py) is the first production caller of render_ir, which is
 # the moment the guard told future authors to retire it.
+
+
+# ---------------------------------------------------------------------------
+# Transform: explicit affine contract (#72, D14)
+# ---------------------------------------------------------------------------
+
+
+def _apply(m: tuple[float, float, float, float, float, float], x: float, y: float) -> tuple[float, float]:
+    a, b, c, d, e, f = m
+    return (a * x + c * y + e, b * x + d * y + f)
+
+
+def _assert_matrix(
+    actual: tuple[float, ...], expected: tuple[float, ...]
+) -> None:
+    assert len(actual) == 6
+    for got, want in zip(actual, expected, strict=True):
+        assert got == pytest.approx(want, abs=1e-9)
+
+
+class TestTransformMatrix:
+    def test_identity(self) -> None:
+        t = Transform()
+        assert t.is_identity()
+        _assert_matrix(t.to_matrix(), (1, 0, 0, 1, 0, 0))
+
+    def test_pivot_alone_is_identity(self) -> None:
+        # A pivot without rotate/scale moves nothing.
+        assert Transform(pivot_x=100, pivot_y=50).is_identity()
+
+    def test_offset_is_not_identity(self) -> None:
+        assert not Transform(offset_x=1).is_identity()
+
+    def test_rotate_90_about_pivot(self) -> None:
+        t = Transform(pivot_x=100, pivot_y=50, rotate_deg=90)
+        _assert_matrix(t.to_matrix(), (0, 1, -1, 0, 150, -50))
+        x, y = _apply(t.to_matrix(), 100, 60)
+        assert (x, y) == (pytest.approx(90, abs=1e-9), pytest.approx(50, abs=1e-9))
+
+    def test_scale_about_pivot(self) -> None:
+        t = Transform(pivot_x=10, pivot_y=10, scale_x=2, scale_y=2)
+        _assert_matrix(t.to_matrix(), (2, 0, 0, 2, -10, -10))
+        x, y = _apply(t.to_matrix(), 20, 10)
+        assert (x, y) == (pytest.approx(30, abs=1e-9), pytest.approx(10, abs=1e-9))
+
+    def test_rotate_scale_offset_composed(self) -> None:
+        # (11, 21) -T(pivot)-> (1, 1) -S-> (2, 3) -R90-> (-3, 2)
+        # -T(pivot)-> (7, 22) -T(offset)-> (12, 17)
+        t = Transform(
+            pivot_x=10, pivot_y=20, rotate_deg=90,
+            scale_x=2, scale_y=3, offset_x=5, offset_y=-5,
+        )
+        _assert_matrix(t.to_matrix(), (0, 2, -3, 0, 75, -5))
+        x, y = _apply(t.to_matrix(), 11, 21)
+        assert (x, y) == (pytest.approx(12, abs=1e-9), pytest.approx(17, abs=1e-9))
+
+    @pytest.mark.parametrize("axis", ["x", "y"])
+    def test_old_translate_fields_are_rejected(self, axis: str) -> None:
+        # D17: the pre-#72 pivot fields are gone, not aliased.
+        field = f"translate_{axis}"
+        with pytest.raises(ValidationError, match=field):
+            Transform(**{field: 5.0})
+
+    @pytest.mark.parametrize("field", ["scale_x", "scale_y"])
+    @pytest.mark.parametrize("value", [0.0, -1.0])
+    def test_non_positive_scale_is_rejected(self, field: str, value: float) -> None:
+        with pytest.raises(ValidationError):
+            Transform(**{field: value})

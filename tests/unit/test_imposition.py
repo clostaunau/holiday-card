@@ -288,8 +288,8 @@ def test_compile_card_rotates_inside_panels_about_their_slot_centre() -> None:
     left = by_position[PanelPosition.INSIDE_LEFT].transform
     right = by_position[PanelPosition.INSIDE_RIGHT].transform
     # TR centre = (4.25 + 2.125, 5.5 + 2.75) in; TL centre = (2.125, 8.25) in.
-    assert (left.rotate_deg, left.translate_x, left.translate_y) == (180.0, 459.0, 594.0)
-    assert (right.rotate_deg, right.translate_x, right.translate_y) == (180.0, 153.0, 594.0)
+    assert (left.rotate_deg, left.pivot_x, left.pivot_y) == (180.0, 459.0, 594.0)
+    assert (right.rotate_deg, right.pivot_x, right.pivot_y) == (180.0, 153.0, 594.0)
 
 
 def test_compile_card_with_impose_off_keeps_panel_coordinates() -> None:

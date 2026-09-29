@@ -61,7 +61,6 @@ from holiday_card.core.render_ir import (
     RenderCommand,
     SolidPaint,
     Stroke,
-    Transform,
 )
 
 __all__ = ["Flattener", "PAPER", "flatten_transparency"]
@@ -135,7 +134,7 @@ class Flattener:
                     self._next_group += 1
                     cmd = cmd.model_copy(update={"opacity": 1.0})
                 groups.append((token, opacity))
-                matrices.append(_compose(matrices[-1], _transform_matrix(cmd.transform)))
+                matrices.append(_compose(matrices[-1], cmd.transform.to_matrix()))
             elif isinstance(cmd, EndGroup):
                 groups.pop()
                 matrices.pop()
@@ -462,15 +461,6 @@ def _local_box(cmd: DrawShape | DrawText | DrawImage) -> Box:
     left = {"left": 0.0, "center": width / 2, "right": width}[run.align]
     x0 = run.origin.x - left
     return (x0, run.origin.y - _DESCENT * run.size_pt, x0 + width, run.origin.y + run.size_pt)
-
-
-def _transform_matrix(t: Transform) -> Matrix:
-    # Backends apply translate(t); rotate; translate(-t); scale (see render_ir).
-    rad = math.radians(t.rotate_deg)
-    cos, sin = math.cos(rad), math.sin(rad)
-    tx, ty = t.translate_x, t.translate_y
-    rotate = (cos, sin, -sin, cos, tx - cos * tx + sin * ty, ty - sin * tx - cos * ty)
-    return _compose(rotate, (t.scale_x, 0.0, 0.0, t.scale_y, 0.0, 0.0))
 
 
 def _compose(m: Matrix, n: Matrix) -> Matrix:

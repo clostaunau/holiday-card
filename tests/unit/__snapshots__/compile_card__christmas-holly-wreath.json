@@ -25,11 +25,13 @@
     "cmd": "begin_group",
     "opacity": 1.0,
     "transform": {
+      "offset_x": 0.0,
+      "offset_y": 0.0,
+      "pivot_x": 0.0,
+      "pivot_y": 0.0,
       "rotate_deg": 0.0,
       "scale_x": 1.0,
-      "scale_y": 1.0,
-      "translate_x": 0.0,
-      "translate_y": 0.0
+      "scale_y": 1.0
     }
   },
   {
@@ -394,11 +396,13 @@
     "cmd": "begin_group",
     "opacity": 1.0,
     "transform": {
+      "offset_x": 0.0,
+      "offset_y": 0.0,
+      "pivot_x": 547.1999999999999,
+      "pivot_y": 216.0,
       "rotate_deg": 90.0,
       "scale_x": 1.0,
-      "scale_y": 1.0,
-      "translate_x": 547.1999999999999,
-      "translate_y": 216.0
+      "scale_y": 1.0
     }
   },
   {
@@ -722,11 +726,13 @@
     "cmd": "begin_group",
     "opacity": 1.0,
     "transform": {
+      "offset_x": 0.0,
+      "offset_y": 0.0,
+      "pivot_x": 459.0,
+      "pivot_y": 122.39999999999999,
       "rotate_deg": 180.0,
       "scale_x": 1.0,
-      "scale_y": 1.0,
-      "translate_x": 459.0,
-      "translate_y": 122.39999999999999
+      "scale_y": 1.0
     }
   },
   {
@@ -1050,11 +1056,13 @@
     "cmd": "begin_group",
     "opacity": 1.0,
     "transform": {
+      "offset_x": 0.0,
+      "offset_y": 0.0,
+      "pivot_x": 370.8,
+      "pivot_y": 216.0,
       "rotate_deg": 270.0,
       "scale_x": 1.0,
-      "scale_y": 1.0,
-      "translate_x": 370.8,
-      "translate_y": 216.0
+      "scale_y": 1.0
     }
   },
   {
@@ -1497,11 +1505,13 @@
     "cmd": "begin_group",
     "opacity": 1.0,
     "transform": {
+      "offset_x": 0.0,
+      "offset_y": 0.0,
+      "pivot_x": 459.0,
+      "pivot_y": 594.0,
       "rotate_deg": 180.0,
       "scale_x": 1.0,
-      "scale_y": 1.0,
-      "translate_x": 459.0,
-      "translate_y": 594.0
+      "scale_y": 1.0
     }
   },
   {
@@ -1573,11 +1583,13 @@
     "cmd": "begin_group",
     "opacity": 1.0,
     "transform": {
+      "offset_x": 0.0,
+      "offset_y": 0.0,
+      "pivot_x": 153.0,
+      "pivot_y": 594.0,
       "rotate_deg": 180.0,
       "scale_x": 1.0,
-      "scale_y": 1.0,
-      "translate_x": 153.0,
-      "translate_y": 594.0
+      "scale_y": 1.0
     }
   },
   {
@@ -1609,11 +1621,13 @@
     "cmd": "begin_group",
     "opacity": 1.0,
     "transform": {
+      "offset_x": 0.0,
+      "offset_y": 0.0,
+      "pivot_x": 0.0,
+      "pivot_y": 0.0,
       "rotate_deg": 0.0,
       "scale_x": 1.0,
-      "scale_y": 1.0,
-      "translate_x": 0.0,
-      "translate_y": 0.0
+      "scale_y": 1.0
     }
   },
   {

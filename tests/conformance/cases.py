@@ -105,6 +105,32 @@ def _pattern(kind: str) -> DrawShape:
     )
 
 
+# #72 / D14: a 20×20 pt red square at (40, 40)-(60, 60) inside one or more
+# nested groups. Outermost transform first.
+GROUP_SQUARE = RectGeom(x=40, y=40, width=20, height=20)
+GROUP_TRANSFORM_FIXTURES: dict[str, tuple[Transform, ...]] = {
+    "group_square_scale2_pivot": (
+        Transform(pivot_x=50, pivot_y=50, scale_x=2, scale_y=2),
+    ),
+    "group_square_scale2_rotate30": (
+        Transform(pivot_x=50, pivot_y=50, rotate_deg=30, scale_x=2, scale_y=2),
+    ),
+    "group_square_scale2_offset": (
+        Transform(pivot_x=50, pivot_y=50, scale_x=2, scale_y=2, offset_x=15, offset_y=-5),
+    ),
+    "group_square_nested_scale_in_rotate": (
+        Transform(pivot_x=72, pivot_y=72, rotate_deg=30),
+        Transform(pivot_x=50, pivot_y=50, scale_x=2, scale_y=1.5),
+    ),
+}
+
+
+def _group_square(*transforms: Transform) -> tuple[RenderCommand, ...]:
+    opens = tuple(BeginGroup(transform=t) for t in transforms)
+    closes = tuple(EndGroup() for _ in transforms)
+    return (*opens, _fill(GROUP_SQUARE), *closes)
+
+
 def _text(case_id: str, align: str, font_id: str = "Lato", *,
           color: RGBA = BLACK, opacity: float = 1.0) -> Case:
     x = {"left": 12.0, "center": 72.0, "right": 132.0}[align]
@@ -219,15 +245,19 @@ CASES: tuple[Case, ...] = (
     ),
     _case(
         "group_rotate_pivot",
-        BeginGroup(transform=Transform(translate_x=72, translate_y=72, rotate_deg=30)),
+        BeginGroup(transform=Transform(pivot_x=72, pivot_y=72, rotate_deg=30)),
         _fill(RectGeom(x=24, y=48, width=96, height=48)),
         EndGroup(),
     ),
     _case(
         "group_scale_pivot",
-        BeginGroup(transform=Transform(translate_x=72, translate_y=72, scale_x=0.5, scale_y=0.5)),
+        BeginGroup(transform=Transform(pivot_x=72, pivot_y=72, scale_x=0.5, scale_y=0.5)),
         _fill(_FULL_PAGE),
         EndGroup(),
+    ),
+    *(
+        _case(case_id, *_group_square(*transforms))
+        for case_id, transforms in GROUP_TRANSFORM_FIXTURES.items()
     ),
     _case(
         "group_opacity",

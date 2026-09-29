@@ -119,7 +119,7 @@ CLIP_IMAGE_NESTED: list[RenderCommand] = _page(
 
 CLIP_UNDER_ROTATED_GROUP: list[RenderCommand] = _page(
     _LEFT_HALF_CLIP,
-    BeginGroup(transform=Transform(translate_x=100, translate_y=100, rotate_deg=180)),
+    BeginGroup(transform=Transform(pivot_x=100, pivot_y=100, rotate_deg=180)),
     _full_page(_RED),
     EndGroup(),
     EndClip(),

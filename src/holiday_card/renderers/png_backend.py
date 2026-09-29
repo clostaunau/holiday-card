@@ -329,33 +329,18 @@ class PNGRenderer:
 
     def _begin_group(self, cmd: BeginGroup) -> None:
         t = cmd.transform
-        is_identity = (
-            t.translate_x == 0 and t.translate_y == 0
-            and t.rotate_deg == 0
-            and t.scale_x == 1.0 and t.scale_y == 1.0
-        )
         if cmd.opacity != 1.0:
             # Group opacity would need a separate compositing layer with
             # alpha-multiply. Not exercised by the compiler today.
             raise NotImplementedError(
                 "PNGRenderer does not yet handle BeginGroup with non-1.0 opacity"
             )
-        if is_identity:
+        if t.is_identity():
             # No isolation needed; draw context unchanged.
             self._group_stack.append(None)
             return
-        # The transform represents "rotate `rotate_deg` around the pivot
-        # (translate_x, translate_y) in IR coords, with optional scale"
-        # — the pivot-rotate-untranslate idiom from the legacy renderer
-        # (reportlab_renderer.py:96-102) and matches the IR ReportLab
-        # backend's _apply_transform. We render the group's content to a
-        # transparent overlay at the same dimensions, then rotate the
-        # whole overlay around the pivot when EndGroup arrives.
-        if t.scale_x != 1.0 or t.scale_y != 1.0:
-            raise NotImplementedError(
-                "PNGRenderer does not yet handle BeginGroup with non-unit scale "
-                "(compiler does not emit it)"
-            )
+        # Draw the group's content to a transparent overlay at canvas size,
+        # then map the whole overlay through the transform on EndGroup.
         assert self._image is not None and self._draw is not None
         saved_image = self._image
         saved_draw = self._draw
@@ -373,22 +358,33 @@ class PNGRenderer:
         saved_image, saved_draw, transform = state
         overlay = self._image
         assert overlay is not None
-        # Pivot in pixel space (IR is bottom-left, Pillow is top-left)
-        pivot_px = (self._x(transform.translate_x), self._y(transform.translate_y))
-        # Pillow's rotate angle is counter-clockwise in the y-down pixel
-        # system, which matches the IR's CCW convention once we account
-        # for the y-flip: the effective screen rotation direction is the
-        # same.
-        rotated = overlay.rotate(
-            transform.rotate_deg,
-            center=pivot_px,
+        transformed = overlay.transform(
+            overlay.size,
+            Image.Transform.AFFINE,
+            self._inverse_pixel_affine(transform),
             resample=Image.Resampling.BICUBIC,
         )
         # Composite back onto the parent through the parent level's
         # clip, so a clip opened outside the group still applies.
         self._image = saved_image
         self._draw = saved_draw
-        self._composite(rotated)
+        self._composite(transformed)
+
+    def _inverse_pixel_affine(
+        self, t: Transform
+    ) -> tuple[float, float, float, float, float, float]:
+        """Pillow AFFINE coefficients (output pixel → source pixel) for ``t``.
+
+        The forward map in pixel space is ``P · M · P⁻¹``, where ``M`` is
+        ``t.to_matrix()`` and ``P`` is the IR → pixel map (bleed offset,
+        DPI scale, y-flip) that ``_x`` / ``_y`` apply.
+        """
+        s, b, h = self._scale, self._bleed_pts, self._page_height_pts
+        to_px = (s, 0.0, 0.0, -s, s * b, s * (h + b))
+        from_px = (1 / s, 0.0, 0.0, -1 / s, -b, h + b)
+        a, bb, c, d, e, f = _invert(_compose(to_px, _compose(t.to_matrix(), from_px)))
+        # Pillow wants x_in = a·x + c·y + e, y_in = b·x + d·y + f as (a, c, e, b, d, f).
+        return (a, c, e, bb, d, f)
 
     # ------------------------------------------------------------------
     # Clips and compositing layers
@@ -1251,3 +1247,26 @@ class PNGRenderer:
             int(round(c.b * 255)),
             int(round(c.a * opacity * 255)),
         )
+
+
+_Matrix = tuple[float, float, float, float, float, float]
+
+
+def _compose(m: _Matrix, n: _Matrix) -> _Matrix:
+    """``m ∘ n`` in PDF ``cm`` order: apply ``n`` first."""
+    a, b, c, d, e, f = m
+    a2, b2, c2, d2, e2, f2 = n
+    return (
+        a * a2 + c * b2, b * a2 + d * b2,
+        a * c2 + c * d2, b * c2 + d * d2,
+        a * e2 + c * f2 + e, b * e2 + d * f2 + f,
+    )
+
+
+def _invert(m: _Matrix) -> _Matrix:
+    a, b, c, d, e, f = m
+    det = a * d - b * c
+    return (
+        d / det, -b / det, -c / det, a / det,
+        (c * f - d * e) / det, (b * e - a * f) / det,
+    )

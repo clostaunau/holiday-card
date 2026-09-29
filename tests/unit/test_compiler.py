@@ -666,8 +666,8 @@ class TestTextRotation:
         group = commands[start]
         assert isinstance(group, BeginGroup) and group.transform is not None
         # Panel at x=4.25", y=0; text anchor at (0.5", 2.0") within it.
-        assert group.transform.translate_x == pytest.approx((4.25 + 0.5) * 72)
-        assert group.transform.translate_y == pytest.approx(2.0 * 72)
+        assert group.transform.pivot_x == pytest.approx((4.25 + 0.5) * 72)
+        assert group.transform.pivot_y == pytest.approx(2.0 * 72)
         assert [type(c) for c in commands[start + 1:start + 4]] == [DrawText, DrawText, EndGroup]
 
     def test_zero_rotation_emits_no_text_group(self) -> None:

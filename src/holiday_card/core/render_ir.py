@@ -29,6 +29,7 @@ first step (Wave 2 Step 1) of the migration plan in
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from typing import Annotated, Literal
 
@@ -113,18 +114,44 @@ class Stroke(_IRBase):
 
 
 class Transform(_IRBase):
-    """Affine transform for ``BeginGroup``.
+    """Affine transform for ``BeginGroup``, in IR points (bottom-left origin).
 
-    The compiler is expected to resolve any "rotate around shape center"
-    semantics into the explicit translate/rotate values stored here, so the
-    backend never has to compute pivots.
+    ``p' = T(offset) · T(pivot) · R(rotate_deg, CCW) · S(scale_x, scale_y) · T(-pivot) · p``
+
+    Scale and rotation both happen about the pivot; the offset is a true
+    translation applied last. Every backend derives its transform from
+    :meth:`to_matrix` (or the same formula), so they agree by construction.
     """
 
-    translate_x: float = 0.0
-    translate_y: float = 0.0
+    pivot_x: float = 0.0
+    pivot_y: float = 0.0
     rotate_deg: float = 0.0
-    scale_x: float = 1.0
-    scale_y: float = 1.0
+    scale_x: float = Field(default=1.0, gt=0.0)
+    scale_y: float = Field(default=1.0, gt=0.0)
+    offset_x: float = 0.0
+    offset_y: float = 0.0
+
+    def is_identity(self) -> bool:
+        """True when the transform moves no point (the pivot alone moves nothing)."""
+        return (
+            self.rotate_deg == 0
+            and self.scale_x == 1.0 and self.scale_y == 1.0
+            and self.offset_x == 0 and self.offset_y == 0
+        )
+
+    def to_matrix(self) -> tuple[float, float, float, float, float, float]:
+        """``(a, b, c, d, e, f)`` in PDF ``cm`` order.
+
+        ``x' = a·x + c·y + e`` and ``y' = b·x + d·y + f``.
+        """
+        rad = math.radians(self.rotate_deg)
+        cos, sin = math.cos(rad), math.sin(rad)
+        a, b = cos * self.scale_x, sin * self.scale_x
+        c, d = -sin * self.scale_y, cos * self.scale_y
+        px, py = self.pivot_x, self.pivot_y
+        e = px - (a * px + c * py) + self.offset_x
+        f = py - (b * px + d * py) + self.offset_y
+        return (a, b, c, d, e, f)
 
 
 # ---------------------------------------------------------------------------

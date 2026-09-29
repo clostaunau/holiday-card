@@ -257,7 +257,7 @@ def test_shipped_svg_path_bbox_inside_panel(
         bbox = _rotated_bbox(points, (0.0, 0.0), 0.0)
     else:
         t = group.transform
-        bbox = _rotated_bbox(points, (t.translate_x, t.translate_y), t.rotate_deg)
+        bbox = _rotated_bbox(points, (t.pivot_x, t.pivot_y), t.rotate_deg)
 
     left, bottom = inches_to_points(panel.x), inches_to_points(panel.y)
     right = inches_to_points(panel.x + panel.width)
