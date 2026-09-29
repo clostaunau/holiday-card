@@ -55,12 +55,24 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
       - run: uv sync --locked --extra dev
+      - name: fribidi for Pillow's raqm text layout (macOS)
+        # The PNG visual baselines are raqm renders; Pillow only uses raqm when
+        # it can load libfribidi (ubuntu-latest ships it). See #68.
+        if: runner.os == 'macOS'
+        run: brew list fribidi >/dev/null 2>&1 || brew install fribidi
       - name: pytest
         env:
           # The visual gate (#68) writes fresh sheets, crops and diff heatmaps
           # here when a panel fails or a baseline is missing.
           HOLIDAY_CARD_VISUAL_OUT: ${{ runner.temp }}/visual-out
-        run: uv run pytest -v --cov=holiday_card --cov-report=xml --cov-report=term-missing
+          # Fail, rather than skip, the PNG visual gate if raqm is unavailable.
+          HOLIDAY_CARD_REQUIRE_PNG_VISUAL: "1"
+        run: |
+          # Exported here, not via GITHUB_ENV: SIP strips DYLD_* from /bin/bash.
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            export DYLD_FALLBACK_LIBRARY_PATH="$(brew --prefix fribidi)/lib"
+          fi
+          uv run pytest -v --cov=holiday_card --cov-report=xml --cov-report=term-missing
       - name: Upload visual-gate failures
         if: failure()
         uses: actions/upload-artifact@v4

@@ -25,7 +25,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal, get_args
 
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, features
 
 from holiday_card.core.compiler import CompileContext, compile_card
 from holiday_card.core.generators import CardGenerator
@@ -59,6 +59,16 @@ _GEOMETRY = PageGeometry.us_letter()
 
 def shipped_template_ids() -> list[str]:
     return sorted(t["id"] for t in discover_templates())
+
+
+def png_layout_matches_baselines() -> bool:
+    """Whether this host lays PNG text out like the committed baselines.
+
+    Pillow uses libraqm (kerning) only when the system has libfribidi, else
+    its basic layout; the two differ by up to 1.64% per text panel. The PNG
+    baselines are raqm renders from ubuntu-latest.
+    """
+    return bool(features.check("raqm"))
 
 
 def baseline_path(backend: Backend, template_id: str) -> Path:

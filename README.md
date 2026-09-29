@@ -90,7 +90,7 @@ holiday-card create birthday-balloons --inside-message-md letter.md
 | **Photo cards** | `ImageElement` + circle / rectangle / ellipse / star clip masks; render a portrait into a styled frame |
 | **POD targets** | `letter` (single imposed 8.5×11 sheet for home printing, no bleed), `per-panel-pdf` (native trim per panel + 0.125" bleed), `moo-a6` (A6 + 0.125" bleed with content scaled to fit + DeviceCMYK PDF/X-1a:2003 + GRACoL2013 ICC) |
 | **Output formats** | PDF (default), SVG, PNG |
-| **Quality gates** | ruff + mypy strict + 882 tests + visual-regression perceptual-hash gate across all 21 templates + a smoke job that installs the built wheel and runs it outside any checkout, covering each voice and the CMYK export |
+| **Quality gates** | ruff + mypy strict + 882 tests + per-panel 144 DPI visual-regression gate (PNG and PDF rasters) across all 21 templates + a smoke job that installs the built wheel and runs it outside any checkout, covering each voice and the CMYK export |
 
 ### Where data lives / env overrides
 

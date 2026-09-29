@@ -8,7 +8,8 @@ For every file it prints each panel's mismatched-pixel ratio against the
 old baseline, marking panels over the gate's limit with ``*``, so the
 reviewer knows which PNGs to eyeball.
 
-Committed baselines are generated on **Ubuntu CI** by the
+PNG baselines need Pillow's raqm text layout (libfribidi on the host); the
+script refuses PNG without it. Committed baselines are generated on **Ubuntu CI** by the
 ``visual-baselines`` workflow, not on a laptop. Run locally only to see
 what changed:
 
@@ -40,6 +41,7 @@ from visual_gate import (  # noqa: E402
     load_sheet,
     panel_crop_boxes,
     panel_ratios,
+    png_layout_matches_baselines,
     render_sheet,
     shipped_template_ids,
 )
@@ -78,6 +80,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Unknown template id(s): {unknown}", file=sys.stderr)
         return 2
     backends: tuple[Backend, ...] = BACKENDS if args.backend == "all" else (args.backend,)
+    if "png" in backends and not png_layout_matches_baselines():
+        print(
+            "Refusing to write PNG baselines: Pillow has no raqm text layout on this host "
+            "(install libfribidi). The committed PNG baselines are raqm renders from "
+            "ubuntu-latest; use the visual-baselines workflow.",
+            file=sys.stderr,
+        )
+        return 2
 
     with tempfile.TemporaryDirectory() as tmp:
         for backend in backends:

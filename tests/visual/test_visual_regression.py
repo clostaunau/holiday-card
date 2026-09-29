@@ -20,7 +20,9 @@ Baselines are ``fixtures/reference_cards/{png,pdf}/{template_id}.png`` and are
 
 Locally, ``python scripts/regenerate_visual_baselines.py [--backend
 {png,pdf,all}] [--template ID]`` prints each panel's ratio against the old
-baseline, so you know which files changed. On a failure, the fresh sheet,
+baseline, so you know which files changed. PNG needs Pillow's raqm text
+layout (libfribidi on the host; see the cross-host policy below): without it
+the PNG cases skip and the script refuses to write PNG baselines. On a failure, the fresh sheet,
 the baseline and fresh crops and a diff heatmap are written to
 ``$HOLIDAY_CARD_VISUAL_OUT`` (CI uploads it) or the test's ``tmp_path``.
 """
@@ -46,6 +48,7 @@ from visual_gate import (
     load_sheet,
     mismatch_ratio,
     panel_crop_boxes,
+    png_layout_matches_baselines,
     render_sheet,
     shipped_template_ids,
 )
@@ -54,6 +57,31 @@ pytestmark = pytest.mark.visual
 
 Box = tuple[int, int, int, int]
 Sheets = Callable[[str, Backend], tuple[Image.Image, dict[str, Box]]]
+
+# Cross-host policy (#68), measured against the ubuntu-latest baselines for all
+# 21 x 2 x 4 crops. PDF: pdfium rasterizes identically on macOS (max 0.0000%).
+# PNG: Pillow lays text out with libraqm (kerning) only when the host has
+# libfribidi, else with its basic layout, and the two differ by up to 1.636%
+# per panel (christmas-family-photo inside_right). ubuntu-latest has fribidi;
+# macOS and python:3.12-slim do not. With fribidi loaded, macOS is within
+# 0.1019% (christmas-artist front), under half the 0.25% limit, so both OSes
+# are gated: CI installs fribidi on macOS and sets HOLIDAY_CARD_REQUIRE_PNG_VISUAL
+# so a runner without raqm fails instead of silently skipping. Locally without
+# raqm the PNG cases skip (macOS: `brew install fribidi` and run with
+# DYLD_FALLBACK_LIBRARY_PATH="$(brew --prefix fribidi)/lib").
+_PNG_SKIP_REASON = (
+    "Pillow has no raqm layout here (no libfribidi); PNG text would differ from the "
+    "raqm-rendered baselines by up to 1.64% per panel (measured in #68)"
+)
+
+
+def _require_png_layout(backend: Backend) -> None:
+    if backend != "png" or png_layout_matches_baselines():
+        return
+    if os.environ.get("HOLIDAY_CARD_REQUIRE_PNG_VISUAL"):
+        pytest.fail(f"HOLIDAY_CARD_REQUIRE_PNG_VISUAL is set but {_PNG_SKIP_REASON}")
+    pytest.skip(_PNG_SKIP_REASON)
+
 
 _REGEN_HINT = (
     "Regenerate on Ubuntu CI with the visual-baselines workflow "
@@ -85,6 +113,7 @@ def fresh_sheets(tmp_path_factory: pytest.TempPathFactory) -> Sheets:
 def test_panel_matches_baseline(
     template_id: str, backend: Backend, panel: str, fresh_sheets: Sheets, tmp_path: Path
 ) -> None:
+    _require_png_layout(backend)
     fresh, boxes = fresh_sheets(template_id, backend)
     out = _artifact_dir(tmp_path)
     path = baseline_path(backend, template_id)
