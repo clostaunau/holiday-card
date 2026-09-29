@@ -88,14 +88,15 @@ Section IDs (§P1 …) are what issues cite.
 - **[closed by #60]** `--export-for moo-a6 -o single.pdf` creates a *directory* `single.pdf`; `-o x.docx` writes `x.docx.pdf`; `-o x.svg --format pdf` writes `x.svg.pdf`.
 - **[closed by #60]** Unknown font → raw `KeyError` (`'PlayfairDisplay'`, `'NotAFont'`).
 - `templates`/`themes` exit 0 when nothing found.
-- PNG font chain silently falls back to Pillow bitmap font (`renderers/png_backend.py:674-681`).
+- **[closed by #61]** PNG font chain silently falls back to Pillow bitmap font (`renderers/png_backend.py:674-681`).
 - **[closed by #60]** Catch-all `except Exception` → exit 1 (`cli/commands.py:625`) hides tracebacks; no `--debug`.
 - Good existing behavior to preserve: flag-conflict messages (e.g. `--inside-message-md` + letter parts), unknown `--export-for`/`--voice` list valid values; no traceback in ~40 bad-input runs.
 
 ### §P6 PNG backend silently drops features [verified] — REND F1, F2, F8, F10
-- `BeginClip` only pushes `_clip_stack` (`png_backend.py:259`); only `_draw_image` reads it (`:747-756`). A rect clipped to a circle renders square in PNG.
-- `Stroke.dash` never read → dashed border solid.
-- `_draw_text` passes `fill=rgb` (`:636`), ignoring `cmd.opacity` and `run.color.a`.
+- **Status (2026-09-29): clip, dash, text-alpha and font bullets closed by #61.** Clips are canvas masks intersected per group level and applied to shapes, text, images and fold lines (and to a rotated group's overlay when the clip is opened outside it); `PolylineGeom` clips raise at `BeginClip`. `Stroke.dash` is walked along the flattened outline (PDF/SVG semantics). Text alpha = `opacity × color.a`. Fonts resolve only via `ttf_path_for`, else `NotImplementedError`. Translucent gradients/patterns no longer wash toward white. Fixtures in `tests/integration/test_png_ir_fixtures.py`. AA / stroke centring / perf stay with #77.
+- **[closed by #61]** `BeginClip` only pushes `_clip_stack` (`png_backend.py:259`); only `_draw_image` reads it (`:747-756`). A rect clipped to a circle renders square in PNG.
+- **[closed by #61]** `Stroke.dash` never read → dashed border solid.
+- **[closed by #61]** `_draw_text` passes `fill=rgb` (`:636`), ignoring `cmd.opacity` and `run.color.a`.
 - `src.thumbnail(...)` (`:726`) never upscales → photo at 300 DPI is ~42% of intended size; 144 DPI ~87%. Baselines at 72 DPI can't catch it.
 - No anti-aliasing; Pillow strokes sit inside the edge (PDF/SVG center them); stroke widths rounded to int, min 1 (`:399`).
 - Per-pixel pure-Python gradients (`:972`, `:991`): winter-sky 0.75 s @144 DPI, 2.54 s @300 DPI. Full-canvas RGBA layer per translucent shape (~35 MB @300 DPI).
@@ -217,7 +218,7 @@ version; this section records the corrections so the spec stays the source of tr
 - **§P5 [closed by #60]:** additional silent ignores — `--signature-font` without `--signature`;
   `--blank-inside --inside-message-md`; `TextElement.font_file` never read;
   `Panel.background_image` parsed but never drawn.
-- **§P6:** nested PNG clips combine by union, not intersection
+- **§P6 [closed by #61]:** nested PNG clips combine by union, not intersection
   (`png_backend.py:753-756`).
 - **§P7 [closed by #62]:** `reportlab_backend.py:551` `setDash(*stroke.dash)` misuses ReportLab's
   signature (1-element dash draws solid; 3–4 elements raise `TypeError`). Stroke

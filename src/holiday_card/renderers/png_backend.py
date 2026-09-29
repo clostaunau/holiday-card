@@ -21,23 +21,37 @@ where ``scale = dpi / 72``.
 
 Scope
 -----
-Mirrors the Wave 2 compiler's supported feature subset (PR #6) — the
-same set the SVG backend covers. Backgrounds, borders, basic shapes
-with solid fills, text with three alignments, fold lines (dashing
-emulated by short segments since Pillow doesn't natively dash),
-``BeginGroup`` honored when transform is identity (the only case the
-compiler emits today). Gradients, patterns, images, ``BeginClip``, and
-non-identity group transforms raise ``NotImplementedError`` — fail
-loud, not silent.
+Every IR command is honoured or raises ``NotImplementedError`` (fail
+loud, D4):
+
+* Shapes (rect / rounded rect / circle / ellipse / polygon / polyline /
+  path) with solid fills, linear + radial gradients and patterns;
+  strokes with ``Stroke.dash`` (PDF/SVG semantics: odd-length arrays
+  repeat, phase 0, restart per subpath).
+* Text with three alignments; effective alpha is
+  ``DrawText.opacity × run.color.a``. Fonts resolve **only** through
+  ``font_registry.ttf_path_for``; an id with no bundled TTF raises.
+* Images (PNG/JPEG), with ``opacity``.
+* ``BeginClip`` / ``EndClip`` for rect / circle / ellipse / polygon /
+  path geometry. Nested clips intersect and apply to shapes, text,
+  images and fold lines. A clip opened outside a rotated group applies
+  to the group's composited result. ``PolylineGeom`` clips raise at
+  ``BeginClip``.
+* ``BeginGroup`` with identity or pivot-rotation transforms.
+
+Not supported (raise): group ``opacity != 1``, group scale. Known
+fidelity gaps (tracked elsewhere, not silent drops): no anti-aliasing
+on shapes, strokes drawn inset rather than centred, ``line_cap``
+ignored (#77).
 """
 
 from __future__ import annotations
 
-import logging
-from collections.abc import Iterable
+import math
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 from holiday_card.core.render_ir import (
     BeginClip,
@@ -67,8 +81,6 @@ from holiday_card.core.render_ir import (
 )
 
 __all__ = ["PNGRenderer"]
-
-logger = logging.getLogger(__name__)
 
 
 def _interp_stops(
@@ -122,22 +134,41 @@ def _interp_stops(
         int(round(c.a * 255)),
     )
 
-# Cross-platform font fallback chain. Tried in order; Pillow's
-# truetype() does some name-based fuzzy matching on macOS, so the
-# bare names ("Helvetica") often work directly.
-_FONT_FALLBACKS: dict[str, tuple[str, ...]] = {
-    "Helvetica": ("Helvetica", "Arial.ttf", "DejaVuSans.ttf", "LiberationSans-Regular.ttf"),
-    "Helvetica-Bold": ("Helvetica-Bold", "Arial Bold.ttf", "DejaVuSans-Bold.ttf"),
-    "Times-Roman": ("Times-Roman", "Times.ttf", "DejaVuSerif.ttf", "LiberationSerif-Regular.ttf"),
-    "Courier": ("Courier", "Courier.ttf", "DejaVuSansMono.ttf", "LiberationMono-Regular.ttf"),
-}
-# Generic last-resort fallback chain when font_id is unrecognized.
-_GENERIC_FALLBACKS: tuple[str, ...] = (
-    "Helvetica",
-    "Arial.ttf",
-    "DejaVuSans.ttf",
-    "LiberationSans-Regular.ttf",
-)
+
+def _dash_runs(
+    polyline: list[tuple[float, float]], pattern: list[float]
+) -> list[list[tuple[float, float]]]:
+    """Split ``polyline`` into its "on" runs under a dash ``pattern``.
+
+    PDF/SVG semantics: an odd-length pattern repeats to even length,
+    phase 0, the first entry is "on". An all-zero pattern means solid.
+    """
+    if len(polyline) < 2 or sum(pattern) <= 0:
+        return [polyline]
+    if len(pattern) % 2:
+        pattern = pattern * 2
+    runs: list[list[tuple[float, float]]] = []
+    index, remaining, on = 0, pattern[0], True
+    current = [polyline[0]]
+    for (ax, ay), (bx, by) in zip(polyline, polyline[1:], strict=False):
+        seg = math.hypot(bx - ax, by - ay)
+        pos = 0.0
+        while seg - pos > remaining:
+            pos += remaining
+            pt = (ax + (bx - ax) * pos / seg, ay + (by - ay) * pos / seg)
+            if on:
+                current.append(pt)
+                runs.append(current)
+            current = [pt]
+            on = not on
+            index = (index + 1) % len(pattern)
+            remaining = pattern[index]
+        remaining -= seg - pos
+        if on:
+            current.append((bx, by))
+    if on and len(current) >= 2:
+        runs.append(current)
+    return runs
 
 
 class PNGRenderer:
@@ -162,10 +193,7 @@ class PNGRenderer:
             raise ValueError(f"dpi must be >= 32, got {dpi}")
         self.dpi = dpi
         self._scale = dpi / 72.0
-        # The cache holds whatever Pillow returns from truetype()
-        # (FreeTypeFont) or load_default() (ImageFont). Both expose the
-        # subset of the API that ImageDraw.text() uses.
-        self._font_cache: dict[tuple[str, int], ImageFont.FreeTypeFont | ImageFont.ImageFont] = {}
+        self._font_cache: dict[tuple[str, int], ImageFont.FreeTypeFont] = {}
 
     def render(self, commands: Iterable[RenderCommand], output: Path) -> None:
         """Consume ``commands`` and write a PNG at ``output``."""
@@ -184,18 +212,15 @@ class PNGRenderer:
         self._group_stack: list[
             tuple[Image.Image, ImageDraw.ImageDraw, Transform] | None
         ] = []
-        # Active clip stack — geometries (in IR coords) for any open
-        # BeginClip / EndClip pairs. Today only ``_draw_image`` reads
-        # this; shapes and text inside a clip are not exercised by the
-        # compiler. Push on BeginClip, pop on EndClip.
-        self._clip_stack: list[object] = []
-        # Recursion guard: when ``_draw_shape_with_alpha_compositing``
-        # redirects drawing to a temp RGBA layer, it re-enters
-        # ``_draw_shape`` with the canvas swapped. The fast path needs
-        # to run on that re-entry without bouncing back into
-        # alpha-compositing. Set True for the duration of the temp-layer
-        # draw, then cleared in the ``finally``.
-        self._in_alpha_composite: bool = False
+        # Open clips as (group level, mask). Each "L" canvas-sized mask
+        # is already intersected with the enclosing clip at the same
+        # level; clips from outer levels apply when the rotated group
+        # overlay is composited back in ``_end_group``.
+        self._clip_stack: list[tuple[int, Image.Image]] = []
+        # Recursion guard: ``_draw_in_layer`` redirects drawing to a temp
+        # RGBA layer and re-enters the draw method, which must then take
+        # the direct path instead of bouncing back into a layer.
+        self._in_layer: bool = False
 
         for cmd in commands:
             self._dispatch(cmd)
@@ -256,7 +281,7 @@ class PNGRenderer:
         elif isinstance(cmd, EndGroup):
             self._end_group()
         elif isinstance(cmd, BeginClip):
-            self._clip_stack.append(cmd.geometry)
+            self._begin_clip(cmd)
         elif isinstance(cmd, EndClip):
             if not self._clip_stack:
                 raise RuntimeError("PNGRenderer: EndClip without matching BeginClip")
@@ -359,14 +384,97 @@ class PNGRenderer:
             center=pivot_px,
             resample=Image.Resampling.BICUBIC,
         )
-        # Composite back onto the parent using the rotated overlay's
-        # alpha as a mask so the parent's content shows through gaps.
-        if saved_image.mode == "RGB":
-            saved_image.paste(rotated, (0, 0), rotated)
-        else:
-            saved_image.alpha_composite(rotated)
+        # Composite back onto the parent through the parent level's
+        # clip, so a clip opened outside the group still applies.
         self._image = saved_image
         self._draw = saved_draw
+        self._composite(rotated)
+
+    # ------------------------------------------------------------------
+    # Clips and compositing layers
+    # ------------------------------------------------------------------
+
+    def _group_level(self) -> int:
+        """Number of open non-identity groups (each has its own overlay)."""
+        return sum(1 for state in self._group_stack if state is not None)
+
+    def _active_mask(self) -> Image.Image | None:
+        """The clip mask for draws at the current group level, if any."""
+        if self._clip_stack and self._clip_stack[-1][0] == self._group_level():
+            return self._clip_stack[-1][1]
+        return None
+
+    def _begin_clip(self, cmd: BeginClip) -> None:
+        mask = self._geom_mask(cmd.geometry)
+        enclosing = self._active_mask()
+        if enclosing is not None:
+            mask = ImageChops.multiply(mask, enclosing)
+        self._clip_stack.append((self._group_level(), mask))
+
+    def _geom_mask(self, geom: object) -> Image.Image:
+        """Canvas-sized "L" mask: 255 inside ``geom`` (IR coords), 0 outside."""
+        assert self._image is not None
+        mask = Image.new("L", self._image.size, 0)
+        draw = ImageDraw.Draw(mask)
+        if isinstance(geom, RectGeom):
+            box = (
+                self._x(geom.x), self._y(geom.y + geom.height),
+                self._x(geom.x + geom.width), self._y(geom.y),
+            )
+            if geom.corner_radius > 0:
+                draw.rounded_rectangle(box, radius=self._len(geom.corner_radius), fill=255)
+            else:
+                draw.rectangle(box, fill=255)
+        elif isinstance(geom, (CircleGeom, EllipseGeom)):
+            cx, cy = self._x(geom.center.x), self._y(geom.center.y)
+            if isinstance(geom, CircleGeom):
+                rx = ry = self._len(geom.radius)
+            else:
+                rx, ry = self._len(geom.rx), self._len(geom.ry)
+            draw.ellipse((cx - rx, cy - ry, cx + rx, cy + ry), fill=255)
+        elif isinstance(geom, PolygonGeom):
+            draw.polygon([(self._x(p.x), self._y(p.y)) for p in geom.points], fill=255)
+        elif isinstance(geom, PathGeom):
+            for sp in self._flatten_path(geom):
+                if len(sp) >= 3:
+                    draw.polygon(sp, fill=255)
+        else:
+            raise NotImplementedError(
+                f"PNGRenderer: clip geometry {type(geom).__name__} is not supported "
+                "(an open polyline has no interior)"
+            )
+        return mask
+
+    def _draw_in_layer(self, draw: Callable[[], None], alpha: float = 1.0) -> None:
+        """Run ``draw`` against a transparent layer, then ``_composite`` it.
+
+        Pillow's ``ImageDraw`` replaces pixels instead of blending, so
+        anything translucent or clipped is drawn in isolation first.
+        """
+        assert self._image is not None
+        saved_image, saved_draw = self._image, self._draw
+        layer = Image.new("RGBA", saved_image.size, (0, 0, 0, 0))
+        self._image, self._draw = layer, ImageDraw.Draw(layer)
+        self._in_layer = True
+        try:
+            draw()
+        finally:
+            self._in_layer = False
+            self._image, self._draw = saved_image, saved_draw
+        self._composite(layer, alpha)
+
+    def _composite(self, layer: Image.Image, alpha: float = 1.0) -> None:
+        """Source-over ``layer`` onto the target, scaled by ``alpha`` and clipped."""
+        assert self._image is not None
+        mask = self._active_mask()
+        if mask is not None or alpha < 1.0:
+            layer_alpha = layer.getchannel("A")
+            if alpha < 1.0:
+                layer_alpha = layer_alpha.point(lambda a: round(a * alpha))
+            if mask is not None:
+                layer_alpha = ImageChops.multiply(layer_alpha, mask)
+            layer.putalpha(layer_alpha)
+        self._image.alpha_composite(layer)
 
     # ------------------------------------------------------------------
     # Shape drawing
@@ -374,28 +482,37 @@ class PNGRenderer:
 
     def _draw_shape(self, cmd: DrawShape) -> None:
         assert self._draw is not None
+        complex_fill = isinstance(
+            cmd.fill,
+            (LinearGradientPaint, RadialGradientPaint, PatternPaint),
+        )
+        # Pillow's ImageDraw drops the alpha channel: a fill or stroke
+        # with alpha < 255 *replaces* the pixel instead of compositing
+        # with what's underneath. Translucent or clipped shapes are drawn
+        # on a transparent layer and composited; the common opaque,
+        # unclipped case still hits the fast direct-draw path. Complex
+        # fills handle their own opacity, so only a clip redirects them.
+        if not self._in_layer and (
+            self._active_mask() is not None
+            or (not complex_fill and self._shape_needs_alpha_compositing(cmd))
+        ):
+            self._draw_in_layer(lambda: self._draw_shape(cmd))
+            return
         # Gradient and pattern fills need a separate rendering path —
         # they paint a 2D field rather than a single color, so the
         # ``ImageDraw.rectangle``/``ellipse`` calls below can't fill
         # them in one step. Dispatch and return.
-        if isinstance(
-            cmd.fill,
-            (LinearGradientPaint, RadialGradientPaint, PatternPaint),
-        ):
+        if complex_fill:
             self._draw_shape_with_complex_fill(cmd)
-            return
-        # Pillow's ImageDraw drops the alpha channel: a fill or stroke
-        # with alpha < 255 *replaces* the pixel instead of compositing
-        # with what's underneath. For shapes that need true alpha
-        # blending (opacity < 1.0, or a fill/stroke color with alpha
-        # < 1.0) we render onto a transparent RGBA temp layer and
-        # ``alpha_composite`` it onto the canvas. The common
-        # fully-opaque case still hits the fast direct-draw path.
-        if not self._in_alpha_composite and self._shape_needs_alpha_compositing(cmd):
-            self._draw_shape_with_alpha_compositing(cmd)
             return
         fill_rgba = self._fill_to_rgba(cmd.fill, cmd.opacity)
         stroke_rgba = self._stroke_to_rgba(cmd.stroke, cmd.opacity)
+        dashed = cmd.stroke is not None and bool(cmd.stroke.dash)
+        # A dashed stroke: the fast path fills only; ``_stroke_outline``
+        # draws the dashes afterwards.
+        dash_rgba = stroke_rgba if dashed else None
+        if dashed:
+            stroke_rgba = None
         stroke_width = max(1, int(round(self._len(cmd.stroke.width)))) if cmd.stroke else 0
 
         geom = cmd.geometry
@@ -436,24 +553,24 @@ class PNGRenderer:
             pts = [(self._x(p.x), self._y(p.y)) for p in geom.points]
             self._draw.polygon(pts, fill=fill_rgba, outline=stroke_rgba, width=stroke_width)
         elif isinstance(geom, PolylineGeom):
-            pts = [(self._x(p.x), self._y(p.y)) for p in geom.points]
-            # Pillow's polygon doesn't fill open shapes the same way; for
-            # an open polyline, draw as a line. Fill is ignored.
-            self._draw.line(
-                pts, fill=stroke_rgba or (0, 0, 0, 255),
-                width=max(1, stroke_width), joint="curve",
-            )
+            if not dashed:
+                pts = [(self._x(p.x), self._y(p.y)) for p in geom.points]
+                # Pillow's polygon doesn't fill open shapes the same way; for
+                # an open polyline, draw as a line. Fill is ignored.
+                self._draw.line(
+                    pts, fill=stroke_rgba or (0, 0, 0, 255),
+                    width=max(1, stroke_width), joint="curve",
+                )
         elif isinstance(geom, PathGeom):
-            # PathGeom is not exercised by the current compiler; flatten
-            # to lines via the points and draw best-effort.
             self._draw_path(geom, fill_rgba, stroke_rgba, stroke_width)
+        if cmd.stroke is not None and dash_rgba is not None:
+            self._stroke_outline(geom, cmd.stroke, dash_rgba)
 
     @staticmethod
     def _shape_needs_alpha_compositing(cmd: DrawShape) -> bool:
         """Return True when ``cmd`` has any sub-unit alpha contribution.
 
-        Triggers redirection to ``_draw_shape_with_alpha_compositing``
-        so the pixel actually blends with the underlying panel
+        Triggers redirection to ``_draw_in_layer`` so the pixel actually blends with the underlying panel
         instead of replacing it (which is what Pillow's ImageDraw
         does on RGBA images when given a fill with alpha < 255).
         """
@@ -462,43 +579,6 @@ class PNGRenderer:
         if isinstance(cmd.fill, SolidPaint) and cmd.fill.color.a < 1.0:
             return True
         return cmd.stroke is not None and cmd.stroke.color.a < 1.0
-
-    def _draw_shape_with_alpha_compositing(self, cmd: DrawShape) -> None:
-        """Render a partially-transparent shape via ``Image.alpha_composite``.
-
-        Why this path exists: ``ImageDraw.ellipse(fill=(R,G,B,A))`` on
-        an RGBA image *replaces* the pixel with ``(R,G,B,A)`` rather
-        than alpha-blending it over what was there. So a shape with
-        ``opacity: 0.7`` over a red panel renders as a translucent
-        shape over the *save-time white background*, not over the red
-        panel — visually wrong.
-
-        Fix: draw the shape onto a transparent RGBA temp layer
-        (where outside-shape pixels stay alpha=0 because Pillow only
-        touches what the shape covers), then
-        ``Image.alpha_composite`` the layer onto the canvas. That
-        applies proper Porter-Duff "source over" blending.
-
-        Recursion: temporarily swaps ``self._image``/``self._draw`` to
-        the temp layer, sets ``self._in_alpha_composite`` to bypass
-        the alpha-compositing branch in ``_draw_shape`` on the
-        re-entry, and runs the fast path against the temp. After the
-        draw, restores state and composites.
-        """
-        assert self._image is not None
-        saved_image = self._image
-        saved_draw = self._draw
-        layer = Image.new("RGBA", saved_image.size, (0, 0, 0, 0))
-        self._image = layer
-        self._draw = ImageDraw.Draw(layer)
-        self._in_alpha_composite = True
-        try:
-            self._draw_shape(cmd)
-        finally:
-            self._in_alpha_composite = False
-            self._image = saved_image
-            self._draw = saved_draw
-        saved_image.alpha_composite(layer)
 
     # Number of polyline samples per Bezier curve segment. 16 is a
     # sweet spot for the holly-wreath style organic curves we see in
@@ -523,6 +603,24 @@ class PNGRenderer:
         outlines) this produces visually smooth output at preview DPI.
         """
         assert self._draw is not None
+        subpaths = self._flatten_path(geom)
+        for sp in subpaths:
+            if len(sp) >= 2:
+                # Closed subpath with fill → polygon; else stroke only.
+                is_closed = sp[0] == sp[-1]
+                if fill_rgba is not None and is_closed:
+                    self._draw.polygon(
+                        sp, fill=fill_rgba,
+                        outline=stroke_rgba, width=stroke_width,
+                    )
+                elif stroke_rgba is not None:
+                    self._draw.line(
+                        sp, fill=stroke_rgba,
+                        width=max(1, stroke_width), joint="curve",
+                    )
+
+    def _flatten_path(self, geom: PathGeom) -> list[list[tuple[float, float]]]:
+        """Flatten ``geom`` into pixel-space subpaths (closed ones end on their start)."""
         # Walk ops, collect subpaths
         current_path = (0.0, 0.0)  # in IR coordinates
         subpath: list[tuple[float, float]] = []
@@ -562,20 +660,7 @@ class PNGRenderer:
 
         if subpath:
             subpaths.append(subpath)
-        for sp in subpaths:
-            if len(sp) >= 2:
-                # Closed subpath with fill → polygon; else stroke only.
-                is_closed = sp[0] == sp[-1]
-                if fill_rgba is not None and is_closed:
-                    self._draw.polygon(
-                        sp, fill=fill_rgba,
-                        outline=stroke_rgba, width=stroke_width,
-                    )
-                elif stroke_rgba is not None:
-                    self._draw.line(
-                        sp, fill=stroke_rgba,
-                        width=max(1, stroke_width), joint="curve",
-                    )
+        return subpaths
 
     def _sample_cubic_into(
         self,
@@ -611,6 +696,75 @@ class PNGRenderer:
             subpath.append((self._x(x), self._y(y)))
 
     # ------------------------------------------------------------------
+    # Dashed strokes
+    # ------------------------------------------------------------------
+
+    # Minimum samples when flattening a circle / ellipse outline.
+    _ELLIPSE_SAMPLES: int = 64
+
+    def _stroke_outline(
+        self, geom: object, stroke: Stroke, rgba: tuple[int, int, int, int]
+    ) -> None:
+        """Draw ``geom``'s outline with ``stroke.dash`` (points) applied."""
+        width = max(1, int(round(self._len(stroke.width))))
+        pattern = [self._len(d) for d in stroke.dash]
+        for polyline in self._outline_polylines(geom):
+            self._draw_dashed_polyline(polyline, pattern, rgba, width)
+
+    def _draw_dashed_polyline(
+        self,
+        polyline: list[tuple[float, float]],
+        pattern: list[float],
+        rgba: tuple[int, int, int, int] | tuple[int, int, int],
+        width: int,
+    ) -> None:
+        assert self._draw is not None
+        for run in _dash_runs(polyline, pattern):
+            self._draw.line(run, fill=rgba, width=width, joint="curve")
+
+    def _outline_polylines(self, geom: object) -> list[list[tuple[float, float]]]:
+        """Pixel-space outline of ``geom``: closed shapes end on their start."""
+        if isinstance(geom, RectGeom):
+            left, top = self._x(geom.x), self._y(geom.y + geom.height)
+            right, bottom = self._x(geom.x + geom.width), self._y(geom.y)
+            r = min(self._len(geom.corner_radius), (right - left) / 2, (bottom - top) / 2)
+            if r <= 0:
+                pts = [(left, top), (right, top), (right, bottom), (left, bottom)]
+            else:
+                pts = []
+                corners = [
+                    (left + r, top + r, 180.0), (right - r, top + r, 270.0),
+                    (right - r, bottom - r, 0.0), (left + r, bottom - r, 90.0),
+                ]
+                for cx, cy, start in corners:
+                    for k in range(self._BEZIER_SAMPLES + 1):
+                        a = math.radians(start + 90.0 * k / self._BEZIER_SAMPLES)
+                        pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+            return [[*pts, pts[0]]]
+        if isinstance(geom, (CircleGeom, EllipseGeom)):
+            cx, cy = self._x(geom.center.x), self._y(geom.center.y)
+            if isinstance(geom, CircleGeom):
+                rx = ry = self._len(geom.radius)
+            else:
+                rx, ry = self._len(geom.rx), self._len(geom.ry)
+            n = max(self._ELLIPSE_SAMPLES, int(math.pi * max(rx, ry)))
+            pts = [
+                (cx + rx * math.cos(2 * math.pi * k / n), cy + ry * math.sin(2 * math.pi * k / n))
+                for k in range(n)
+            ]
+            return [[*pts, pts[0]]]
+        if isinstance(geom, PolygonGeom):
+            pts = [(self._x(p.x), self._y(p.y)) for p in geom.points]
+            return [[*pts, pts[0]]]
+        if isinstance(geom, PolylineGeom):
+            return [[(self._x(p.x), self._y(p.y)) for p in geom.points]]
+        if isinstance(geom, PathGeom):
+            return self._flatten_path(geom)
+        raise NotImplementedError(
+            f"PNGRenderer: dashed stroke on {type(geom).__name__} is not supported"
+        )
+
+    # ------------------------------------------------------------------
     # Text
     # ------------------------------------------------------------------
 
@@ -619,33 +773,55 @@ class PNGRenderer:
         run = cmd.run
         size_px = max(1, int(round(run.size_pt * self._scale)))
         font = self._get_font(run.font_id, size_px)
-        # Pillow anchor codes: l/m/r for x, t/m/s/b for y. We want
-        # baseline-aligned to match ReportLab's drawString origin
-        # convention, so use 's' (baseline) for y.
-        anchor_map = {"left": "ls", "center": "ms", "right": "rs"}
-        anchor = anchor_map[run.align]
+        alpha = cmd.opacity * run.color.a
         rgb = (
             int(round(run.color.r * 255)),
             int(round(run.color.g * 255)),
             int(round(run.color.b * 255)),
         )
+        # Translucent or clipped text is drawn opaque on a layer and
+        # composited (ImageDraw replaces pixels instead of blending).
+        if not self._in_layer and (alpha < 1.0 or self._active_mask() is not None):
+            self._draw_text_in_layer(cmd, rgb, alpha)
+            return
+        # Pillow anchor codes: l/m/r for x, t/m/s/b for y. We want
+        # baseline-aligned to match ReportLab's drawString origin
+        # convention, so use 's' (baseline) for y.
+        anchor_map = {"left": "ls", "center": "ms", "right": "rs"}
         self._draw.text(
             (self._x(run.origin.x), self._y(run.origin.y)),
             run.text,
             font=font,
-            fill=rgb,
-            anchor=anchor,
+            fill=(*rgb, 255),
+            anchor=anchor_map[run.align],
         )
 
-    def _get_font(
-        self, font_id: str, size_px: int
-    ) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-        """Resolve ``font_id`` + size to a Pillow font, with fallbacks.
+    def _draw_text_in_layer(
+        self,
+        cmd: DrawText,
+        rgb: tuple[int, int, int],
+        alpha: float,
+    ) -> None:
+        assert self._image is not None
+        saved_image, saved_draw = self._image, self._draw
+        # Transparent pixels carry the text colour so anti-aliased glyph
+        # edges don't blend toward black.
+        layer = Image.new("RGBA", saved_image.size, (*rgb, 0))
+        self._image, self._draw = layer, ImageDraw.Draw(layer)
+        self._in_layer = True
+        try:
+            self._draw_text(cmd)
+        finally:
+            self._in_layer = False
+            self._image, self._draw = saved_image, saved_draw
+        self._composite(layer, alpha)
 
-        Prefers the bundled Liberation TTF for the default font_ids
-        (Helvetica/Times-Roman/Courier and bold/italic variants), so the
-        PNG preview matches what the PDF backend renders byte-for-byte.
-        Falls back to system font lookup for custom font_ids.
+    def _get_font(self, font_id: str, size_px: int) -> ImageFont.FreeTypeFont:
+        """Resolve ``font_id`` + size to the bundled TTF, or raise.
+
+        Only ``font_registry.ttf_path_for`` is consulted, so the preview
+        uses the same font files as the PDF backend. There is no system
+        font or bitmap fallback: an unknown id raises (fail loud, D4).
         """
         from holiday_card.renderers.font_registry import ttf_path_for
 
@@ -653,34 +829,12 @@ class PNGRenderer:
         cached = self._font_cache.get(key)
         if cached is not None:
             return cached
-
-        # Bundled Liberation TTF, if this font_id is one of the defaults
-        bundled = ttf_path_for(font_id)
-        if bundled is not None:
-            try:
-                font = ImageFont.truetype(str(bundled), size=size_px)
-                self._font_cache[key] = font
-                return font
-            except OSError:
-                pass  # fall through to fallback chain
-
-        candidates = list(_FONT_FALLBACKS.get(font_id, ())) + list(_GENERIC_FALLBACKS)
-        for candidate in candidates:
-            try:
-                font = ImageFont.truetype(candidate, size=size_px)
-                self._font_cache[key] = font
-                return font
-            except OSError:
-                continue
-
-        logger.warning(
-            "PNGRenderer: no truetype font found for %r; using Pillow's bitmap fallback. "
-            "Install a system font for better preview quality.",
-            font_id,
-        )
-        fallback = ImageFont.load_default()
-        self._font_cache[key] = fallback
-        return fallback
+        path = ttf_path_for(font_id)
+        if path is None:
+            raise NotImplementedError(f"PNGRenderer: no bundled TTF for font_id {font_id!r}")
+        font = ImageFont.truetype(str(path), size=size_px)
+        self._font_cache[key] = font
+        return font
 
     # ------------------------------------------------------------------
     # Images (with optional clip masking)
@@ -698,8 +852,7 @@ class PNGRenderer:
            to fill.
         3. Compute pixel position from the IR rect (bottom-left origin
            → top-left origin; height inversion via ``_y``).
-        4. If a clip is active, build a mask matching the clip geometry
-           in pixel space and paste through it. Otherwise paste directly.
+        4. Composite through the active clip mask (``_composite``).
         5. Honor ``cmd.opacity`` by pre-multiplying the source's alpha
            channel.
         """
@@ -748,112 +901,25 @@ class PNGRenderer:
         paste_x = rect_left_px + offset_x
         paste_y = rect_top_px + offset_y
 
-        if not self._clip_stack:
-            self._image.paste(src, (paste_x, paste_y), src)
-            return
-
-        # Active clip: build a mask matching the clip geometry in the
-        # main canvas's pixel space, then composite the image through it.
-        canvas_w, canvas_h = self._image.size
-        mask = Image.new("L", (canvas_w, canvas_h), 0)
-        mask_draw = ImageDraw.Draw(mask)
-        for geom in self._clip_stack:
-            self._stamp_clip_geom(mask_draw, geom)
-        # Build a composite image of the source positioned on a
-        # transparent layer at canvas size, then apply the mask as
-        # alpha. paste with mask=mask uses the mask's grayscale as the
-        # alpha of the source pixels.
-        positioned = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
-        positioned.paste(src, (paste_x, paste_y), src)
-        # AND-combine the positioned image's alpha with the clip mask
-        # so pixels outside the clip become transparent. Pillow's
-        # ImageChops.multiply does per-pixel multiplication on
-        # grayscale channels — exactly what mask intersection wants.
-        from PIL import ImageChops
-        src_alpha = positioned.split()[3]
-        combined_alpha = ImageChops.multiply(src_alpha, mask)
-        positioned.putalpha(combined_alpha)
-        self._image.paste(positioned, (0, 0), positioned)
-
-    def _stamp_clip_geom(
-        self,
-        mask_draw: ImageDraw.ImageDraw,
-        geom: object,
-    ) -> None:
-        """Stamp ``geom`` (in IR coords) onto the mask at full white."""
-        if isinstance(geom, CircleGeom):
-            cx_px = self._x(geom.center.x)
-            cy_px = self._y(geom.center.y)
-            r_px = self._len(geom.radius)
-            mask_draw.ellipse(
-                (cx_px - r_px, cy_px - r_px, cx_px + r_px, cy_px + r_px),
-                fill=255,
-            )
-        elif isinstance(geom, RectGeom):
-            # IR rect: bottom-left origin. Pillow expects (left, top, right, bottom).
-            left = self._x(geom.x)
-            top = self._y(geom.y + geom.height)
-            right = self._x(geom.x + geom.width)
-            bottom = self._y(geom.y)
-            mask_draw.rectangle((left, top, right, bottom), fill=255)
-        elif isinstance(geom, EllipseGeom):
-            cx_px = self._x(geom.center.x)
-            cy_px = self._y(geom.center.y)
-            rx_px = self._len(geom.rx)
-            ry_px = self._len(geom.ry)
-            mask_draw.ellipse(
-                (cx_px - rx_px, cy_px - ry_px, cx_px + rx_px, cy_px + ry_px),
-                fill=255,
-            )
-        elif isinstance(geom, PolygonGeom):
-            mask_draw.polygon(
-                [(self._x(p.x), self._y(p.y)) for p in geom.points],
-                fill=255,
-            )
-        else:
-            raise NotImplementedError(
-                f"PNGRenderer: clip geometry {type(geom).__name__} not yet "
-                "supported for image masking."
-            )
+        # Position on a transparent canvas-sized layer, then composite
+        # through the active clip (if any).
+        layer = Image.new("RGBA", self._image.size, (0, 0, 0, 0))
+        layer.paste(src, (paste_x, paste_y))
+        self._composite(layer)
 
     # ------------------------------------------------------------------
     # Fold lines
     # ------------------------------------------------------------------
 
     def _draw_fold_line(self, cmd: DrawFoldLine) -> None:
-        """Draw a fold guide. Pillow has no native dash pattern, so
-        emulate dashed style with short alternating segments.
-        """
+        """Draw a fold guide: 1 px grey, dashed 3 pt on / 3 pt off."""
         assert self._draw is not None
-        x0 = self._x(cmd.start.x)
-        y0 = self._y(cmd.start.y)
-        x1 = self._x(cmd.end.x)
-        y1 = self._y(cmd.end.y)
-        grey = (178, 178, 178)
-        if cmd.style == "solid":
-            self._draw.line((x0, y0, x1, y1), fill=grey, width=1)
+        if not self._in_layer and self._active_mask() is not None:
+            self._draw_in_layer(lambda: self._draw_fold_line(cmd))
             return
-        # Dashed: 3pt on, 3pt off, scaled by DPI.
-        dash_len = 3 * self._scale
-        dx = x1 - x0
-        dy = y1 - y0
-        length = (dx * dx + dy * dy) ** 0.5
-        if length == 0:
-            return
-        ux = dx / length
-        uy = dy / length
-        position = 0.0
-        on = True
-        while position < length:
-            seg_end = min(position + dash_len, length)
-            if on:
-                self._draw.line(
-                    (x0 + ux * position, y0 + uy * position,
-                     x0 + ux * seg_end, y0 + uy * seg_end),
-                    fill=grey, width=1,
-                )
-            position = seg_end
-            on = not on
+        line = [(self._x(cmd.start.x), self._y(cmd.start.y)), (self._x(cmd.end.x), self._y(cmd.end.y))]
+        pattern = [] if cmd.style == "solid" else [self._len(3.0)]
+        self._draw_dashed_polyline(line, pattern, (178, 178, 178), 1)
 
     # ------------------------------------------------------------------
     # Paint helpers
@@ -897,8 +963,6 @@ class PNGRenderer:
         the production-quality path.
         """
         assert self._image is not None
-        from PIL import ImageChops
-
         bbox = self._geom_bbox_px(cmd.geometry)
         if bbox is None:
             raise NotImplementedError(
@@ -932,8 +996,9 @@ class PNGRenderer:
         combined = ImageChops.multiply(fa, mask)
         fill_img.putalpha(combined)
 
-        # Composite onto the main canvas at (bx, by).
-        self._image.paste(fill_img, (bx, by), fill_img)
+        # Source-over onto the target at (bx, by); ``paste`` with the image
+        # as its own mask would square the alpha on a transparent layer.
+        self._image.alpha_composite(fill_img, (bx, by))
 
         # Stroke pass: draw the shape outline through the existing path.
         # Construct a tiny shim cmd with fill=None so the regular path

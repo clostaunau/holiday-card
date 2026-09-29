@@ -32,7 +32,7 @@ holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," -
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 1297 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 1312 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -103,7 +103,7 @@ src/holiday_card/
   renderers/
     reportlab_backend.py  # IR → PDF (default; sRGB or CMYK mode)
     svg_backend.py        # IR → SVG (browser-openable)
-    png_backend.py        # IR → PNG (powers `preview` command)
+    png_backend.py        # IR → PNG (powers `preview`); clips/dashes/text alpha honoured, bundled TTFs only
     pdfx_postprocess.py   # pikepdf-based PDF/X-1a:2003 upgrade
     image_effects.py      # Pillow effects (sepia/grayscale/vignette/blur)
   data/                 # Package data shipped in the wheel (no __init__.py);
@@ -146,6 +146,7 @@ tests/
     __snapshots__/      # JSON snapshots of compile_card() output per template (16 files)
   integration/          # test_full_generation, test_svg_backend, test_png_backend,
                         #   test_per_panel_output, test_voice_flag, test_md_inside,
+                        #   test_png_ir_fixtures (PNG clip/dash/alpha/font IR fixtures, #61),
                         #   test_ai_asset_cli (L3 ai-asset generate subcommand)
   visual/               # Perceptual-hash regression gate over all 17 shipped templates
                         #   (test_visual_regression.py); baselines in
@@ -172,7 +173,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 1297 tests pass
+uv run pytest                            # All 1312 tests pass
 ```
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit
@@ -318,6 +319,45 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Recent changes
 
+- **2026-09-29 — PNG backend honours clips, dashes and text alpha, or
+  raises (expert-panel §P6 / §P5 / D4, issue #61)**: `preview` uses
+  `PNGRenderer`, which silently rendered a different card than PDF/SVG.
+  (1) `BeginClip` only pushed a geometry that `_draw_image` alone read,
+  and nested clips were unioned. Now `_begin_clip` builds a canvas-sized
+  "L" mask (`_geom_mask`: rect / rounded rect / circle / ellipse /
+  polygon / path) intersected (`ImageChops.multiply`) with the enclosing
+  mask at the same group level; `_clip_stack` holds `(level, mask)`,
+  where level counts open non-identity groups. `DrawShape`, `DrawText`,
+  `DrawImage` and `DrawFoldLine` under a mask draw on a transparent
+  layer (`_draw_in_layer`) and `_composite` through it; `_end_group`
+  composites the rotated overlay through the parent level's mask, so a
+  clip opened outside a rotated group still applies. `PolylineGeom`
+  clips raise `NotImplementedError` at `BeginClip`. `_stamp_clip_geom`
+  and `_draw_shape_with_alpha_compositing` are gone. (2) `Stroke.dash`
+  was never read. `_stroke_outline` flattens the outline
+  (`_outline_polylines`; circles/ellipses ≥ 64 samples, paths via the new
+  `_flatten_path`) and module-level `_dash_runs` walks it with PDF/SVG
+  semantics (odd arrays repeat, phase 0, restart per subpath); fold lines
+  use the same walker. (3) Text ignored `opacity` and `color.a`; the
+  effective alpha `opacity × color.a` is now applied by drawing opaque
+  glyphs on a layer pre-filled with the text colour at alpha 0 (no dark
+  fringes) and compositing. (4) `_get_font` resolves only through
+  `font_registry.ttf_path_for` and raises `NotImplementedError` naming
+  the font_id otherwise; `_FONT_FALLBACKS`, `_GENERIC_FALLBACKS` and
+  `ImageFont.load_default()` are deleted. (5) Found while diffing every
+  template before/after: gradient/pattern fills were pasted with
+  themselves as mask, which also lowered the canvas alpha, so translucent
+  gradients washed toward white at save time. They now `alpha_composite`.
+  Only `christmas-winter-sky` (0.7/0.6 mountains) and
+  `christmas-metallic-ornaments` (translucent back ornaments) changed;
+  both visual baselines were regenerated and eyeballed; the other 19
+  templates render pixel-identical. Guarded by
+  `tests/integration/test_png_ir_fixtures.py` (importable module-level
+  fixtures for #67: `CLIP_SHAPE_IN_CIRCLE`, `CLIP_TEXT_IN_RECT`,
+  `CLIP_NESTED_INTERSECT`, `CLIP_IMAGE_NESTED`, `CLIP_UNDER_ROTATED_GROUP`,
+  `CLIP_POLYLINE`, `DASHED_RECT`, `DASHED_CIRCLE`, `TEXT_OPACITY_OVER_RED`,
+  `GRADIENT_OPACITY_OVER_RED`, `UNKNOWN_FONT`). AA, centred strokes,
+  `line_cap` and gradient speed stay with #77.
 - **2026-09-29 — ReportLab backend: correct quadratics, dash arrays and
   scoped alpha (expert-panel §P7 / D4 / D12, issue #62)**: Four latent
   `IRReportLabRenderer` bugs that shipped templates dodged only because the
