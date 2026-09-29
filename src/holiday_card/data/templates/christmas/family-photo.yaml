@@ -1,5 +1,5 @@
 # Christmas Family Photo Card
-# Modern half-fold card: large rectangle-clipped cover photo, restrained
+# Modern quarter-fold card: large rectangle-clipped cover photo, restrained
 # typography. Designed to compose with --voice / --inside-message /
 # letter flags — the inside-right "message" slot carries a generic
 # default that those flags override.
@@ -7,7 +7,7 @@
 id: "christmas-family-photo"
 name: "Christmas Family Photo"
 occasion: "christmas"
-fold_type: "half_fold"
+fold_type: "quarter_fold"
 default_theme_id: "christmas-red-green"
 description: "Modern family photo card with a large rectangular cover photo and restrained typography"
 
@@ -15,8 +15,6 @@ panels:
   # Front panel (right half, bottom — visible when folded)
   - id: "front"
     position: "front"
-    x: 4.25
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -91,8 +89,6 @@ panels:
   # Back panel (left half, bottom — blank cream)
   - id: "back"
     position: "back"
-    x: 0
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -103,11 +99,8 @@ panels:
   # Inside left (left half, top — blank cream)
   - id: "inside_left"
     position: "inside_left"
-    x: 0
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180  # half-fold imposition
     background_color:
       r: 0.98
       g: 0.96
@@ -116,11 +109,8 @@ panels:
   # Inside right (right half, top — message slot)
   - id: "inside_right"
     position: "inside_right"
-    x: 4.25
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180  # half-fold imposition
     background_color:
       r: 0.98
       g: 0.96

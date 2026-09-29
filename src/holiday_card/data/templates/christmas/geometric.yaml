@@ -1,16 +1,14 @@
 id: christmas-geometric
 name: "Geometric Christmas Tree"
 occasion: christmas
-fold_type: half_fold
+fold_type: "quarter_fold"
 description: "Modern geometric Christmas card with overlapping triangles and elegant earth tones"
 default_theme_id: christmas-earth-tones
 
 panels:
-  # Front panel - Main geometric tree design (bottom right for half_fold)
+  # Front panel - Main geometric tree design (bottom right of the sheet; placement is computed from fold_type)
   - id: front
     position: front
-    x: 4.25
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -178,11 +176,8 @@ panels:
   # Inside left - Personal message (top left, becomes RIGHT side when card opens like a book)
   - id: inside_left
     position: inside_left
-    x: 0.0
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180
     background_color:
       r: 0.98
       g: 0.98
@@ -239,21 +234,16 @@ panels:
   # Inside right - blank (top right, becomes LEFT side when card opens like a book)
   - id: inside_right
     position: inside_right
-    x: 4.25
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180
     background_color:
       r: 0.98
       g: 0.98
       b: 0.95
 
-  # Back panel - Simple (bottom left for half_fold)
+  # Back panel - Simple (bottom left of the sheet; placement is computed from fold_type)
   - id: back
     position: back
-    x: 0.0
-    y: 0.0
     width: 4.25
     height: 5.5
     background_color:

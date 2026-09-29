@@ -201,3 +201,4 @@ class TestBuildPerPanelContext:
         assert ctx.geometry.trim_height_in == 5.83
         assert ctx.geometry.bleed_in == 0.125
         assert ctx.emit_fold_lines is False
+        assert ctx.impose is False

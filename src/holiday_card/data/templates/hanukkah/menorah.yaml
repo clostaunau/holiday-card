@@ -1,20 +1,18 @@
 # Hanukkah Menorah Card Template
-# Half-fold card with a 9-candle menorah (shamash + 8 nights) drawn
+# Quarter-fold card with a 9-candle menorah (shamash + 8 nights) drawn
 # from primitives. Deep blue background, gold menorah, warm flames.
 
 id: "hanukkah-menorah"
 name: "Hanukkah Menorah"
 occasion: "hanukkah"
-fold_type: "half_fold"
+fold_type: "quarter_fold"
 default_theme_id: "hanukkah-blue-white"
 description: "Traditional Hanukkah card with a hand-drawn menorah"
 
 panels:
-  # Front panel (bottom right when unfolded)
+  # Front panel (bottom right of the sheet; placement is computed from fold_type)
   - id: "front"
     position: "front"
-    x: 4.25
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -332,8 +330,6 @@ panels:
   # Back panel
   - id: "back"
     position: "back"
-    x: 0
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -344,11 +340,8 @@ panels:
   # Inside left panel
   - id: "inside_left"
     position: "inside_left"
-    x: 0
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180  # half-fold imposition
     background_color:
       r: 0.98
       g: 0.98
@@ -357,11 +350,8 @@ panels:
   # Inside right panel
   - id: "inside_right"
     position: "inside_right"
-    x: 4.25
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180  # half-fold imposition
     background_color:
       r: 0.98
       g: 0.98

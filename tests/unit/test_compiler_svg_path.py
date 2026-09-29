@@ -16,6 +16,7 @@ from __future__ import annotations
 import pytest
 
 from holiday_card.core.compiler import (
+    CompileContext,
     UnsupportedFeatureError,
     _path_commands_to_ops,
     compile_card,
@@ -41,6 +42,10 @@ def _ops(path_data: str) -> list:
     cmds = SVGPathParser().parse(path_data)
     ops, _bbox = _path_commands_to_ops(cmds)
     return ops
+
+
+# Fixture panels are hand-placed; opt out of the letter imposition (#58).
+_NO_IMPOSE = CompileContext(impose=False)
 
 
 def _make_card(shape: SVGPath) -> Card:
@@ -121,7 +126,7 @@ class TestCompileSVGPath:
             scale=0.1,
             x=1.0, y=1.0,
         )
-        cmds = compile_card(_make_card(shape))
+        cmds = compile_card(_make_card(shape), _NO_IMPOSE)
         draws = [c for c in cmds if isinstance(c, DrawShape)]
         assert len(draws) == 1
         assert isinstance(draws[0].geometry, PathGeom)
@@ -136,7 +141,7 @@ class TestCompileSVGPath:
             scale=0.01,  # 100 path units → 1 inch
             x=1.0, y=2.0,
         )
-        draws = [c for c in compile_card(_make_card(shape)) if isinstance(c, DrawShape)]
+        draws = [c for c in compile_card(_make_card(shape), _NO_IMPOSE) if isinstance(c, DrawShape)]
         path = draws[0].geometry
         assert isinstance(path, PathGeom)
         # First move at (panel.x + shape.x + 0*0.01, panel.y + shape.y + 0*0.01)
@@ -157,7 +162,7 @@ class TestCompileSVGPath:
             x=1.0, y=1.0,
             rotation=90.0,
         )
-        cmds = compile_card(_make_card(shape))
+        cmds = compile_card(_make_card(shape), _NO_IMPOSE)
         # Inner rotation group wrapping the path shape.
         groups = [c for c in cmds if isinstance(c, BeginGroup) and c.transform.rotate_deg == 90.0]
         assert len(groups) == 1
@@ -170,7 +175,7 @@ class TestArcUnsupported:
             scale=1.0,
         )
         with pytest.raises(UnsupportedFeatureError, match="arc"):
-            compile_card(_make_card(shape))
+            compile_card(_make_card(shape), _NO_IMPOSE)
 
 
 class TestDeadTemplatesNowCompile:

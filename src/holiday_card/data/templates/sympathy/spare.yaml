@@ -7,15 +7,13 @@
 id: "sympathy-spare"
 name: "Sympathy (spare)"
 occasion: "sympathy"
-fold_type: "half_fold"
+fold_type: "quarter_fold"
 description: "Restrained sympathy card. Cream on cream, italic serif. Inside blank for a handwritten message."
 
 panels:
   # Front (right half, bottom — visible when folded)
   - id: "front"
     position: "front"
-    x: 4.25
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -40,8 +38,6 @@ panels:
   # Back (left half, bottom — blank)
   - id: "back"
     position: "back"
-    x: 0
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -49,27 +45,21 @@ panels:
       g: 0.95
       b: 0.91
 
-  # Inside-left (left half, top — blank, rotated 180 for fold)
+  # Inside-left (top right of the sheet, upside down; placement is computed from fold_type)
   - id: "inside_left"
     position: "inside_left"
-    x: 0
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180
     background_color:
       r: 0.97
       g: 0.95
       b: 0.91
 
-  # Inside-right (right half, top — blank, rotated 180 for fold)
+  # Inside-right (top left of the sheet, upside down; placement is computed from fold_type)
   - id: "inside_right"
     position: "inside_right"
-    x: 4.25
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180
     background_color:
       r: 0.97
       g: 0.95

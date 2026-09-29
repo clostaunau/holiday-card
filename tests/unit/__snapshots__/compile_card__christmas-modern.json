@@ -81,11 +81,11 @@
     "cmd": "begin_group",
     "opacity": 1.0,
     "transform": {
-      "rotate_deg": 180.0,
+      "rotate_deg": 0.0,
       "scale_x": 1.0,
       "scale_y": 1.0,
-      "translate_x": 153.0,
-      "translate_y": 198.0
+      "translate_x": 0.0,
+      "translate_y": 0.0
     }
   },
   {
@@ -104,8 +104,44 @@
       "height": 405.0,
       "kind": "rect",
       "width": 315.0,
-      "x": 0.0,
-      "y": 0.0
+      "x": -9.0,
+      "y": -9.0
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "end_group"
+  },
+  {
+    "cmd": "begin_group",
+    "opacity": 1.0,
+    "transform": {
+      "rotate_deg": 180.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "translate_x": 459.0,
+      "translate_y": 594.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.96,
+        "g": 0.98,
+        "r": 0.98
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 405.0,
+      "kind": "rect",
+      "width": 315.0,
+      "x": 297.0,
+      "y": 387.0
     },
     "opacity": 1.0,
     "stroke": null
@@ -147,42 +183,6 @@
     "stroke": null
   },
   {
-    "cmd": "end_group"
-  },
-  {
-    "cmd": "begin_group",
-    "opacity": 1.0,
-    "transform": {
-      "rotate_deg": 0.0,
-      "scale_x": 1.0,
-      "scale_y": 1.0,
-      "translate_x": 0.0,
-      "translate_y": 0.0
-    }
-  },
-  {
-    "cmd": "draw_shape",
-    "fill": {
-      "color": {
-        "a": 1.0,
-        "b": 0.96,
-        "g": 0.98,
-        "r": 0.98
-      },
-      "kind": "solid"
-    },
-    "geometry": {
-      "corner_radius": 0.0,
-      "height": 405.0,
-      "kind": "rect",
-      "width": 315.0,
-      "x": 306.0,
-      "y": 396.0
-    },
-    "opacity": 1.0,
-    "stroke": null
-  },
-  {
     "cmd": "draw_text",
     "opacity": 1.0,
     "run": {
@@ -195,7 +195,7 @@
       },
       "font_id": "Inter",
       "origin": {
-        "x": 342.0,
+        "x": 36.0,
         "y": 684.0
       },
       "size_pt": 12.0,
@@ -215,7 +215,7 @@
       },
       "font_id": "Inter",
       "origin": {
-        "x": 342.0,
+        "x": 36.0,
         "y": 669.6
       },
       "size_pt": 12.0,

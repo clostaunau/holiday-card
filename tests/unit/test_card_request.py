@@ -47,13 +47,11 @@ PLACEHOLDER_PHOTO = (
 # ---------------------------------------------------------------------------
 
 
-def _panel(position: str, x: float, y: float, texts: str = "") -> str:
+def _panel(position: str, texts: str = "") -> str:
     return textwrap.dedent(
         f"""
           - id: "{position}"
             position: "{position}"
-            x: {x}
-            y: {y}
             width: 4.25
             height: 5.5
         """
@@ -84,10 +82,10 @@ def _write_template(
     body = (
         f'id: "{template_id}"\nname: "Fixture"\noccasion: "{occasion}"\n'
         'fold_type: "half_fold"\npanels:\n'
-        + _panel("front", 4.25, 0, front_texts)
-        + _panel("back", 0, 0)
-        + _panel("inside_left", 0, 5.5, inside_left_texts)
-        + _panel("inside_right", 4.25, 5.5, inside_right_texts)
+        + _panel("front", front_texts)
+        + _panel("back")
+        + _panel("inside_left", inside_left_texts)
+        + _panel("inside_right", inside_right_texts)
     )
     directory = root / "templates" / occasion_dir
     directory.mkdir(parents=True, exist_ok=True)

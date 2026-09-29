@@ -145,11 +145,20 @@ class TestStructure:
         # opens one group per panel.
         assert begins == ends == len(classic_card.panels)  # type: ignore[attr-defined]
 
-    def test_half_fold_emits_one_horizontal_fold_line(self, classic_card: object) -> None:
-        commands = compile_card(classic_card)  # type: ignore[arg-type]
+    @pytest.mark.parametrize("fold_type", [FoldType.HALF_FOLD, FoldType.QUARTER_FOLD])
+    def test_letter_fold_types_emit_both_fold_lines(
+        self, classic_card: object, fold_type: FoldType
+    ) -> None:
+        """A 4-up single-sided letter sheet needs two folds (#58). The
+        legacy ``half_fold`` spelling gets the same marks as ``quarter_fold``."""
+        card = classic_card.model_copy(update={"fold_type": fold_type})  # type: ignore[attr-defined]
+        commands = compile_card(card)
         folds = [c for c in commands if isinstance(c, DrawFoldLine)]
-        assert len(folds) == 1
-        assert folds[0].start.y == folds[0].end.y, "half-fold line should be horizontal"
+        assert len(folds) == 2
+        orientations = {
+            "horizontal" if f.start.y == f.end.y else "vertical" for f in folds
+        }
+        assert orientations == {"horizontal", "vertical"}
 
     def test_assert_balanced_passes_on_compiled_output(self, classic_card: object) -> None:
         commands = compile_card(classic_card)  # type: ignore[arg-type]
@@ -275,6 +284,11 @@ def _single_panel_card(
     )
 
 
+# Hand-placed fixture panels test the bleed-edge maths on arbitrary
+# coordinates, so they opt out of the letter imposition (#58).
+_NO_IMPOSE = CompileContext(impose=False)
+
+
 def _bg_rect(commands: list[object]) -> RectGeom:
     """Locate the (single) panel-background DrawShape's RectGeom."""
     rects = [
@@ -296,7 +310,7 @@ class TestBleedExtension:
     def test_panel_touching_all_four_edges_extends_on_all_four(self) -> None:
         # A full-page panel at (0, 0, 8.5, 11) touches every page edge.
         card = _single_panel_card(x=0, y=0, width=8.5, height=11.0)
-        commands = compile_card(card)
+        commands = compile_card(card, _NO_IMPOSE)
         rect = _bg_rect(commands)
         # 0.125" bleed = 9 pt extension on every side.
         assert rect.x == -9.0
@@ -308,7 +322,7 @@ class TestBleedExtension:
         # Front panel of a half-fold: x=4.25, y=0 → touches right + bottom
         # but not left or top. Use a smaller height to drop the top touch.
         card = _single_panel_card(x=4.25, y=2.0, width=4.25, height=4.0)
-        commands = compile_card(card)
+        commands = compile_card(card, _NO_IMPOSE)
         rect = _bg_rect(commands)
         # x unchanged (left does NOT touch trim), width grows by 9 pt.
         assert rect.x == 4.25 * 72  # 306
@@ -321,7 +335,7 @@ class TestBleedExtension:
         card = _single_panel_card(
             x=0, y=0, width=8.5, height=11.0, card_bleed=0.0, panel_bleed=None
         )
-        rect = _bg_rect(compile_card(card))
+        rect = _bg_rect(compile_card(card, _NO_IMPOSE))
         assert rect.x == 0.0 and rect.y == 0.0
         assert rect.width == 612.0 and rect.height == 792.0
 
@@ -330,7 +344,7 @@ class TestBleedExtension:
         card = _single_panel_card(
             x=0, y=0, width=8.5, height=11.0, card_bleed=0.125, panel_bleed=0.0
         )
-        rect = _bg_rect(compile_card(card))
+        rect = _bg_rect(compile_card(card, _NO_IMPOSE))
         # No extension despite card-level default.
         assert rect.x == 0.0 and rect.y == 0.0
         assert rect.width == 612.0 and rect.height == 792.0
@@ -339,7 +353,7 @@ class TestBleedExtension:
         card = _single_panel_card(
             x=0, y=0, width=8.5, height=11.0, card_bleed=0.125, panel_bleed=0.25
         )
-        rect = _bg_rect(compile_card(card))
+        rect = _bg_rect(compile_card(card, _NO_IMPOSE))
         # 0.25" = 18 pt extension on every side.
         assert rect.x == -18.0 and rect.y == -18.0
         assert rect.width == 612.0 + 36.0
@@ -352,7 +366,7 @@ class TestBleedExtension:
         # the BeginGroup extends rightward (+9 width) and downward (-9 y,
         # +9 height).
         card = _single_panel_card(x=0, y=5.5, width=4.25, height=5.5, rotation=180.0)
-        rect = _bg_rect(compile_card(card))
+        rect = _bg_rect(compile_card(card, _NO_IMPOSE))
         # x stays 0 (local left edge does NOT touch); width grows by 9.
         assert rect.x == 0.0
         assert rect.width == 4.25 * 72 + 9.0  # 315
@@ -364,7 +378,7 @@ class TestBleedExtension:
     def test_unsupported_rotation_with_bleed_fails_loudly(self) -> None:
         card = _single_panel_card(x=0, y=0, width=8.5, height=11.0, rotation=90.0)
         with pytest.raises(UnsupportedFeatureError, match="rotation"):
-            compile_card(card)
+            compile_card(card, _NO_IMPOSE)
 
 
 class TestBeginPageBleedFields:

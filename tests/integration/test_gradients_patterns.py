@@ -24,7 +24,7 @@ import pikepdf
 import pytest
 from PIL import Image
 
-from holiday_card.core.compiler import compile_card
+from holiday_card.core.compiler import CompileContext, compile_card
 from holiday_card.core.models import (
     Card,
     ColorStop,
@@ -174,6 +174,11 @@ class TestPDFGradients:
             )
 
 
+# Pixel tests below sample at the panel's hand-placed coordinates, so they
+# opt out of the letter imposition (#58).
+_NO_IMPOSE = CompileContext(impose=False)
+
+
 class TestPNGGradients:
     """PNG fills composite through a shape mask; sample pixels to verify."""
 
@@ -181,7 +186,7 @@ class TestPNGGradients:
         self, linear_card: Card, tmp_path: Path,
     ) -> None:
         out = tmp_path / "linear.png"
-        PNGRenderer(dpi=72).render(compile_card(linear_card), out)
+        PNGRenderer(dpi=72).render(compile_card(linear_card, _NO_IMPOSE), out)
         with Image.open(out) as img:
             # Shape spans IR (0.5, 0.5) - (3.5, 4.5) at panel-relative inches.
             # Vertical gradient (angle=90) from red at bottom to blue at top.
@@ -205,7 +210,7 @@ class TestPNGGradients:
         self, radial_card: Card, tmp_path: Path,
     ) -> None:
         out = tmp_path / "radial.png"
-        PNGRenderer(dpi=72).render(compile_card(radial_card), out)
+        PNGRenderer(dpi=72).render(compile_card(radial_card, _NO_IMPOSE), out)
         with Image.open(out) as img:
             # Gradient center at panel-rel (2.0, 2.5) → IR (144, 180) pts.
             bleed_pt = 9
@@ -225,7 +230,7 @@ class TestPNGGradients:
         self, pattern_card: Card, tmp_path: Path,
     ) -> None:
         out = tmp_path / "pattern.png"
-        PNGRenderer(dpi=72).render(compile_card(pattern_card), out)
+        PNGRenderer(dpi=72).render(compile_card(pattern_card, _NO_IMPOSE), out)
         with Image.open(out) as img:
             # Sample two pixels within the shape's height, 18 pixels
             # apart vertically — should span one stripe period (0.25"

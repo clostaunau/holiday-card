@@ -828,3 +828,60 @@ class TestPipelineParity:
         )
         assert result.exit_code == 0, result.output
         assert "  Inside: Markdown (2 paragraphs)" in result.output
+
+
+class TestFoldTypeAlias:
+    """``half_fold`` is the legacy spelling of the 4-up quarter fold (#58).
+
+    Shipped templates say ``quarter_fold``; filtering by either spelling
+    must list the same templates.
+    """
+
+    def _ids(self, runner: CliRunner, fold_type: str) -> list[str]:
+        result = runner.invoke(
+            app, ["templates", "--fold-type", fold_type, "--format", "json"]
+        )
+        assert result.exit_code == 0, result.output
+        return sorted(t["id"] for t in json.loads(result.output)["templates"])
+
+    def test_half_fold_and_quarter_fold_list_the_same_templates(
+        self, runner: CliRunner
+    ) -> None:
+        quarter = self._ids(runner, "quarter_fold")
+        assert len(quarter) == 21
+        assert self._ids(runner, "half_fold") == quarter
+
+    def test_tri_fold_lists_nothing(self, runner: CliRunner) -> None:
+        result = runner.invoke(app, ["templates", "--fold-type", "tri_fold"])
+        assert result.exit_code == 0
+        assert "No templates found." in result.output
+
+
+class TestInitScaffold:
+    """``init`` scaffolds a quarter-fold template with no panel coordinates (#58)."""
+
+    def test_scaffold_has_no_panel_coordinates_and_defaults_to_quarter_fold(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        import yaml
+
+        result = runner.invoke(app, ["init", "my-card", "--output", str(tmp_path)])
+        assert result.exit_code == 0, result.output
+        data = yaml.safe_load((tmp_path / "my-card.yaml").read_text())
+        assert data["fold_type"] == "quarter_fold"
+        for panel in data["panels"]:
+            assert not {"x", "y", "rotation"} & set(panel), panel["id"]
+
+    def test_scaffold_loads_and_imposes(self, runner: CliRunner, tmp_path: Path) -> None:
+        from holiday_card.core.imposition import panel_placements
+        from holiday_card.core.models import Card, PanelPosition
+        from holiday_card.core.templates import load_template_from_file
+
+        result = runner.invoke(app, ["init", "my-card", "--output", str(tmp_path)])
+        assert result.exit_code == 0, result.output
+        template = load_template_from_file(tmp_path / "my-card.yaml")
+        card = Card(
+            name="c", template_id=template.id, fold_type=template.fold_type,
+            panels=template.panels,
+        )
+        assert panel_placements(card)[PanelPosition.INSIDE_LEFT].quadrant == "TR"

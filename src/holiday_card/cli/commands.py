@@ -144,6 +144,11 @@ def _fail(message: str) -> NoReturn:
     raise typer.Exit(2)
 
 
+def _canonical_fold_type(value: str) -> str:
+    # ``half_fold`` is the legacy spelling of the 4-up quarter fold (#58).
+    return "quarter_fold" if value == "half_fold" else value
+
+
 @app.command()
 def templates(
     occasion: str | None = typer.Option(
@@ -168,7 +173,10 @@ def templates(
 
         # Filter by fold type if specified
         if fold_type:
-            templates_list = [t for t in templates_list if t["fold_type"] == fold_type]
+            wanted = _canonical_fold_type(fold_type)
+            templates_list = [
+                t for t in templates_list if _canonical_fold_type(t["fold_type"]) == wanted
+            ]
 
         if not templates_list:
             typer.echo("No templates found.")
@@ -604,7 +612,7 @@ def init(
         "generic", "--occasion", "-o", help="Occasion type: christmas, hanukkah, birthday, generic"
     ),
     fold_type: str = typer.Option(
-        "half_fold", "--fold-type", "-f", help="Fold type: half_fold, quarter_fold, tri_fold"
+        "quarter_fold", "--fold-type", "-f", help="Fold type: quarter_fold (half_fold is an alias), tri_fold"
     ),
     output_dir: Path | None = typer.Option(
         None, "--output", help="Output directory for template file"
@@ -628,7 +636,8 @@ def init(
     # Create directory if needed
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Generate template content
+    # Generate template content. Panel x/y/rotation are computed from the
+    # fold type by the compiler (D6), so the scaffold leaves them out.
     template_data = {
         "id": name,
         "name": name.replace("-", " ").title(),
@@ -639,8 +648,6 @@ def init(
             {
                 "id": "front",
                 "position": "front",
-                "x": 4.25,
-                "y": 0,
                 "width": 4.25,
                 "height": 5.5,
                 "background_color": {"r": 0.9, "g": 0.9, "b": 0.9},
@@ -660,24 +667,18 @@ def init(
             {
                 "id": "back",
                 "position": "back",
-                "x": 0,
-                "y": 0,
                 "width": 4.25,
                 "height": 5.5,
             },
             {
                 "id": "inside_left",
                 "position": "inside_left",
-                "x": 0,
-                "y": 5.5,
                 "width": 4.25,
                 "height": 5.5,
             },
             {
                 "id": "inside_right",
                 "position": "inside_right",
-                "x": 4.25,
-                "y": 5.5,
                 "width": 4.25,
                 "height": 5.5,
                 "text_elements": [

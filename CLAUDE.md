@@ -32,7 +32,7 @@ holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," -
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 1140 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 1201 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -44,7 +44,8 @@ The Wave 2 refactor (PRs #4-#10) replaced a 1063-LOC monolithic
    `Template`, `Panel`, shapes, text, image, etc. Knows nothing about
    points, ReportLab, or rendering order.
 2. **Compiler layer** — `core/compiler.py`. Pure function
-   `compile_card(card) -> list[RenderCommand]`. Owns z-sort, decorative
+   `compile_card(card) -> list[RenderCommand]`. Owns letter imposition
+   (D6, `core/imposition.py`), z-sort, decorative
    expansion, text-overflow strategy, font resolution, the single
    inches→points conversion. The decision layer.
 3. **Backend layer** — `renderers/{reportlab,svg,png}_backend.py`. Each
@@ -89,6 +90,8 @@ src/holiday_card/
     markdown.py         # Tiny Markdown subset for --inside-message-md
     letter.py           # LetterContent model for --salutation/--signoff/--signature/--ps
     card_request.py     # CardRequest + build_card / plan_output: the ONE owner of CLI precedence (D15)
+    imposition.py       # letter_slot / impose_letter / panel_placements: where panels land on the sheet (D6, #58)
+    errors.py           # UnsupportedFeatureError (re-exported by compiler.py)
     color_management.py # sRGB→CMYK conversion + ICC profile path resolution
     data_paths.py       # data_path(kind): the ONE resolver for bundled data (+ env overrides)
     ai_rails.py         # L3 hard category rails (occasion + prompt blocklists)
@@ -138,6 +141,8 @@ tests/
                         # L3 AI imagery: test_ai_rails, test_ai_provenance, test_ai_assets
                         # Loader: test_templates_loading (extra="forbid", fail-loud keys)
                         # CLI seam: test_card_request (precedence rules 1-18, #78)
+                        # Imposition: test_imposition (slot table, paper-fold oracle,
+                        #   panel_placements, stale-coordinate loader check, #58)
     __snapshots__/      # JSON snapshots of compile_card() output per template (16 files)
   integration/          # test_full_generation, test_svg_backend, test_png_backend,
                         #   test_per_panel_output, test_voice_flag, test_md_inside,
@@ -167,7 +172,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 1140 tests pass
+uv run pytest                            # All 1201 tests pass
 ```
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit
@@ -309,6 +314,42 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Recent changes
 
+- **2026-09-29 — Letter imposition is computed from the fold type; inside
+  panels land on the correct pages (expert-panel §P4 / D6, issue #58)**:
+  Every shipped template placed `inside_left` top-left and `inside_right`
+  top-right of the sheet. After the two folds the top-right quadrant is the
+  back of the cover leaf, i.e. the *left* inside page, so every printed
+  card had its inside pages swapped (christmas-modern also printed its back
+  cover and inside-right upside down). New `core/imposition.py`:
+  `letter_slot(fold_type, position) -> PanelSlot` (front→BR, back→BL,
+  inside_left→**TR** r180, inside_right→**TL** r180), `impose_letter(panels,
+  fold_type)` (model_copy of x/y/rotation) and the public
+  `panel_placements(card) -> dict[PanelPosition, PanelPlacement]` (trim-
+  relative rects in points; #68 crops with it). `tri_fold` and `center`
+  raise `UnsupportedFeatureError`, which moved to `core/errors.py` (the
+  compiler re-exports it). `CompileContext.impose: bool = True`;
+  `compile_card` runs `impose_letter` before the bleed-edge pass, and
+  `per_panel.build_per_panel_context` sets `impose=False`, so per-panel /
+  MOO output is unchanged. **Tests that hand-place a panel must pass
+  `CompileContext(impose=False)`**; otherwise a `front` panel lands in BR.
+  `half_fold` is now a documented legacy alias of the 4-up `quarter_fold`:
+  both emit **two** fold marks and `templates --fold-type half_fold` lists
+  the same 21 templates as `quarter_fold`. Panel coordinates are derived:
+  `Panel.x`/`y` default to 0.0, all 210 panel-level `x`/`y`/`rotation`
+  lines were deleted from the 21 templates (all now say `quarter_fold`),
+  and the `init` scaffold defaults to `quarter_fold` with no panel
+  coordinates. A YAML that still sets them and disagrees with the computed
+  slot raises `TemplateLoadError` naming the panel, both values and "delete
+  x/y/rotation; imposition is computed from fold_type"; matching values are
+  accepted. All 16 compile snapshots and all 21 visual baselines were
+  regenerated and eyeballed (inside message now in the top half, upside
+  down, on the side its panel maps to). Guarded by
+  `tests/unit/test_imposition.py` (parametrized slot table, a paper-fold
+  simulator as an independent oracle, placements == compiled background
+  rects, loader checks, every shipped template), the two PNG pixel tests in
+  `test_png_backend.py` (quadrant colours + a corner marker proving the
+  180° rotation) and the fold-mark tests in `test_compiler.py` /
+  `test_per_panel_output.py`. Letter bleed / MediaBox stays with #59.
 - **2026-09-28 — `CardRequest` + `build_card` / `plan_output`: one pipeline
   behind `create`, `preview` and `--debug-emit-ir` (expert-panel §P14 /
   D15, issue #78)**: `create()` was a 437-line Typer function that owned

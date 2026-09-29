@@ -1,19 +1,17 @@
 # Birthday Balloons Card Template
-# Half-fold card with a hand-drawn cluster of balloons + confetti.
+# Quarter-fold card with a hand-drawn cluster of balloons + confetti.
 
 id: "birthday-balloons"
 name: "Birthday Balloons"
 occasion: "birthday"
-fold_type: "half_fold"
+fold_type: "quarter_fold"
 default_theme_id: "birthday-pastel"
 description: "Fun birthday card with a colorful balloon cluster"
 
 panels:
-  # Front panel (bottom right when unfolded)
+  # Front panel (bottom right of the sheet; placement is computed from fold_type)
   - id: "front"
     position: "front"
-    x: 4.25
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -278,8 +276,6 @@ panels:
   # Back panel
   - id: "back"
     position: "back"
-    x: 0
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -290,11 +286,8 @@ panels:
   # Inside left panel
   - id: "inside_left"
     position: "inside_left"
-    x: 0
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180  # half-fold imposition
     background_color:
       r: 1.0
       g: 1.0
@@ -303,11 +296,8 @@ panels:
   # Inside right panel
   - id: "inside_right"
     position: "inside_right"
-    x: 4.25
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180  # half-fold imposition
     background_color:
       r: 1.0
       g: 1.0

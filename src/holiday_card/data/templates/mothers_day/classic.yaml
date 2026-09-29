@@ -1,10 +1,10 @@
-# Mother's Day card — soft pink, half-fold
+# Mother's Day card — soft pink, quarter-fold
 # Front: greeting with rose accents. Inside-right: handwritten-style message.
 
 id: "mothers-day"
 name: "Mother's Day"
 occasion: "mothers_day"
-fold_type: "half_fold"
+fold_type: "quarter_fold"
 default_theme_id: "generic-celebration"
 description: "Soft floral Mother's Day card in deep rose on pink"
 
@@ -12,8 +12,6 @@ panels:
   # Front panel (right half, bottom — visible when folded)
   - id: "front"
     position: "front"
-    x: 4.25
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -84,8 +82,6 @@ panels:
   # Back panel (left half, bottom — typically blank)
   - id: "back"
     position: "back"
-    x: 0
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -96,11 +92,8 @@ panels:
   # Inside-left panel (left half, top — blank by default)
   - id: "inside_left"
     position: "inside_left"
-    x: 0
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180  # half-fold imposition
     background_color:
       r: 1.0
       g: 0.98
@@ -109,11 +102,8 @@ panels:
   # Inside-right panel (right half, top — where the personal message goes)
   - id: "inside_right"
     position: "inside_right"
-    x: 4.25
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180  # half-fold imposition
     background_color:
       r: 1.0
       g: 0.98

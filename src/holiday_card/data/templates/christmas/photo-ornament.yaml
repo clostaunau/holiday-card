@@ -4,7 +4,7 @@
 id: christmas-photo-ornament
 name: "Photo Ornament"
 occasion: christmas
-fold_type: half_fold
+fold_type: "quarter_fold"
 description: "Personal photo card with circular ornament frame clipping mask"
 default_theme_id: christmas-red-green
 
@@ -12,8 +12,6 @@ panels:
   # Front panel - Photo as ornament design
   - id: front
     position: front
-    x: 4.25
-    y: 0
     width: 4.25
     height: 5.5
     background_color:
@@ -121,11 +119,8 @@ panels:
   # Inside left - Photo collage with star clipping
   - id: inside_left
     position: inside_left
-    x: 0.0
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180
     background_color:
       r: 0.98
       g: 0.98
@@ -179,11 +174,8 @@ panels:
   # Inside right - Multiple circular photo clips
   - id: inside_right
     position: inside_right
-    x: 4.25
-    y: 5.5
     width: 4.25
     height: 5.5
-    rotation: 180
     background_color:
       r: 0.98
       g: 0.98
@@ -273,8 +265,6 @@ panels:
   # Back panel
   - id: back
     position: back
-    x: 0.0
-    y: 0.0
     width: 4.25
     height: 5.5
     background_color:

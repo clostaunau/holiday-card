@@ -14,7 +14,7 @@
   {
     "cmd": "set_metadata",
     "key": "fold_type",
-    "value": "half_fold"
+    "value": "quarter_fold"
   },
   {
     "cmd": "begin_group",
@@ -115,42 +115,6 @@
       "rotate_deg": 180.0,
       "scale_x": 1.0,
       "scale_y": 1.0,
-      "translate_x": 153.0,
-      "translate_y": 594.0
-    }
-  },
-  {
-    "cmd": "draw_shape",
-    "fill": {
-      "color": {
-        "a": 1.0,
-        "b": 0.94,
-        "g": 0.96,
-        "r": 0.98
-      },
-      "kind": "solid"
-    },
-    "geometry": {
-      "corner_radius": 0.0,
-      "height": 405.0,
-      "kind": "rect",
-      "width": 315.0,
-      "x": 0.0,
-      "y": 387.0
-    },
-    "opacity": 1.0,
-    "stroke": null
-  },
-  {
-    "cmd": "end_group"
-  },
-  {
-    "cmd": "begin_group",
-    "opacity": 1.0,
-    "transform": {
-      "rotate_deg": 180.0,
-      "scale_x": 1.0,
-      "scale_y": 1.0,
       "translate_x": 459.0,
       "translate_y": 594.0
     }
@@ -181,6 +145,42 @@
     "cmd": "end_group"
   },
   {
+    "cmd": "begin_group",
+    "opacity": 1.0,
+    "transform": {
+      "rotate_deg": 180.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "translate_x": 153.0,
+      "translate_y": 594.0
+    }
+  },
+  {
+    "cmd": "draw_shape",
+    "fill": {
+      "color": {
+        "a": 1.0,
+        "b": 0.94,
+        "g": 0.96,
+        "r": 0.98
+      },
+      "kind": "solid"
+    },
+    "geometry": {
+      "corner_radius": 0.0,
+      "height": 405.0,
+      "kind": "rect",
+      "width": 315.0,
+      "x": 0.0,
+      "y": 387.0
+    },
+    "opacity": 1.0,
+    "stroke": null
+  },
+  {
+    "cmd": "end_group"
+  },
+  {
     "cmd": "draw_fold_line",
     "end": {
       "x": 612.0,
@@ -189,6 +189,18 @@
     "start": {
       "x": 0.0,
       "y": 396.0
+    },
+    "style": "dashed"
+  },
+  {
+    "cmd": "draw_fold_line",
+    "end": {
+      "x": 306.0,
+      "y": 792.0
+    },
+    "start": {
+      "x": 306.0,
+      "y": 0.0
     },
     "style": "dashed"
   },
