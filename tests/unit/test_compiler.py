@@ -529,3 +529,169 @@ class TestFailLoud:
     def test_known_fonts_compile(self) -> None:
         for font in ("Helvetica", "Times-Roman", "Caveat", "Lato-Bold"):
             compile_card(_text_card(_text(id="t", content="Hi", font_family=font)))
+
+
+# ---------------------------------------------------------------------------
+# TextElement font_style + rotation are honoured, not dropped (#63)
+# ---------------------------------------------------------------------------
+
+
+def _draws(commands: list[object]) -> list[DrawText]:
+    return [c for c in commands if isinstance(c, DrawText)]
+
+
+class TestTextFontStyle:
+    @pytest.mark.parametrize(
+        ("family", "style", "expected"),
+        [
+            ("Cormorant", "italic", "Cormorant-Italic"),
+            ("Cormorant", "bold", "Cormorant-Bold"),
+            ("Cormorant", "bold_italic", "Cormorant-BoldItalic"),
+            ("PlayfairDisplay", "italic", "PlayfairDisplay-Italic"),
+            ("PlayfairDisplay", "bold", "PlayfairDisplay-Bold"),
+            ("PlayfairDisplay", "bold_italic", "PlayfairDisplay-BoldItalic"),
+            ("Helvetica", "bold", "Helvetica-Bold"),
+            ("Cormorant", "normal", "Cormorant"),
+        ],
+    )
+    def test_font_style_resolves_to_registered_variant(
+        self, family: str, style: str, expected: str
+    ) -> None:
+        text = _text(id="t", content="Seasons greetings", font_family=family, font_style=style)
+        draws = _draws(compile_card(_text_card(text)))
+        assert draws
+        assert {d.run.font_id for d in draws} == {expected}
+
+    @pytest.mark.parametrize("family", ["Inter", "Caveat", "Comfortaa"])
+    def test_family_without_variant_degrades_to_regular(self, family: str) -> None:
+        text = _text(id="t", content="Hi", font_family=family, font_style="bold")
+        draws = _draws(compile_card(_text_card(text)))
+        assert {d.run.font_id for d in draws} == {family}
+
+    def test_lato_italic_degrades_to_regular(self) -> None:
+        text = _text(id="t", content="Hi", font_family="Lato", font_style="italic")
+        assert {d.run.font_id for d in _draws(compile_card(_text_card(text)))} == {"Lato"}
+
+    def test_wrapping_measures_the_resolved_font(self) -> None:
+        # Bold Helvetica is wider than regular, so at a width tuned between the two
+        # measured widths the bold copy wraps and the regular copy does not.
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+
+        content = "Wishing you joy and peace"
+        regular_w = stringWidth(content, "Helvetica", 12)
+        bold_w = stringWidth(content, "Helvetica-Bold", 12)
+        assert bold_w > regular_w
+        width_in = (regular_w + bold_w) / 2 / 72
+
+        def lines(style: str) -> int:
+            text = _text(
+                id="t", content=content, font_family="Helvetica", font_size=12,
+                font_style=style, width=width_in, overflow_strategy="wrap",
+            )
+            return len(_draws(compile_card(_text_card(text))))
+
+        assert lines("normal") == 1
+        assert lines("bold") > 1
+
+    def test_rich_content_ignores_font_style(self) -> None:
+        from holiday_card.core.markdown import parse_markdown
+
+        text = _text(
+            id="t", content="", font_family="Cormorant", font_style="bold",
+            width=3.0, rich_content=parse_markdown("plain *it*"),
+        )
+        ids = [d.run.font_id for d in _draws(compile_card(_text_card(text)))]
+        assert ids == ["Cormorant", "Cormorant-Italic"]
+
+
+def _styled_text_elements() -> list[tuple[str, str]]:
+    from holiday_card.core.templates import discover_templates, load_template
+
+    out = []
+    for info in sorted(discover_templates(), key=lambda i: i["id"]):
+        template = load_template(info["id"])
+        for panel in template.panels:
+            # Keyed by index: elements without an authored id get a random uuid.
+            for index, element in enumerate(panel.text_elements):
+                if element.font_style != "normal":
+                    out.append((template.id, f"{panel.position.value}/{index}"))
+    return out
+
+
+class TestShippedTemplateFontStyles:
+    def test_shipped_templates_ask_for_styled_text(self) -> None:
+        assert len(_styled_text_elements()) >= 30
+
+    @pytest.mark.parametrize(("template_id", "where"), _styled_text_elements())
+    def test_styled_element_compiles_to_resolved_font_id(
+        self, template_id: str, where: str
+    ) -> None:
+        from holiday_card.core.markdown import font_id_for_run
+
+        card = CardGenerator().create_card(template_id=template_id)
+        position, index = where.split("/", 1)
+        panel = next(p for p in card.panels if p.position.value == position)
+        element = panel.text_elements[int(index)]
+        if not element.content:
+            element = element.model_copy(update={"content": "Sample"})
+        # Compile a card carrying only the element under test, so every
+        # DrawText belongs to it.
+        solo = card.model_copy(update={"panels": [
+            panel.model_copy(update={
+                "text_elements": [element], "shape_elements": [], "image_elements": [],
+            })
+        ]})
+        draws = _draws(compile_card(solo))
+        assert draws
+        expected = font_id_for_run(
+            element.font_family,
+            bold=element.font_style in ("bold", "bold_italic"),
+            italic=element.font_style in ("italic", "bold_italic"),
+        )
+        assert {d.run.font_id for d in draws} == {expected}
+
+
+class TestTextRotation:
+    _CTX = CompileContext(impose=False)
+
+    def test_rotation_wraps_drawtext_in_group_pivoted_at_anchor(self) -> None:
+        text = _text(id="t", content="Line one\nLine two", rotation=90)
+        commands = compile_card(_text_card(text), self._CTX)
+        assert_balanced(commands)
+        start = next(
+            i for i, c in enumerate(commands)
+            if isinstance(c, BeginGroup) and c.transform is not None
+            and c.transform.rotate_deg == 90
+        )
+        group = commands[start]
+        assert isinstance(group, BeginGroup) and group.transform is not None
+        # Panel at x=4.25", y=0; text anchor at (0.5", 2.0") within it.
+        assert group.transform.translate_x == pytest.approx((4.25 + 0.5) * 72)
+        assert group.transform.translate_y == pytest.approx(2.0 * 72)
+        assert [type(c) for c in commands[start + 1:start + 4]] == [DrawText, DrawText, EndGroup]
+
+    def test_zero_rotation_emits_no_text_group(self) -> None:
+        text = _text(id="t", content="Hi")
+        commands = compile_card(_text_card(text), self._CTX)
+        rotating = [
+            c for c in commands
+            if isinstance(c, BeginGroup) and c.transform is not None
+            and c.transform.rotate_deg != 0
+        ]
+        assert rotating == []
+
+    def test_rotation_applies_to_letter_content(self) -> None:
+        from holiday_card.core.letter import LetterContent
+
+        text = _text(
+            id="t", content="", rotation=-15,
+            letter_content=LetterContent(salutation="Dear M,", body="Hello"),
+        )
+        commands = compile_card(_text_card(text), self._CTX)
+        assert_balanced(commands)
+        idx = next(
+            i for i, c in enumerate(commands)
+            if isinstance(c, BeginGroup) and c.transform is not None
+            and c.transform.rotate_deg == -15
+        )
+        assert [type(c) for c in commands[idx + 1:idx + 4]] == [DrawText, DrawText, EndGroup]

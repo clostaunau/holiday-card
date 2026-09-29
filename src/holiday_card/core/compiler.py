@@ -49,6 +49,7 @@ from holiday_card.core.models import (
     Color,
     EllipseClipMask,
     FoldType,
+    FontStyle,
     ImageElement,
     Line,
     Panel,
@@ -1032,6 +1033,41 @@ def _compile_text(
     panel: Panel,
     measurer: _reportlab_canvas.Canvas,
 ) -> list[RenderCommand]:
+    """Compile one text element, wrapping it in a rotation group if needed.
+
+    A non-zero ``text.rotation`` wraps the element's ``DrawText``
+    commands in ``BeginGroup(Transform(...))`` / ``EndGroup`` pivoted at
+    the text anchor ``(panel.x + text.x, panel.y + text.y)`` — the same
+    pivot-rotate idiom shapes and images use.
+    """
+    commands = _compile_text_body(text, panel, measurer)
+    if text.rotation == 0 or not commands:
+        return commands
+    pivot = Transform(
+        translate_x=inches_to_points(panel.x + text.x),
+        translate_y=inches_to_points(panel.y + text.y),
+        rotate_deg=text.rotation,
+    )
+    return [BeginGroup(transform=pivot), *commands, EndGroup()]
+
+
+def _styled_font_id(text: TextElement) -> str:
+    # Plain + letter text: font_style picks the registered variant (degrades to regular).
+    from holiday_card.core.markdown import font_id_for_run
+
+    style = text.font_style
+    return font_id_for_run(
+        text.font_family or "Helvetica",
+        bold=style in (FontStyle.BOLD, FontStyle.BOLD_ITALIC),
+        italic=style in (FontStyle.ITALIC, FontStyle.BOLD_ITALIC),
+    )
+
+
+def _compile_text_body(
+    text: TextElement,
+    panel: Panel,
+    measurer: _reportlab_canvas.Canvas,
+) -> list[RenderCommand]:
     """Run the overflow strategy and emit one ``DrawText`` per resulting line.
 
     Hard line breaks (``\\n`` in ``text.content``) split into separate
@@ -1043,11 +1079,14 @@ def _compile_text(
     When ``text.rich_content`` is set, dispatch to the dedicated rich-
     text layout pass (``--inside-message-md`` / Christmas-letter mode).
     Rich content takes priority over ``text.content`` per the model's
-    docstring contract.
+    docstring contract, and ``text.font_style`` is ignored there: the
+    per-run Markdown flags decide each run's style.
 
-    Uses ``Helvetica`` as the font_id when no custom font is registered,
-    matching the legacy renderer's default. Backends are responsible for
-    resolving the font_id to a real font.
+    ``text.font_style`` resolves the font_id via ``font_id_for_run``
+    (e.g. Cormorant + italic → ``Cormorant-Italic``); families without
+    the variant degrade to regular. Measurement and wrapping use the
+    resolved font_id, since bold text is wider. Backends are responsible
+    for resolving the font_id to a real font.
     """
     from holiday_card.core.text_utils import calculate_line_height  # local: small module
 
@@ -1060,7 +1099,7 @@ def _compile_text(
     if not text.content:
         return []  # blank-inside
 
-    font_id = text.font_family or "Helvetica"
+    font_id = _styled_font_id(text)
     color = _color_to_rgba(text.color) if text.color else RGBA(r=0, g=0, b=0)
     align = text.alignment.value  # already "left"/"center"/"right" by enum
 
@@ -1309,15 +1348,14 @@ def _compile_letter_content(
     no vertical space consumed) so the layout naturally collapses
     around whichever parts the user supplied.
 
-    Font handling: every part uses ``text.font_family`` and
+    Font handling: every part uses ``text.font_family`` in
+    ``text.font_style`` (resolved via ``font_id_for_run``) and
     ``text.font_size`` *except*:
 
-    * The signature line uses
-      ``letter.signature_font_family or text.font_family`` — the
-      override exists for the handwritten-feel convention
-      (``Caveat`` is the curated choice).
-    * The P.S. renders at ``font_size * 0.85`` (rounded) in
-      ``text.font_family``.
+    * The signature line uses ``letter.signature_font_family`` verbatim
+      when set — the override exists for the handwritten-feel
+      convention (``Caveat`` is the curated choice).
+    * The P.S. renders at ``font_size * 0.85`` (rounded).
     """
     from holiday_card.core.text_utils import calculate_line_height, wrap_text
 
@@ -1325,7 +1363,7 @@ def _compile_letter_content(
     letter = text.letter_content
     color = _color_to_rgba(text.color) if text.color else RGBA(r=0, g=0, b=0)
     align = text.alignment.value
-    font_family = text.font_family or "Helvetica"
+    font_family = _styled_font_id(text)
     body_size = text.font_size
     body_line_height = calculate_line_height(body_size)
 

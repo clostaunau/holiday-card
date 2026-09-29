@@ -194,3 +194,37 @@ class TestCompileLetterContent:
         )
         draws = _draw_texts(compile_card(_make_card(text)))
         assert [d.run.text for d in draws] == ["para one", "para two"]
+
+
+class TestLetterFontStyle:
+    def test_italic_base_style_propagates_to_body_parts(self) -> None:
+        text = TextElement(
+            content="",
+            x=0.5,
+            y=5.0,
+            width=3.0,
+            font_family="Cormorant",
+            font_style="italic",
+            letter_content=LetterContent(
+                salutation="Dear M,", body="Hello", signoff="Love,",
+                signature="C", postscript="PS hi",
+            ),
+        )
+        ids = [d.run.font_id for d in _draw_texts(compile_card(_make_card(text)))]
+        assert ids == ["Cormorant-Italic"] * 5
+
+    def test_signature_font_override_is_kept_verbatim(self) -> None:
+        text = TextElement(
+            content="",
+            x=0.5,
+            y=5.0,
+            font_family="Cormorant",
+            font_style="bold",
+            letter_content=LetterContent(
+                body="Hello", signature="C", signature_font_family="Caveat",
+            ),
+        )
+        draws = _draw_texts(compile_card(_make_card(text)))
+        assert {d.run.text: d.run.font_id for d in draws} == {
+            "Hello": "Cormorant-Bold", "C": "Caveat",
+        }

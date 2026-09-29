@@ -32,7 +32,7 @@ holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," -
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 1208 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 1261 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -172,7 +172,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 1208 tests pass
+uv run pytest                            # All 1261 tests pass
 ```
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit
@@ -226,7 +226,9 @@ gradients, radial gradients, and patterns (stripes / dots / grid /
 checkerboard)**, text with left/center/right alignment + Markdown
 rich text (paragraphs + **bold** + *italic* + ***bold-italic***)
 + structured letter parts
-(salutation / signoff / signature / P.S.), **photo images** (PNG/JPEG
+(salutation / signoff / signature / P.S.), text **`font_style`**
+(bold / italic / bold_italic, resolved to the registered variant) and
+text **rotation**, **photo images** (PNG/JPEG
 only, content-probed; template `source_path` is relative to the YAML
 file — absolute, `..` and symlink escapes are load errors, D5) with
 circle / rectangle / ellipse / star clip masks, fold lines, identity
@@ -316,6 +318,29 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Recent changes
 
+- **2026-09-29 — Text `font_style` and `rotation` are honoured (expert-panel
+  §P3 / D4, issue #63)**: after #56 the loader passed `font_style` and
+  `rotation` through, but the compiler still used `text.font_family`
+  verbatim and never read `text.rotation`, so the 33 `font_style` uses
+  across the shipped templates printed regular. `_compile_text` now resolves the font with
+  `_styled_font_id(text)`, which calls `markdown.font_id_for_run` (Cormorant +
+  italic → `Cormorant-Italic`; Inter/Caveat/Comfortaa/Lato-italic degrade
+  to regular, the documented limitation). Wrapping and shrink-to-fit measure
+  the **resolved** font, so the mothers-day greeting (Playfair italic, 30 pt)
+  no longer shrinks to 29 pt. The letter path uses the element's style as
+  the base for every part; a `--signature-font` override is used verbatim.
+  Rich text (`--inside-message-md`) ignores `font_style`, because the
+  Markdown run flags decide each run's style. It does not raise, since the CLI sets
+  `rich_content` on template elements that carry a style. A non-zero text
+  `rotation` wraps the element's `DrawText`s (plain, letter or rich) in
+  `BeginGroup(Transform(pivot = text anchor, rotate_deg))` / `EndGroup`.
+  `_compile_text` is now a thin wrapper over `_compile_text_body`. 10
+  compile snapshots changed in `font_id` only, plus that one `size_pt`.
+  13 visual baselines were regenerated and eyeballed: the headings are now
+  visibly bold or italic. Guarded by `TestTextFontStyle`,
+  `TestShippedTemplateFontStyles` (every styled element in all 21
+  templates), `TestTextRotation` in `test_compiler.py` and
+  `TestLetterFontStyle` in `test_compiler_letter.py`.
 - **2026-09-29 — The `letter` target is a true 8.5×11 page with no bleed
   (expert-panel §P4 / D7, issue #59)**: `holiday-card create` wrote a
   630×810 pt page (8.75×11.25") because `PageGeometry.us_letter()`
