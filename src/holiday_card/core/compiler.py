@@ -38,6 +38,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas as _reportlab_canvas
 
 from holiday_card.core.errors import UnsupportedFeatureError
+from holiday_card.core.flatten import Flattener, flatten_transparency
 from holiday_card.core.images import ImageSourceError, probe_image
 from holiday_card.core.imposition import impose_letter
 from holiday_card.core.models import (
@@ -105,6 +106,7 @@ from holiday_card.utils.measurements import (
 __all__ = [
     "CompileContext",
     "compile_card",
+    "flatten_transparency",
     "UnknownFontError",
     "UnsupportedFeatureError",
 ]
@@ -142,6 +144,9 @@ class CompileContext:
     # Per-panel output (``per_panel.build_per_panel_context``) turns this
     # off because each panel becomes its own page.
     impose: bool = True
+    # PDF/X targets (D10, #71): resolve every alpha < 1 against a known
+    # solid backdrop and emit opaque draws, or raise.
+    flatten_transparency: bool = False
 
     @property
     def page_width_inches(self) -> float:
@@ -186,7 +191,7 @@ def compile_card(card: Card, ctx: CompileContext | None = None) -> list[RenderCo
 
     panels = impose_letter(card.panels, card.fold_type) if ctx.impose else card.panels
     for panel in panels:
-        commands.extend(_compile_panel(panel, card, geometry, measurer))
+        commands.extend(_compile_panel(panel, card, ctx, measurer))
 
     if ctx.emit_fold_lines:
         commands.extend(_emit_fold_lines(card.fold_type, ctx))
@@ -220,7 +225,7 @@ def _emit_metadata(card: Card) -> list[RenderCommand]:
 def _compile_panel(
     panel: Panel,
     card: Card,
-    geometry: PageGeometry,
+    ctx: CompileContext,
     measurer: _reportlab_canvas.Canvas,
 ) -> list[RenderCommand]:
     if panel.background_image:
@@ -230,6 +235,15 @@ def _compile_panel(
     for text in panel.text_elements:
         _check_text_fonts(text, f"{card.template_id}/{panel.position.value}/{text.id}")
 
+    # PDF/X targets resolve alpha against the backdrop drawn so far (D10).
+    flattener = Flattener() if ctx.flatten_transparency else None
+    where_panel = f"{card.template_id}/{panel.position.value}"
+
+    def emit(commands: list[RenderCommand], label: str) -> list[RenderCommand]:
+        if flattener is None:
+            return commands
+        return flattener.element(commands, where=f"{where_panel}/{label}")
+
     out: list[RenderCommand] = []
 
     # Panel rotation is around its center (matches the legacy renderer's
@@ -238,21 +252,34 @@ def _compile_panel(
     transform = _panel_transform(panel)
     out.append(BeginGroup(transform=transform))
 
-    out.extend(_emit_panel_background(panel, card, geometry))
-    out.extend(_emit_panel_border(panel))
+    out.extend(emit(_emit_panel_background(panel, card, ctx.geometry), "background"))
+    out.extend(emit(_emit_panel_border(panel), "border"))
 
     for kind, element in _flatten_and_sort(panel):
         if kind == "shape":
-            out.extend(_compile_shape(element, panel))
+            out.extend(emit(_compile_shape(element, panel), _element_label(panel, element)))
         elif kind == "text":
             assert isinstance(element, TextElement)  # narrowed via _flatten_and_sort
-            out.extend(_compile_text(element, panel, measurer))
+            out.extend(emit(_compile_text(element, panel, measurer),
+                            _element_label(panel, element)))
         elif kind == "image":
             assert isinstance(element, ImageElement)  # narrowed via _flatten_and_sort
-            out.extend(_compile_image(element, panel))
+            out.extend(emit(_compile_image(element, panel), _element_label(panel, element)))
 
     out.append(EndGroup())
     return out
+
+
+def _element_label(panel: Panel, element: object) -> str:
+    # e.g. "shape_elements[3] (star, id 'glow')": the YAML list index finds it.
+    for field_name in ("shape_elements", "text_elements", "image_elements"):
+        items = getattr(panel, field_name)
+        for index, item in enumerate(items):
+            if item is element:
+                kind = getattr(item, "type", None)
+                kind_name = getattr(kind, "value", None) or type(item).__name__
+                return f"{field_name}[{index}] ({kind_name}, id {getattr(item, 'id', '?')!r})"
+    return type(element).__name__
 
 
 def _check_text_fonts(text: TextElement, where: str) -> None:
