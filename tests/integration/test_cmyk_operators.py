@@ -8,7 +8,8 @@
 * No ``k``/``K`` operator in any shipped template's ``moo-a6`` output has
   C+M+Y+K > 3.0.
 * ``letter`` (sRGB) output is untouched: each template's page content
-  stream hashes to the golden captured before this change
+  stream (image XObject names normalised) hashes to the golden captured
+  before this change
   (``__golden__/letter_content_sha256.json``). Regenerate it only on
   purpose: ``HOLIDAY_CARD_REGEN_LETTER_CONTENT_GOLDEN=1 uv run pytest <this file>``.
 """
@@ -18,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 
 import pikepdf
@@ -228,10 +230,21 @@ def test_moo_a6_ink_never_exceeds_300(
     assert over == []
 
 
+def _stable_xobject_names(content: bytes) -> bytes:
+    # ReportLab names an image XObject after an md5 of its absolute path,
+    # which differs per checkout; number them by first appearance instead.
+    names: dict[bytes, bytes] = {}
+
+    def sub(m: re.Match[bytes]) -> bytes:
+        return names.setdefault(m.group(0), b"/FormXob.%d" % len(names))
+
+    return re.sub(rb"/FormXob\.[0-9a-f]+", sub, content)
+
+
 def _letter_content_sha256(template_id: str, tmp_path: Path) -> str:
     out = tmp_path / f"{template_id}.pdf"
     IRReportLabRenderer().render(compile_card(build_card(CardRequest(template=template_id))), out)
-    return hashlib.sha256(_content(out)).hexdigest()
+    return hashlib.sha256(_stable_xobject_names(_content(out))).hexdigest()
 
 
 def _load_golden() -> dict[str, str]:
