@@ -75,6 +75,7 @@ def build_per_panel_context(panel: Panel, target: ExportTarget) -> CompileContex
     panel's own dimensions (with the target's bleed and safe margin).
     Fold lines and letter imposition are always disabled in per-panel
     mode — each panel is a finished card, not part of a folded sheet.
+    PDF/X targets flatten transparency in the compiler (D10).
     """
     if target.scale_panels_to_fit and target.geometry is not None:
         geometry = target.geometry
@@ -87,7 +88,12 @@ def build_per_panel_context(panel: Panel, target: ExportTarget) -> CompileContex
             bleed_in=target.bleed_in,
             safe_margin_in=target.safe_margin_in,
         )
-    return CompileContext(geometry=geometry, emit_fold_lines=False, impose=False)
+    return CompileContext(
+        geometry=geometry,
+        emit_fold_lines=False,
+        impose=False,
+        flatten_transparency=target.pdfx is not None,
+    )
 
 
 def prepare_native_panel(panel: Panel) -> Panel:

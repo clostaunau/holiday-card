@@ -24,6 +24,7 @@ from pathlib import Path
 
 import pikepdf
 import pytest
+from PIL import Image
 
 from holiday_card.core.card_request import CardRequest, build_card
 from holiday_card.core.color_management import CMYKConverter
@@ -33,10 +34,12 @@ from holiday_card.core.render_ir import (
     RGBA,
     BeginPage,
     DrawFoldLine,
+    DrawImage,
     DrawShape,
     DrawText,
     EndPage,
     GradientStop,
+    ImageRef,
     LinearGradientPaint,
     PathGeom,
     PathOp,
@@ -196,6 +199,117 @@ def test_gradient_stops_use_icc(tmp_path: Path) -> None:
         assert str(shading.ColorSpace) == "/DeviceCMYK"
         c0 = [float(v) for v in shading.Function.C0]
     assert c0 == pytest.approx([1.0, 0.855, 0.0, 0.0], abs=0.02)
+
+
+# ---------------------------------------------------------------------------
+# Images and alpha in CMYK mode (#71, D10): no live transparency, no RGB
+# ---------------------------------------------------------------------------
+
+
+def _png(tmp_path: Path, rgba: tuple[int, int, int, int]) -> ImageRef:
+    path = tmp_path / "px.png"
+    Image.new("RGBA", (4, 4), rgba).save(path)
+    return ImageRef(source=str(path), rect=RectGeom(x=10, y=10, width=40, height=40),
+                    format="png", width_px=4, height_px=4)
+
+
+def _jpeg(tmp_path: Path, rgb: tuple[int, int, int] = (0, 0, 255)) -> ImageRef:
+    path = tmp_path / "px.jpg"
+    Image.new("RGB", (4, 4), rgb).save(path, quality=100)
+    return ImageRef(source=str(path), rect=RectGeom(x=10, y=10, width=40, height=40),
+                    format="jpeg", width_px=4, height_px=4)
+
+
+def _render_cmyk(commands: list[RenderCommand], tmp_path: Path) -> Path:
+    out = tmp_path / "out.pdf"
+    IRReportLabRenderer(color_space="cmyk").render(commands, out)
+    return out
+
+
+def _only_image(pdf_path: Path) -> tuple[str, bool, Image.Image]:
+    """(ColorSpace, has SMask, pixels) of the page's single image XObject."""
+    with pikepdf.open(pdf_path) as pdf:
+        images = list(pdf.pages[0].get_images().values())
+        assert len(images) == 1
+        xobj = images[0]
+        return (str(xobj.ColorSpace), "/SMask" in xobj,
+                pikepdf.PdfImage(xobj).as_pil_image().copy())
+
+
+def _has_live_alpha(pdf_path: Path) -> bool:
+    with pikepdf.open(pdf_path) as pdf:
+        states = pdf.pages[0].Resources.get("/ExtGState", {})
+        return any(float(gs.get(key, 1)) < 1 for gs in states.values()
+                   for key in ("/ca", "/CA"))
+
+
+def _cmyk_of(rgb: tuple[int, int, int]) -> tuple[int, ...]:
+    return tuple(CMYKConverter().convert_image(Image.new("RGB", (1, 1), rgb)).getpixel((0, 0)))
+
+
+class TestCmykImages:
+    def test_rgb_jpeg_is_embedded_as_device_cmyk(self, tmp_path: Path) -> None:
+        out = _render_cmyk(_page(DrawImage(image=_jpeg(tmp_path))), tmp_path)
+        colour_space, smask, _pixels = _only_image(out)
+        assert colour_space == "/DeviceCMYK"
+        assert not smask
+
+    def test_alpha_png_is_flattened_against_the_recorded_backdrop(
+        self, tmp_path: Path
+    ) -> None:
+        ref = _png(tmp_path, (0, 0, 255, 0)).model_copy(
+            update={"backdrop": RGBA(r=1, g=0, b=0)})
+        out = _render_cmyk(_page(DrawImage(image=ref)), tmp_path)
+        colour_space, smask, pixels = _only_image(out)
+        assert (colour_space, smask) == ("/DeviceCMYK", False)
+        assert pixels.getpixel((0, 0)) == pytest.approx(_cmyk_of((255, 0, 0)), abs=2)
+
+    def test_opacity_is_flattened_against_the_recorded_backdrop(
+        self, tmp_path: Path
+    ) -> None:
+        ref = _png(tmp_path, (0, 0, 0, 255)).model_copy(update={"backdrop": RGBA(r=1, g=1, b=1)})
+        out = _render_cmyk(_page(DrawImage(image=ref, opacity=0.5)), tmp_path)
+        _cs, _smask, pixels = _only_image(out)
+        assert pixels.getpixel((0, 0)) == pytest.approx(_cmyk_of((128, 128, 128)), abs=2)
+        assert not _has_live_alpha(out)
+
+    def test_alpha_png_without_a_backdrop_raises(self, tmp_path: Path) -> None:
+        with pytest.raises(NotImplementedError, match="backdrop"):
+            _render_cmyk(_page(DrawImage(image=_png(tmp_path, (0, 0, 255, 128)))), tmp_path)
+
+    def test_translucent_image_without_a_backdrop_raises(self, tmp_path: Path) -> None:
+        with pytest.raises(NotImplementedError, match="backdrop"):
+            _render_cmyk(_page(DrawImage(image=_jpeg(tmp_path), opacity=0.5)), tmp_path)
+
+    def test_srgb_mode_keeps_the_source_image_and_its_smask(self, tmp_path: Path) -> None:
+        out = tmp_path / "srgb.pdf"
+        IRReportLabRenderer().render(
+            _page(DrawImage(image=_png(tmp_path, (0, 0, 255, 128)))), out)
+        colour_space, smask, _pixels = _only_image(out)
+        assert (colour_space, smask) == ("/DeviceRGB", True)
+
+
+class TestCmykRefusesLiveAlpha:
+    """The compiler flattens for PDF/X; alpha reaching the CMYK backend is a bug."""
+
+    @pytest.mark.parametrize("command", [
+        DrawShape(geometry=RectGeom(x=10, y=10, width=20, height=20),
+                  fill=SolidPaint(color=_BLUE), opacity=0.5),
+        DrawShape(geometry=RectGeom(x=10, y=10, width=20, height=20),
+                  fill=SolidPaint(color=RGBA(r=0, g=0, b=1, a=0.5))),
+        DrawShape(geometry=RectGeom(x=10, y=10, width=20, height=20),
+                  stroke=Stroke(color=RGBA(r=0, g=0, b=1, a=0.5), width=2)),
+        DrawShape(geometry=RectGeom(x=10, y=10, width=20, height=20),
+                  fill=LinearGradientPaint(
+                      start=Point(x=10, y=10), end=Point(x=30, y=10),
+                      stops=(GradientStop(position=0, color=RGBA(r=0, g=0, b=1, a=0.5)),
+                             GradientStop(position=1, color=_BLUE)))),
+        DrawText(run=TextRun(text="x", origin=Point(x=10, y=10), font_id="Helvetica",
+                             size_pt=12, color=_BLACK), opacity=0.5),
+    ], ids=["opacity", "fill-alpha", "stroke-alpha", "gradient-stop-alpha", "text"])
+    def test_translucent_draw_raises(self, command: RenderCommand, tmp_path: Path) -> None:
+        with pytest.raises(NotImplementedError, match="flatten_transparency"):
+            _render_cmyk(_page(command), tmp_path)
 
 
 # ---------------------------------------------------------------------------

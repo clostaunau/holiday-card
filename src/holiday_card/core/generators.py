@@ -462,12 +462,17 @@ class CardGenerator:
 
         No-op for non-PDF outputs and for targets without ``pdfx``.
         Imports the post-processor lazily so the pikepdf dependency is
-        only loaded when actually needed.
+        only loaded when actually needed. The finished file is then
+        preflighted; any violation raises ``PDFXConformanceError`` (D4).
         """
         if target.pdfx is None or path.suffix.lower() != ".pdf":
             return
+        from holiday_card.renderers import pdfx_preflight
         from holiday_card.renderers.pdfx_postprocess import apply_pdfx1a
         apply_pdfx1a(path, pdfx_version=target.pdfx)
+        violations = pdfx_preflight.preflight_pdfx1a(path)
+        if violations:
+            raise pdfx_preflight.PDFXConformanceError(path, violations)
 
     def _generate_imposition(
         self,
@@ -483,7 +488,11 @@ class CardGenerator:
             raise ValueError(
                 f"target {target.name!r} has layout='imposition' but no geometry"
             )
-        ctx = CompileContext(geometry=target.geometry, emit_fold_lines=emit_fold_lines)
+        ctx = CompileContext(
+            geometry=target.geometry,
+            emit_fold_lines=emit_fold_lines,
+            flatten_transparency=target.pdfx is not None,
+        )
         commands = compile_card(card, ctx)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         renderer.render(commands, output_path)

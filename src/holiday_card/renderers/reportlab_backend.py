@@ -27,8 +27,10 @@ from functools import cache
 from pathlib import Path
 from typing import Literal
 
+from PIL import Image
 from reportlab.lib import colors as _rl_colors
 from reportlab.lib.pagesizes import letter
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas as _canvas
 
 from holiday_card.core.color_management import CMYKConverter, ColorRole
@@ -87,7 +89,11 @@ class IRReportLabRenderer:
       black text/strokes, rich black for large black fills). The numbers
       emitted are the numbers printed: a RIP does not re-interpret
       DeviceCMYK through the PDF/X OutputIntent. See
-      ``core/color_management.py``.
+      ``core/color_management.py``. CMYK output is for PDF/X, which
+      forbids live transparency: the compiler has already flattened it
+      (``CompileContext.flatten_transparency``), so any alpha < 1 raises
+      ``NotImplementedError``, and images are flattened against
+      ``ImageRef.backdrop`` and converted to CMYK pixels (D10, #71).
     """
 
     name: str = "reportlab"
@@ -152,9 +158,18 @@ class IRReportLabRenderer:
     ) -> _rl_colors.Color:
         """A ReportLab colour object for gradient stops and pattern tiles."""
         if self._cmyk is not None:
+            self._require_opaque(rgba.a, "gradient stop / pattern colour")
             c, m, y, k = self._cmyk.convert(rgba.r, rgba.g, rgba.b, role=role, area_pt2=area_pt2)
-            return _rl_colors.CMYKColor(c, m, y, k, alpha=rgba.a)
+            return _rl_colors.CMYKColor(c, m, y, k)
         return _rl_colors.Color(rgba.r, rgba.g, rgba.b, alpha=rgba.a)
+
+    def _require_opaque(self, alpha: float, what: str) -> None:
+        # PDF/X forbids live transparency; the compiler flattens it first.
+        if self._cmyk is not None and alpha < 1.0:
+            raise NotImplementedError(
+                f"CMYK output cannot paint a translucent {what} (alpha {alpha:.2f}); "
+                f"compile with CompileContext(flatten_transparency=True)"
+            )
 
     # ------------------------------------------------------------------
     # Dispatch
@@ -277,6 +292,7 @@ class IRReportLabRenderer:
         # scoped with q/Q so it can never leak into later draws.
         fill_a = cmd.opacity * (cmd.fill.color.a if isinstance(cmd.fill, SolidPaint) else 1.0)
         stroke_a = cmd.opacity * (cmd.stroke.color.a if cmd.stroke is not None else 1.0)
+        self._require_opaque(min(fill_a, stroke_a), f"{cmd.geometry.kind} shape")
         scoped = fill_a < 1.0 or stroke_a < 1.0
         if scoped:
             canvas.saveState()
@@ -357,6 +373,8 @@ class IRReportLabRenderer:
                 "requires a bounding box; not supported."
             )
 
+        stroke_a = cmd.opacity * (cmd.stroke.color.a if cmd.stroke is not None else 1.0)
+        self._require_opaque(min(cmd.opacity, stroke_a), f"{cmd.geometry.kind} shape")
         canvas.saveState()
         # Pattern tiles paint with both fills and strokes (grid lines).
         self._set_alpha(canvas, fill=cmd.opacity, stroke=cmd.opacity)
@@ -610,6 +628,7 @@ class IRReportLabRenderer:
     def _draw_text(self, canvas: _canvas.Canvas, cmd: DrawText) -> None:
         run = cmd.run
         alpha = cmd.opacity * run.color.a
+        self._require_opaque(alpha, "text run")
         if alpha < 1.0:
             canvas.saveState()
             self._set_alpha(canvas, fill=alpha)
@@ -631,6 +650,9 @@ class IRReportLabRenderer:
     # ------------------------------------------------------------------
 
     def _draw_image(self, canvas: _canvas.Canvas, cmd: DrawImage) -> None:
+        if self._cmyk is not None:
+            self._draw_cmyk_image(canvas, cmd, self._cmyk)
+            return
         rect = cmd.image.rect
         # Image XObjects paint with the non-stroking alpha (/ca).
         if cmd.opacity < 1.0:
@@ -645,6 +667,46 @@ class IRReportLabRenderer:
         )
         if cmd.opacity < 1.0:
             canvas.restoreState()
+
+    @staticmethod
+    def _draw_cmyk_image(
+        canvas: _canvas.Canvas, cmd: DrawImage, converter: CMYKConverter
+    ) -> None:
+        """Flatten alpha against ``ImageRef.backdrop``, convert to CMYK, embed unmasked."""
+        ref = cmd.image
+        with Image.open(ref.source) as src:
+            src.load()
+            profile = src.info.get("icc_profile")
+            has_alpha = src.mode in ("RGBA", "LA", "PA") or "transparency" in src.info
+            if has_alpha or cmd.opacity < 1.0:
+                if ref.backdrop is None:
+                    raise NotImplementedError(
+                        f"CMYK output cannot embed image {ref.source} with alpha or "
+                        f"opacity < 1 without a recorded backdrop (ImageRef.backdrop); "
+                        f"compile with CompileContext(flatten_transparency=True)"
+                    )
+                rgba = src.convert("RGBA")
+                if cmd.opacity < 1.0:
+                    alpha = rgba.getchannel("A").point(lambda v: round(v * cmd.opacity))
+                    rgba.putalpha(alpha)
+                bd = ref.backdrop
+                ground = Image.new(
+                    "RGBA", rgba.size,
+                    (round(bd.r * 255), round(bd.g * 255), round(bd.b * 255), 255),
+                )
+                rgb = Image.alpha_composite(ground, rgba).convert("RGB")
+            else:
+                rgb = src.convert("RGB")
+        if profile:
+            rgb.info["icc_profile"] = profile
+        cmyk = converter.convert_image(rgb)
+        rect = ref.rect
+        canvas.drawImage(
+            ImageReader(cmyk),
+            rect.x, rect.y,
+            width=rect.width, height=rect.height,
+            preserveAspectRatio=ref.preserve_aspect,
+        )
 
     # ------------------------------------------------------------------
     # Fold lines

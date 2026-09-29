@@ -43,6 +43,10 @@ from holiday_card.renderers.pdfx_postprocess import (
     PDFXVersionError,
     apply_pdfx1a,
 )
+from holiday_card.renderers.pdfx_preflight import (
+    PDFXConformanceError,
+    PreflightViolation,
+)
 
 pytestmark = pytest.mark.pdfx
 
@@ -265,3 +269,115 @@ class TestPdfxPostprocessGuards:
         bogus.write_bytes(b"%PDF-1.4\n")
         with pytest.raises(PDFXVersionError):
             apply_pdfx1a(bogus, pdfx_version="PDF/X-4:2010")
+
+
+class TestFlattenWiring:
+    """Only PDF/X targets flatten transparency in the compiler (#71, D10)."""
+
+    @pytest.mark.parametrize(
+        ("target", "expected"), [("moo-a6", True), ("per-panel-pdf", False)]
+    )
+    def test_per_panel_context_flattens_only_for_pdfx(
+        self, target: str, expected: bool
+    ) -> None:
+        from holiday_card.core.export_targets import get_target
+        from holiday_card.core.per_panel import build_per_panel_context
+
+        card = CardGenerator().create_card(TEMPLATE_ID)
+        ctx = build_per_panel_context(card.panels[0], get_target(target))
+        assert ctx.flatten_transparency is expected
+
+
+@pytest.fixture(scope="module")
+def front(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """christmas-photo-ornament's moo-a6 front panel."""
+    gen = CardGenerator()
+    out = tmp_path_factory.mktemp("photo-ornament")
+    gen.generate(gen.create_card("christmas-photo-ornament"), out, target="moo-a6")
+    return out / "front.pdf"
+
+
+class TestPhotoOrnamentFront:
+    """The photo is converted to CMYK and nothing is translucent (#71)."""
+
+    def test_single_image_is_device_cmyk_without_smask(self, front: Path) -> None:
+        with pikepdf.open(front) as pdf:
+            images = list(pdf.pages[0].get_images().values())
+            assert len(images) == 1
+            assert str(images[0].ColorSpace) == "/DeviceCMYK"
+            assert "/SMask" not in images[0]
+
+    def test_no_translucent_extgstate(self, front: Path) -> None:
+        with pikepdf.open(front) as pdf:
+            states = pdf.pages[0].Resources.get("/ExtGState", {})
+            assert all(float(gs.get(k, 1)) >= 1 for gs in states.values()
+                       for k in ("/ca", "/CA"))
+
+
+_VIOLATION = PreflightViolation(rule="transparency.ca", page=1, detail="/GS1 /ca 0.5")
+
+
+class TestPdfxSelfCheck:
+    """Every PDF/X file is preflighted after ``apply_pdfx1a`` (#71, D4)."""
+
+    def test_violation_raises_conformance_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from holiday_card.renderers import pdfx_preflight
+
+        monkeypatch.setattr(pdfx_preflight, "preflight_pdfx1a", lambda _p: [_VIOLATION])
+        gen = CardGenerator()
+        with pytest.raises(PDFXConformanceError) as err:
+            gen.generate(gen.create_card(TEMPLATE_ID), tmp_path / "out", target="moo-a6")
+        assert err.value.violations == [_VIOLATION]
+        assert "transparency.ca" in str(err.value)
+
+    def test_clean_files_pass(self, tmp_path: Path) -> None:
+        gen = CardGenerator()
+        written = gen.generate(gen.create_card(TEMPLATE_ID), tmp_path / "out", target="moo-a6")
+        assert len(written) == 4
+
+    def test_cli_exits_non_zero_listing_violations(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from typer.testing import CliRunner
+
+        from holiday_card.cli.commands import app
+        from holiday_card.renderers import pdfx_preflight
+
+        monkeypatch.setattr(pdfx_preflight, "preflight_pdfx1a", lambda _p: [_VIOLATION])
+        result = CliRunner().invoke(
+            app, ["create", TEMPLATE_ID, "--export-for", "moo-a6", "-o", str(tmp_path / "o")]
+        )
+        assert result.exit_code == 2, result.output
+        assert "PDF/X-1a" in result.output
+        assert "transparency.ca" in result.output
+        assert "/GS1 /ca 0.5" in result.output
+        assert "Traceback" not in result.output
+
+
+def _translucent_extgstates(pdf_path: Path) -> int:
+    with pikepdf.open(pdf_path) as pdf:
+        return sum(
+            1
+            for page in pdf.pages
+            for gs in page.Resources.get("/ExtGState", {}).values()
+            if any(float(gs.get(k, 1)) < 1 for k in ("/ca", "/CA"))
+        )
+
+
+class TestLiveAlphaOutsidePdfx:
+    """Flattening is PDF/X-only: ``letter`` keeps live alpha (#71).
+
+    christmas-winter-sky was migrated to opaque colours, so this pins the
+    rule on birthday-balloons, whose confetti is translucent over a solid
+    background and is flattened only for moo-a6.
+    """
+
+    def test_letter_keeps_ca_but_moo_a6_does_not(self, tmp_path: Path) -> None:
+        gen = CardGenerator()
+        card = gen.create_card("birthday-balloons")
+        [letter] = gen.generate(card, tmp_path / "letter.pdf")
+        moo = gen.generate(card, tmp_path / "moo", target="moo-a6")
+        assert _translucent_extgstates(letter) > 0
+        assert sum(_translucent_extgstates(p) for p in moo) == 0

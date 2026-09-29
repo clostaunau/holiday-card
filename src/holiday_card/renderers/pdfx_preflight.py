@@ -46,7 +46,7 @@ from pathlib import Path
 import pikepdf
 from pikepdf import Array, Dictionary, Name, Stream
 
-__all__ = ["PDFX_VERSION", "PreflightViolation", "preflight_pdfx1a"]
+__all__ = ["PDFX_VERSION", "PDFXConformanceError", "PreflightViolation", "preflight_pdfx1a"]
 
 PDFX_VERSION = "PDF/X-1a:2003"
 
@@ -77,6 +77,26 @@ class PreflightViolation:
     rule: str
     page: int | None
     detail: str
+
+
+class PDFXConformanceError(Exception):
+    """A file written for a PDF/X target fails its own preflight (D4).
+
+    ``violations`` holds every rule broken; ``str()`` lists them one per line.
+    """
+
+    def __init__(self, path: Path, violations: list[PreflightViolation]) -> None:
+        self.path = path
+        self.violations = violations
+        lines = [
+            f"  {v.rule}" + (f" (page {v.page})" if v.page is not None else "") + f": {v.detail}"
+            for v in violations
+        ]
+        super().__init__(
+            f"{path.name} is not {PDFX_VERSION} conformant "
+            f"({len(violations)} violation{'s' if len(violations) != 1 else ''}):\n"
+            + "\n".join(lines)
+        )
 
 
 def preflight_pdfx1a(pdf_path: Path) -> list[PreflightViolation]:
