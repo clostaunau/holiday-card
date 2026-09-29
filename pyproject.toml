@@ -88,6 +88,7 @@ markers = [
     "integration: Integration tests",
     "visual: Visual regression tests",
     "slow: Slow-running tests",
+    "pdfx: PDF/X-1a preflight (run by the pdfx-preflight CI job with poppler + Ghostscript)",
 ]
 
 [tool.ruff]

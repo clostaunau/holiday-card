@@ -92,7 +92,12 @@ class IRReportLabRenderer:
         # — called every render so a fresh process picks up the fonts;
         # subsequent calls are no-ops.
         ensure_default_fonts_registered()
-        canvas = _canvas.Canvas(str(output), pagesize=letter)
+        # ReportLab's default initial font is base-14 Helvetica, which it
+        # never embeds; every page's opening ``/F1 12 Tf`` then references
+        # an unembedded font (PDF/X-1a forbids it, #69).
+        canvas = _canvas.Canvas(
+            str(output), pagesize=letter, initialFontName=resolve_font_id("Helvetica")
+        )
         try:
             for cmd in commands:
                 self._dispatch(canvas, cmd)

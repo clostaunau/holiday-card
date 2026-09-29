@@ -118,8 +118,8 @@ Section IDs (§P1 …) are what issues cite.
 ### §P9 PDF/X-1a non-conformance — PRINT P1, P2, P3
 - **Transparency:** metallic-ornaments & winter-sky MOO fronts carry ExtGState `/ca`,`/CA` 0.5–0.9 (winter-sky: 32 `gs` ops). Source: `setFillAlpha`/`setStrokeAlpha` `reportlab_backend.py:239,308,567`; CMYK gradient stops keep alpha (`:323,385`). PDF/X-1a forbids.
 - **RGB images:** photo MOO front has `/DeviceRGB 400x400 DCTDecode`; `_draw_image` (`:581-590`) passes source through regardless of `color_space`, `mask="auto"`. Tests only regex `rg`/`RG` (`tests/integration/test_pdfx_moo_a6.py:55-56,130`). AI assets are sRGB PNGs → always fail.
-- **Unembedded Helvetica:** every page of every PDF has `/F1 /Helvetica /Type1 embedded=False` used by `/F1 12 Tf` — ReportLab initial font from `Canvas(...)` at `reportlab_backend.py:95`.
-- **Metadata:** Info dict lacks `GTS_PDFXVersion`/`GTS_PDFXConformance`; XMP declares `PDF/X-1:2001` (`renderers/pdfx_postprocess.py:157`) — should be `PDF/X-1:2003`; XMP lacks Create/ModifyDate that Info has. OutputConditionIdentifier `"CGATS TR 006"` (`pdfx_postprocess.py:88-90`) with a GRACoL2013 profile — registered id is `CGATS21-2-CRPC6`.
+- **[Resolved 2026-09-29, #69] Unembedded Helvetica:** every page of every PDF has `/F1 /Helvetica /Type1 embedded=False` used by `/F1 12 Tf` — ReportLab initial font from `Canvas(...)` at `reportlab_backend.py:95`.
+- **[Resolved 2026-09-29, #69: `PDF/X-1a:2003` in Info + XMP, XMP dates, `CGATS21-2-CRPC6`] Metadata:** Info dict lacks `GTS_PDFXVersion`/`GTS_PDFXConformance`; XMP declares `PDF/X-1:2001` (`renderers/pdfx_postprocess.py:157`) — should be `PDF/X-1:2003`; XMP lacks Create/ModifyDate that Info has. OutputConditionIdentifier `"CGATS TR 006"` (`pdfx_postprocess.py:88-90`) with a GRACoL2013 profile — registered id is `CGATS21-2-CRPC6`.
 - Keep: page boxes (TrimBox inset 9 pt, BleedBox = MediaBox, ArtBox safe area), header 1.4, `/ID`, CMYK shading dicts.
 
 ### §P10 Naive CMYK — PRINT P5
@@ -196,7 +196,10 @@ Issue authors re-verified every anchor while writing the GitHub issues. Where th
 findings above were wrong or incomplete, the issue bodies carry the corrected
 version; this section records the corrections so the spec stays the source of truth.
 
-- **D11 / §P9:** veraPDF has no PDF/X profile; see the amended D11. The Info/XMP
+- **D11 / §P9:** veraPDF has no PDF/X profile; see the amended D11. **2026-09-29
+  (#69):** shipped as `renderers/pdfx_preflight.py` plus the `pdfx-preflight` CI
+  job; RGB images are in **5** templates (holiday-masterpiece is one of the 5
+  photo templates), transparency in 13. The Info/XMP
   pair for PDF/X-1a:2003 is `GTS_PDFXVersion = "PDF/X-1a:2003"` (ISO 15930-4), not
   `PDF/X-1:2003`; `tests/integration/test_pdfx_moo_a6.py:113` asserts the wrong
   value. Transparency is used by **13 of 21** templates and RGB images appear in

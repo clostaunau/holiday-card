@@ -1,29 +1,32 @@
 """Integration tests for PDF/X-1a:2003 output via ``--export-for moo-a6``.
 
-Verifies the structural properties that a real preflight (MOO's
-ingester, callas pdfToolbox, Adobe Acrobat Pro) checks for. We don't
-run a real preflight here — those tools aren't installable in CI —
-but we cover the same on-disk artifacts they inspect:
+Checks the on-disk metadata a press preflight inspects on christmas-classic:
 
 * PDF header version is 1.4 (PDF/X-1a:2003 conformance level).
-* Document catalog has ``/OutputIntents`` with ``/S = /GTS_PDFX`` and
-  an embedded ``/DestOutputProfile`` stream carrying the CGATS
-  GRACoL2013_CRPC6 ICC profile (``/N = 4``, the CMYK profile
-  component count).
-* Document catalog has ``/Metadata`` (XMP stream) declaring
-  ``GTS_PDFXVersion`` / ``GTS_PDFXConformance``.
+* Document catalog has one ``/OutputIntents`` entry with ``/S = /GTS_PDFX``,
+  ``/OutputConditionIdentifier (CGATS21-2-CRPC6)`` and an embedded
+  ``/DestOutputProfile`` stream carrying the GRACoL2013_CRPC6 ICC profile
+  (``/N = 4``).
+* ``/Info /GTS_PDFXVersion`` and the XMP ``pdfx:GTS_PDFXVersion`` are both
+  ``PDF/X-1a:2003`` (never the 2001 identifier ``PDF/X-1:2001``), and the
+  XMP title, producer and dates equal their ``/Info`` counterparts.
 * ``/Info /Trapped`` is ``/False`` (PDF/X-1a forbids absence or
   ``/Unknown``).
 * The page content stream uses DeviceCMYK color operators
   (``k`` / ``K``) and no DeviceRGB operators (``rg`` / ``RG``).
 
+The full rule preflight (fonts, transparency, image colour spaces, page
+boxes) runs over every template in ``test_pdfx_preflight_all_templates.py``,
+cross-checked in CI by poppler ``pdffonts`` and Ghostscript (#69, D11).
 Pairs with ``test_per_panel_output.py`` (geometry-only checks for the
-moo-a6 target); together they cover the full moo-a6 export.
+moo-a6 target).
 """
 
 from __future__ import annotations
 
 import re
+import xml.etree.ElementTree as ET
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pikepdf
@@ -42,6 +45,8 @@ from holiday_card.renderers.pdfx_postprocess import (
     apply_pdfx1a,
 )
 
+pytestmark = pytest.mark.pdfx
+
 TEMPLATE_ID = "christmas-classic"
 
 
@@ -54,6 +59,46 @@ def _content_bytes(page: pikepdf.Page) -> bytes:
 
 # Whitespace-bounded color operator patterns. We use byte-level regex
 # against the latin-1-decoded stream so we don't drag a PDF lexer in.
+_NS = {
+    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "pdf": "http://ns.adobe.com/pdf/1.3/",
+    "xmp": "http://ns.adobe.com/xap/1.0/",
+    "dc": "http://purl.org/dc/elements/1.1/",
+}
+
+
+def _xmp_fields(xmp: bytes) -> dict[str, str]:
+    """Flatten the XMP fields these tests compare against /Info."""
+    desc = ET.fromstring(xmp).find(".//rdf:Description", _NS)
+    assert desc is not None
+    out: dict[str, str] = {}
+    for key in ("pdf:Producer", "xmp:CreateDate", "xmp:ModifyDate", "xmp:MetadataDate"):
+        el = desc.find(key, _NS)
+        assert el is not None and el.text, f"XMP lacks {key}"
+        out[key] = el.text
+    title = desc.find("dc:title/rdf:Alt/rdf:li", _NS)
+    assert title is not None and title.text is not None
+    out["dc:title"] = title.text
+    return out
+
+
+def _info_date(value: str) -> datetime:
+    """Parse a PDF ``D:YYYYMMDDHHmmSS`` date with its ``Z`` / ``+hh'mm'`` zone.
+
+    Written independently of the post-processor so the test doesn't share
+    its parser.
+    """
+    m = re.fullmatch(r"D:(\d{14})(Z|[+-]\d{2}'\d{2}'?)?(?:00'00)?", value)
+    assert m, f"unparsable PDF date {value!r}"
+    stamp = datetime.strptime(m.group(1), "%Y%m%d%H%M%S")
+    zone = m.group(2) or "Z"
+    if zone == "Z":
+        return stamp.replace(tzinfo=UTC)
+    sign = 1 if zone[0] == "+" else -1
+    hours, minutes = int(zone[1:3]), int(zone[4:6])
+    return stamp.replace(tzinfo=timezone(sign * timedelta(hours=hours, minutes=minutes)))
+
+
 _FILL_RGB = re.compile(rb"(?:^|\s)rg(?:\s|$)")
 _STROKE_RGB = re.compile(rb"(?:^|\s)RG(?:\s|$)")
 _FILL_CMYK = re.compile(rb"(?:^|\s)k(?:\s|$)")
@@ -95,8 +140,11 @@ class TestPdfxMooA6:
                 oi = output_intents[0]
                 assert str(oi["/Type"]) == "/OutputIntent"
                 assert str(oi["/S"]) == "/GTS_PDFX"
-                assert "CGATS" in str(oi["/OutputConditionIdentifier"])
-                assert "color.org" in str(oi["/RegistryName"])
+                assert str(oi["/OutputConditionIdentifier"]) == "CGATS21-2-CRPC6"
+                assert str(oi["/OutputCondition"]) == (
+                    "GRACoL 2013, CRPC6 \u2014 CGATS 21-2"
+                )
+                assert str(oi["/RegistryName"]) == "http://www.color.org"
                 profile = oi["/DestOutputProfile"]
                 assert int(profile["/N"]) == 4, (
                     f"{pdf_path.name}: DestOutputProfile /N should be 4 (CMYK)"
@@ -111,10 +159,35 @@ class TestPdfxMooA6:
                 assert "/Metadata" in pdf.Root, f"{pdf_path.name}: no /Metadata"
                 xmp_bytes = pdf.Root["/Metadata"].read_bytes()
                 xmp_text = xmp_bytes.decode("utf-8")
-                assert "GTS_PDFXVersion" in xmp_text
-                assert "PDF/X-1:2001" in xmp_text
+                assert (
+                    "<pdfx:GTS_PDFXVersion>PDF/X-1a:2003</pdfx:GTS_PDFXVersion>"
+                    in xmp_text
+                )
+                assert "PDF/X-1:2001" not in xmp_text
                 assert "GTS_PDFXConformance" in xmp_text
-                assert "PDF/X-1a:2003" in xmp_text
+
+    def test_info_declares_pdfx_version(self, rendered_dir: Path) -> None:
+        for pdf_path in sorted(rendered_dir.glob("*.pdf")):
+            with pikepdf.open(pdf_path) as pdf:
+                assert str(pdf.docinfo["/GTS_PDFXVersion"]) == "PDF/X-1a:2003"
+                assert str(pdf.docinfo["/GTS_PDFXConformance"]) == "PDF/X-1a:2003"
+
+    def test_xmp_dates_agree_with_info(self, rendered_dir: Path) -> None:
+        for pdf_path in sorted(rendered_dir.glob("*.pdf")):
+            with pikepdf.open(pdf_path) as pdf:
+                xmp = _xmp_fields(pdf.Root["/Metadata"].read_bytes())
+                created = _info_date(str(pdf.docinfo["/CreationDate"]))
+                modified = _info_date(str(pdf.docinfo["/ModDate"]))
+                assert datetime.fromisoformat(xmp["xmp:CreateDate"]) == created
+                assert datetime.fromisoformat(xmp["xmp:ModifyDate"]) == modified
+                assert datetime.fromisoformat(xmp["xmp:MetadataDate"]) == modified
+
+    def test_xmp_producer_and_title_agree_with_info(self, rendered_dir: Path) -> None:
+        for pdf_path in sorted(rendered_dir.glob("*.pdf")):
+            with pikepdf.open(pdf_path) as pdf:
+                xmp = _xmp_fields(pdf.Root["/Metadata"].read_bytes())
+                assert xmp["pdf:Producer"] == str(pdf.docinfo["/Producer"])
+                assert xmp["dc:title"] == str(pdf.docinfo["/Title"])
 
     def test_info_trapped_is_false(self, rendered_dir: Path) -> None:
         for pdf_path in sorted(rendered_dir.glob("*.pdf")):
