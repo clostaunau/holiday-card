@@ -1176,10 +1176,17 @@ class TestTemplatePaths:
 _WIDE = {"COLUMNS": "120"}
 
 
+def _plain(output: str) -> str:
+    # Rich forces colour under GITHUB_ACTIONS; compare the text without ANSI styles.
+    import re
+
+    return re.sub(r"\x1b\[[0-9;]*m", "", output)
+
+
 def _help(runner: CliRunner, *command: str) -> str:
     result = runner.invoke(app, [*command, "--help"], env=_WIDE)
     assert result.exit_code == 0, result.output
-    return result.output
+    return _plain(result.output)
 
 
 def _help_line(help_text: str, long: str) -> str:
@@ -1245,7 +1252,7 @@ class TestShortFlags:
     def test_dash_o_is_no_longer_occasion(self, runner: CliRunner, command: str) -> None:
         result = runner.invoke(app, [command, "-o", "christmas"])
         assert result.exit_code == 2
-        assert "No such option: -o" in result.output
+        assert "No such option: -o" in _plain(result.output)
 
     def test_long_occasion_still_filters(self, runner: CliRunner) -> None:
         result = runner.invoke(app, ["templates", "--occasion", "christmas"])
@@ -1263,7 +1270,7 @@ class TestShortFlags:
             ["ai-asset", "generate", "--subject", "pine", "--out", str(tmp_path / "p.png")],
         )
         assert result.exit_code == 2
-        assert "No such option: --out" in result.output
+        assert "No such option: --out" in _plain(result.output)
 
 
 def _table_rows(output: str) -> tuple[list[str], list[list[str]]]:
@@ -1352,7 +1359,7 @@ class TestListingTables:
     def test_unknown_format_is_a_usage_error(self, runner: CliRunner, command: str) -> None:
         result = runner.invoke(app, [command, "--format", "xml"])
         assert result.exit_code == 2
-        assert "xml" in result.output
+        assert "xml" in _plain(result.output)
 
     def test_json_keeps_full_descriptions(self, runner: CliRunner) -> None:
         payload = json.loads(runner.invoke(app, ["templates", "--format", "json"]).output)
