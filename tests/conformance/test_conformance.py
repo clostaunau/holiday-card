@@ -165,3 +165,19 @@ def test_thin_line_in_wrong_colour_is_a_mismatch(
     assert compare(case, backend, _vline(178), _vline(178))[0]
     matched, detail = compare(case, backend, _vline(178), _vline(77))
     assert not matched, detail
+
+
+def test_svg_oracle_draws_nothing_for_an_unregistered_font_family(
+    tmp_path: Path, rasterize_svg: Callable[[Path, int], Image.Image]
+) -> None:
+    # resvg's default-family fallback differs by host (Linux resolved it to a
+    # bundled serif, macOS drew nothing), so the oracle must refuse fallback.
+    svg = tmp_path / "unknown_font.svg"
+    svg.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144">'
+        '<text x="72" y="84" font-family="Cormorant" font-size="32" '
+        'text-anchor="middle">Hello</text></svg>',
+        encoding="utf-8",
+    )
+    img = rasterize_svg(svg, DPI)
+    assert img.convert("L").getextrema() == (255, 255)

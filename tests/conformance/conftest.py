@@ -57,6 +57,17 @@ def _to_rgb_on_white(img: Image.Image) -> Image.Image:
     return img.convert("RGB")
 
 
+# resvg falls back to its default families when a font-family matches nothing,
+# and those defaults resolve differently per host (Linux picked a bundled
+# serif, macOS drew nothing). Pointing every generic family at a name that is
+# never installed makes an unmatched family draw nothing everywhere.
+_NO_FALLBACK = "holiday-card-no-fallback-font"
+_FAMILY_OPTIONS = (
+    "font_family", "serif_family", "sans_serif_family",
+    "cursive_family", "fantasy_family", "monospace_family",
+)
+
+
 def _rasterize_svg(path: Path, dpi: int = DPI) -> Image.Image:
     png = resvg_py.svg_to_bytes(
         svg_path=str(path),
@@ -64,6 +75,7 @@ def _rasterize_svg(path: Path, dpi: int = DPI) -> Image.Image:
         background="#ffffff",
         skip_system_fonts=True,
         font_dirs=[str(FONT_DIR)],
+        **dict.fromkeys(_FAMILY_OPTIONS, _NO_FALLBACK),
     )
     with Image.open(io.BytesIO(bytes(png))) as im:
         return _to_rgb_on_white(im)

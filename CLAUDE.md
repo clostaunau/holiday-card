@@ -32,7 +32,7 @@ holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," -
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 1391 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 1392 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -178,7 +178,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 1391 tests pass
+uv run pytest                            # All 1392 tests pass
 ```
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit
@@ -356,12 +356,15 @@ template editing; a JSON "render plan" backend for downstream tooling.
   except `stroke_rect_6pt` PNG (#77), `pattern_stripes` PDF and
   `pattern_grid` / `pattern_checkerboard` on both (#74), `group_scale_pivot`
   PDF (#72; PNG raises), `text_curated_family` (#76: the SVG oracle draws
-  nothing for `font-family="Cormorant"`), and `group_opacity` (both
+  nothing for `font-family="Cormorant"`; `conftest` points every resvg
+  generic family at a sentinel name so an unmatched family draws nothing on
+  every host, because resvg's default fallback resolved on Linux but not
+  macOS), and `group_opacity` (both
   raise). `pattern_dots` and `pattern_stripes` PNG match with this
   fixture; PNG dots sit at 1.98% of the 2.0% limit. Dev deps:
   `pypdfium2` and `resvg-py` added (wheels only, no system packages, so
-  CI is unchanged); the unused `pdf2image` is gone. The suite adds 79
-  tests and < 1 s.
+  CI is unchanged); the unused `pdf2image` is gone. The suite adds 80
+  tests and ~1 s.
 
 - **2026-09-29 — PNG backend honours clips, dashes and text alpha, or
   raises (expert-panel §P6 / §P5 / D4, issue #61)**: `preview` uses
