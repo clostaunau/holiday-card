@@ -44,7 +44,7 @@ from holiday_card.core.sentiments import (
     available_voices,
     pick_sentiment,
 )
-from holiday_card.core.templates import load_template
+from holiday_card.core.templates import resolve_template
 from holiday_card.core.themes import discover_themes
 
 __all__ = [
@@ -262,7 +262,7 @@ def build_card_with_report(
                 f"Unknown theme {request.theme!r}. Available: {', '.join(theme_ids)}"
             )
 
-    template = load_template(request.template, templates_dir)
+    template, _ = resolve_template(request.template, templates_dir=templates_dir)
 
     # Rule 11: --voice fills only the slots the user left unset.
     effective_message = request.message

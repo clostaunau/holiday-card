@@ -84,8 +84,15 @@ class TestTemplatesCommand:
     def test_templates_empty_catalog_exits_one_with_error_on_stderr(
         self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # An empty bundled catalog means a broken install (D4: fail loud).
-        monkeypatch.setenv("HOLIDAY_CARD_TEMPLATES", str(tmp_path))
+        # An empty bundled catalog means a broken install (D4: fail loud),
+        # even when the user layer has templates (#79).
+        import holiday_card.core.templates as templates_module
+
+        monkeypatch.setattr(templates_module, "data_path", lambda _kind: tmp_path)
+        user = tmp_path / "xdg" / "holiday-card" / "templates"
+        user.mkdir(parents=True)
+        (user / "mine.yaml").write_text(_CLASSIC_YAML.read_text())
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
         result = runner.invoke(app, ["templates"])
         assert result.exit_code == 1
         assert (
@@ -979,3 +986,183 @@ class TestPanelFitOption:
         assert "Warning: " in result.stderr
         assert "greeting" in result.stderr
         assert (workdir / "out" / "front.pdf").exists()
+
+
+# ---------------------------------------------------------------------------
+# Template paths, the layered search path and init → create (#79)
+# ---------------------------------------------------------------------------
+
+
+def _next_step(output: str) -> list[str]:
+    """The argv of the ``holiday-card create …`` line ``init`` printed."""
+    import shlex
+
+    lines = [ln.strip() for ln in output.splitlines() if ln.strip().startswith("holiday-card create")]
+    assert len(lines) == 1, output
+    argv = shlex.split(lines[0])
+    assert argv[0] == "holiday-card"
+    return argv[1:]
+
+
+@pytest.fixture
+def authoring(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An empty cwd with an isolated XDG data home and no env layer."""
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+    monkeypatch.delenv("HOLIDAY_CARD_TEMPLATES", raising=False)
+    return work
+
+
+@pytest.mark.usefixtures("authoring")
+class TestInitThenCreate:
+    def test_init_writes_to_the_user_layer(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        result = runner.invoke(app, ["init", "foo"])
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / "xdg/holiday-card/templates/generic/foo.yaml").is_file()
+
+    def test_printed_next_step_works(self, runner: CliRunner, authoring: Path) -> None:
+        init = runner.invoke(app, ["init", "foo"])
+        assert init.exit_code == 0, init.output
+        argv = _next_step(init.stdout)
+        assert argv[:2] == ["create", "foo"]
+        result = runner.invoke(app, [*argv, "-o", "x.pdf"])
+        assert result.exit_code == 0, result.output
+        assert (authoring / "x.pdf").read_bytes().startswith(b"%PDF")
+
+    def test_create_by_printed_path(
+        self, runner: CliRunner, authoring: Path, tmp_path: Path
+    ) -> None:
+        assert runner.invoke(app, ["init", "foo"]).exit_code == 0
+        path = tmp_path / "xdg/holiday-card/templates/generic/foo.yaml"
+        result = runner.invoke(app, ["create", str(path), "-o", "x.pdf"])
+        assert result.exit_code == 0, result.output
+        assert (authoring / "x.pdf").is_file()
+
+    def test_scaffold_validates(self, runner: CliRunner) -> None:
+        assert runner.invoke(app, ["init", "foo"]).exit_code == 0
+        result = runner.invoke(app, ["validate", "foo"])
+        assert result.exit_code == 0, result.output
+
+    def test_init_refuses_to_overwrite(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        assert runner.invoke(app, ["init", "foo"]).exit_code == 0
+        path = tmp_path / "xdg/holiday-card/templates/generic/foo.yaml"
+        path.write_text("edited")
+        result = runner.invoke(app, ["init", "foo"])
+        assert result.exit_code == 2
+        assert "already exists" in result.stderr
+        assert "--force" in result.stderr
+        assert path.read_text() == "edited"
+
+    def test_init_force_overwrites(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        assert runner.invoke(app, ["init", "foo"]).exit_code == 0
+        path = tmp_path / "xdg/holiday-card/templates/generic/foo.yaml"
+        path.write_text("edited")
+        result = runner.invoke(app, ["init", "foo", "--force"])
+        assert result.exit_code == 0, result.output
+        assert "id: foo" in path.read_text()
+
+    def test_init_rejects_an_unknown_occasion(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        result = runner.invoke(app, ["init", "bar", "--occasion", "wedding"])
+        assert result.exit_code == 2
+        assert "wedding" in result.stderr
+        for valid in ("christmas", "generic", "pet_loss"):
+            assert valid in result.stderr
+        assert not (tmp_path / "xdg").exists()
+
+    def test_init_with_known_occasion_sets_it(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        result = runner.invoke(app, ["init", "bday", "--occasion", "birthday"])
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / "xdg/holiday-card/templates/birthday/bday.yaml").is_file()
+
+    def test_init_outside_the_search_path_prints_a_path(
+        self, runner: CliRunner
+    ) -> None:
+        init = runner.invoke(app, ["init", "foo", "--output", "tpl"])
+        assert init.exit_code == 0, init.output
+        argv = _next_step(init.stdout)
+        assert argv[:2] == ["create", "tpl/foo.yaml"]
+        result = runner.invoke(app, [*argv, "-o", "x.pdf"])
+        assert result.exit_code == 0, result.output
+
+    def test_voice_uses_the_path_templates_occasion(
+        self, runner: CliRunner
+    ) -> None:
+        assert runner.invoke(
+            app, ["init", "gone", "--occasion", "pet_loss", "--output", "tpl"]
+        ).exit_code == 0
+        # pet_loss ships no witty voice (generic does), so the refusal proves
+        # the path-loaded template's own occasion was used.
+        result = runner.invoke(
+            app, ["create", "tpl/gone.yaml", "--voice", "witty", "-o", "x.pdf"]
+        )
+        assert result.exit_code == 2
+        assert "'pet_loss'" in result.stderr
+
+
+@pytest.mark.usefixtures("authoring")
+class TestTemplatePaths:
+    @pytest.fixture
+    def tpl(self, authoring: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        # An env entry that doesn't exist must not hide the built-ins.
+        monkeypatch.setenv("HOLIDAY_CARD_TEMPLATES", "/nonexistent")
+        (authoring / "tpl").mkdir()
+        path = authoring / "tpl" / "my.yaml"
+        path.write_text(_CLASSIC_YAML.read_text())
+        return path
+
+    @pytest.mark.usefixtures("tpl")
+    def test_create_relative_path(self, runner: CliRunner) -> None:
+        result = runner.invoke(app, ["create", "./tpl/my.yaml", "-o", "x.pdf"])
+        assert result.exit_code == 0, result.output
+
+    def test_create_absolute_path(self, runner: CliRunner, tpl: Path) -> None:
+        result = runner.invoke(app, ["create", str(tpl), "-o", "x.pdf"])
+        assert result.exit_code == 0, result.output
+
+    @pytest.mark.usefixtures("tpl")
+    def test_validate_relative_path(self, runner: CliRunner) -> None:
+        result = runner.invoke(app, ["validate", "./tpl/my.yaml"])
+        assert result.exit_code == 0, result.output
+
+    @pytest.mark.usefixtures("tpl")
+    def test_builtins_stay_reachable(self, runner: CliRunner) -> None:
+        result = runner.invoke(app, ["create", "christmas-modern", "-o", "x.pdf"])
+        assert result.exit_code == 0, result.output
+
+    def test_missing_path_exits_two_naming_it(
+        self, runner: CliRunner, authoring: Path
+    ) -> None:
+        result = runner.invoke(app, ["create", "does/not/exist.yaml", "-o", "x.pdf"])
+        assert result.exit_code == 2
+        assert "Template not found: does/not/exist.yaml" in result.stderr
+        assert not (authoring / "x.pdf").exists()
+
+    def test_listing_adds_env_templates_to_the_builtins(
+        self, runner: CliRunner, tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        extra = tmp_path / "extra"
+        extra.mkdir()
+        (extra / "x.yaml").write_text(
+            _CLASSIC_YAML.read_text().replace(
+                'id: "christmas-classic"', 'id: "extra-card"', 1
+            )
+        )
+        monkeypatch.setenv("HOLIDAY_CARD_TEMPLATES", str(extra))
+        result = runner.invoke(app, ["templates", "--format", "json"])
+        assert result.exit_code == 0, result.output
+        listed = json.loads(result.stdout)["templates"]
+        assert sum(t["source"] == "builtin" for t in listed) == 21
+        assert {t["id"]: t["source"] for t in listed}["extra-card"] == "env"

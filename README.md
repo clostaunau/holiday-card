@@ -100,20 +100,54 @@ holiday-card create birthday-balloons --inside-message-md letter.md
 Templates, themes, sentiments, fonts, and the GRACoL2013 ICC profile
 ship **inside the package** under `src/holiday_card/data/` (installed as
 `holiday_card/data/`), so a plain `pipx install holiday-card` works from
-any directory. Three catalogs can be swapped out with an environment
+any directory. Two catalogs can be swapped out with an environment
 variable, which **replaces** the bundled directory (it does not merge
 with it):
 
 | Variable | Replaces |
 |---|---|
-| `HOLIDAY_CARD_TEMPLATES` | `holiday_card/data/templates/` |
 | `HOLIDAY_CARD_THEMES` | `holiday_card/data/themes/` |
 | `HOLIDAY_CARD_SENTIMENTS` | `holiday_card/data/sentiments/` |
 
-An override that isn't an existing directory is an error. If
-`holiday-card templates` or `holiday-card themes` (with no filter) finds
-nothing, it exits 1 with `installation is missing bundled data` rather
-than printing an empty list.
+An override that isn't an existing directory is an error. Templates are
+different: `HOLIDAY_CARD_TEMPLATES` **adds** directories in front of the
+bundled ones (see [Your own templates](#your-own-templates)). If
+`holiday-card templates` (no filter) finds no bundled template, or
+`holiday-card themes` finds nothing, it exits 1 with `installation is
+missing bundled data` rather than printing an empty list.
+
+### Your own templates
+
+```bash
+holiday-card init my-card                    # writes ~/.local/share/holiday-card/templates/generic/my-card.yaml
+holiday-card create my-card -o my-card.pdf   # found by id on the search path
+holiday-card create ./my-template.yaml       # or pass any file path
+holiday-card validate ./my-template.yaml
+```
+
+A template reference is either a **path** or an **id**. It is a path when
+it ends in `.yaml`/`.yml`, contains a `/`, or starts with `.` or `~`; the
+file is loaded directly and a missing file is `Template not found:
+<path>` (exit 2). Anything else is an id, looked up (by `id:`, then by
+file name) in these layers, earliest first:
+
+1. each directory in `HOLIDAY_CARD_TEMPLATES`, split on `:` (`;` on
+   Windows) like `PATH`;
+2. the user dir `$XDG_DATA_HOME/holiday-card/templates` (default
+   `~/.local/share/holiday-card/templates`);
+3. the bundled templates.
+
+Directories that don't exist are skipped. Templates can sit at any depth
+in a layer; the occasion comes from the YAML's `occasion:` field, not the
+folder. A template whose id matches one in a later layer shadows it:
+`holiday-card templates --format json` lists it once, with `"source":
+"user"` (or `"env"`) and `"shadows": "builtin"`.
+
+`init` writes to the user dir by default (`--output DIR` to put it
+elsewhere), refuses an `--occasion` that isn't a known occasion, refuses
+to overwrite an existing file without `--force`, and prints the `create`
+command to run next. Image paths in a template resolve against the
+template file, so a template directory with its images is portable.
 
 ### Images in templates
 

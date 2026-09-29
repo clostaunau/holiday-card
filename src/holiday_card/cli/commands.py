@@ -43,9 +43,10 @@ from holiday_card.core.templates import (
     TemplateLoadError,
     TemplateNotFoundError,
     discover_templates,
-    get_templates_dir,
-    load_template_from_file,
+    resolve_template,
+    template_search_path,
     templates_with_photo_slots,
+    user_templates_dir,
 )
 from holiday_card.core.themes import discover_themes, get_themes_dir
 from holiday_card.renderers.reportlab_backend import IRReportLabRenderer
@@ -165,8 +166,10 @@ def templates(
     """List available card templates."""
     try:
         templates_list = discover_templates()
-        if not templates_list and not (occasion or fold_type):
-            _fail_empty_catalog("templates", get_templates_dir())
+        if not any(t["source"] == "builtin" for t in templates_list) and not (
+            occasion or fold_type
+        ):
+            _fail_empty_catalog("templates", template_search_path()[-1][1])
 
         # Filter by occasion if specified
         if occasion:
@@ -648,12 +651,20 @@ def init(
         "quarter_fold", "--fold-type", "-f", help="Fold type: quarter_fold (half_fold is an alias), tri_fold"
     ),
     output_dir: Path | None = typer.Option(
-        None, "--output", help="Output directory for template file"
+        None,
+        "--output",
+        help="Output directory for template file (default: the user template "
+        "dir, $XDG_DATA_HOME/holiday-card/templates/<occasion>)",
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Overwrite an existing template file"
     ),
 ) -> None:
     """Initialize a new custom template.
 
-    Creates a starter template YAML file that you can customize.
+    Creates a starter template YAML file that you can customize. By default
+    it goes in the user template dir, which ``create`` searches, so
+    ``holiday-card create <name>`` finds it.
 
     Examples:
 
@@ -661,12 +672,23 @@ def init(
 
         holiday-card init wedding-invite --occasion generic --fold-type quarter_fold
     """
+    import shlex
+
     import yaml
 
-    if output_dir is None:
-        output_dir = Path("templates") / occasion
+    valid_occasions = [o.value for o in OccasionType]
+    if occasion not in valid_occasions:
+        _fail(
+            f"unknown occasion {occasion!r}. Valid occasions: "
+            f"{', '.join(valid_occasions)}"
+        )
 
-    # Create directory if needed
+    if output_dir is None:
+        output_dir = user_templates_dir() / occasion
+    template_path = output_dir / f"{name}.yaml"
+    if template_path.exists() and not force:
+        _fail(f"{template_path} already exists (use --force to overwrite)")
+
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate template content. Panel x/y/rotation are computed from the
@@ -730,14 +752,19 @@ def init(
         ],
     }
 
-    # Write template file
-    template_path = output_dir / f"{name}.yaml"
     with open(template_path, "w") as f:
         yaml.dump(template_data, f, default_flow_style=False, sort_keys=False)
 
+    # Suggest the id only when it resolves to this file (it's on a search
+    # layer and nothing earlier shadows it); otherwise suggest the path.
+    try:
+        found = resolve_template(name)[1].resolve() == template_path.resolve()
+    except (TemplateNotFoundError, TemplateLoadError):
+        found = False
+    ref = name if found else str(template_path)
     typer.secho(f"Template created: {template_path}", fg=typer.colors.GREEN)
     typer.echo("\nEdit the file to customize your template, then use:")
-    typer.echo(f"  holiday-card create {name} -m \"Your message\"")
+    typer.echo(f"  holiday-card create {shlex.quote(ref)} -m \"Your message\"")
 
 
 @app.command()
@@ -754,20 +781,10 @@ def validate(
 
         holiday-card validate ./my-template.yaml
     """
-    from holiday_card.core.templates import load_template
-
     try:
-        template_path = Path(template)
-
-        if template_path.exists() and template_path.suffix in (".yaml", ".yml"):
-            # Load from file path
-            loaded = load_template_from_file(template_path)
-            typer.secho(f"Template valid: {template_path}", fg=typer.colors.GREEN)
-        else:
-            # Load by ID
-            loaded = load_template(template)
-            typer.secho(f"Template valid: {template}", fg=typer.colors.GREEN)
-
+        loaded, template_path = resolve_template(template)
+        typer.secho(f"Template valid: {template}", fg=typer.colors.GREEN)
+        typer.echo(f"  Path: {template_path}")
         typer.echo(f"  Name: {loaded.name}")
         typer.echo(f"  Occasion: {loaded.occasion.value}")
         typer.echo(f"  Fold type: {loaded.fold_type.value}")

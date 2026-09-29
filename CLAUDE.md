@@ -79,7 +79,7 @@ src/holiday_card/
   core/
     models.py           # Pydantic domain models
     generators.py       # CardGenerator orchestration (Card → IR → backend)
-    templates.py        # YAML template loading/discovery
+    templates.py        # Template search path (env → XDG user → builtin) + resolve_template (#79)
     themes.py           # Theme definitions
     text_utils.py       # Text measurement primitives
     text_fitting.py     # Overflow strategies (extracted Wave 2 Step 2a)
@@ -342,6 +342,54 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — Template paths and a layered template search path;
+  `init` → `create` works (expert-panel §P14 / D1 / D15, issue #79)**:
+  `holiday-card init foo` wrote `templates/generic/foo.yaml` under the
+  cwd, which nothing searched, so the suggested `create foo` failed.
+  `create ./my-template.yaml` (README example 5) failed too, because
+  `load_template` never treated its argument as a path. New in
+  `core/templates.py`: `user_templates_dir()`
+  (`$XDG_DATA_HOME/holiday-card/templates`, default
+  `~/.local/share/…`; an empty `XDG_DATA_HOME` counts as unset),
+  `template_search_path() -> [(source, dir)]` (each `os.pathsep` entry of
+  `HOLIDAY_CARD_TEMPLATES` as `"env"`, then `"user"`, then `"builtin"`;
+  missing dirs are skipped like `PATH`), `is_template_path(ref)` (ends
+  `.yaml`/`.yml`, contains `/` or `os.sep`, or starts with `.`/`~`) and
+  `resolve_template(ref, *, templates_dir=None) -> (Template, abs path)`.
+  A path ref loads the file directly; a missing file raises
+  `TemplateNotFoundError("Template not found: <ref>")`. An id ref is
+  looked up by `id:` across all layers, then by file stem across all
+  layers, so an id match in a later layer beats a stem match in an
+  earlier one. `templates_dir=` makes that one dir the only layer (source
+  `"dir"`). Layers are walked recursively for `*.yaml`/`*.yml`.
+  `discover_templates()` adds `source` and, for a template whose id
+  appears in a later layer too, `shadows` (the first one wins and is
+  listed once). It reads `occasion` from the YAML, not the directory, and
+  skips non-mapping YAML. `load_template(id, dir)` is a thin wrapper;
+  `get_templates_dir` is deleted (D17). **`HOLIDAY_CARD_TEMPLATES` no
+  longer replaces the bundled templates**: it is gone from
+  `data_paths.ENV_OVERRIDES`, so `data_path("templates")` is always the
+  bundled dir (themes and sentiments still replace). `templates` with no
+  filter exits 1 when no template has `source == "builtin"`.
+  Consumers: `build_card` calls `resolve_template` (so `--voice` on a
+  path-loaded template uses its own `occasion`), `validate` too (its
+  path special case is deleted; it now also prints `Path:`), and
+  `scripts/build_microsite.py` passes the bundled dir explicitly, so a
+  user's or an env layer's templates never reach the gallery.
+  `init`: defaults to `user_templates_dir()/<occasion>/`, refuses an
+  `--occasion` outside `OccasionType` (exit 2, lists them), refuses to
+  overwrite without the new `--force` (exit 2), and prints `holiday-card
+  create <name>` only when `resolve_template(name)` finds the new file,
+  otherwise the (shell-quoted) path. `tests/conftest.py` points
+  `XDG_DATA_HOME` at a fresh temp dir in `pytest_configure`, so the suite
+  never reads the real user layer. Guarded by the search-path / discover /
+  resolve classes in `tests/unit/test_templates.py`,
+  `TestInitThenCreate` / `TestTemplatePaths` in `test_cli.py`,
+  `test_templates_env_var_does_not_replace_the_bundled_dir` in
+  `test_data_paths.py` and
+  `test_gallery_shows_only_the_builtin_templates` in
+  `test_microsite_build.py`.
 
 - **2026-09-29 — Print targets warn below 300 and refuse below 150
   effective PPI (expert-panel §P8 / D4 / D8, issue #66)**: nothing checked
