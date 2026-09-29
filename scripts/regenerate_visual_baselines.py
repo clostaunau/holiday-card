@@ -1,70 +1,109 @@
-"""Regenerate visual-regression baseline PNGs.
+"""Regenerate the per-panel visual gate's full-sheet baselines (#68).
 
-The visual regression suite in ``tests/visual/test_visual_regression.py``
-compares freshly-rendered cards against committed PNG baselines using
-perceptual hashing (``imagehash``). When the rendering pipeline changes
-in a way that is *intentionally* visible (a new font, a fixed bleed
-bug, an updated theme), the baselines need to be regenerated and
-re-committed.
+Renders each shipped template through the PNG and/or PDF backend exactly as
+``tests/visual/test_visual_regression.py`` does (shared code in
+``tests/visual/visual_gate.py``) and writes
+``tests/visual/fixtures/reference_cards/{png,pdf}/{template_id}.png``.
+For every file it prints each panel's mismatched-pixel ratio against the
+old baseline, marking panels over the gate's limit with ``*``, so the
+reviewer knows which PNGs to eyeball.
 
-This script:
+PNG baselines need Pillow's raqm text layout (libfribidi on the host); the
+script refuses PNG without it. Committed baselines are generated on **Ubuntu CI** by the
+``visual-baselines`` workflow, not on a laptop. Run locally only to see
+what changed:
 
-* Discovers every shipped template via ``discover_templates()``.
-* Renders each to ``tests/visual/fixtures/reference_cards/{template_id}.png``
-  at the same DPI the regression test uses (72; matches the PNG
-  backend integration tests and keeps committed artifacts small).
+    python scripts/regenerate_visual_baselines.py [--backend {png,pdf,all}] [--template ID ...]
 
-Run from the repo root:
-
-    python scripts/regenerate_visual_baselines.py
-
-Inspect the resulting ``tests/visual/fixtures/reference_cards/*.png``
-in a PR review before committing — that is the human gate.
+Eyeball every regenerated PNG before committing: automated regeneration
+captures rendering bugs as the new truth.
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
+import tempfile
 from pathlib import Path
 
-# Make ``holiday_card`` importable when running this script directly
-# from a checkout (no install required).
+from PIL import Image
+
 _REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_REPO / "src"))
+# ``holiday_card`` from the checkout; the gate helpers from the test tree.
+sys.path[:0] = [str(_REPO / "src"), str(_REPO / "tests"), str(_REPO / "tests" / "visual")]
 
-from holiday_card.core.compiler import compile_card  # noqa: E402
-from holiday_card.core.generators import CardGenerator  # noqa: E402
-from holiday_card.core.templates import discover_templates  # noqa: E402
-from holiday_card.renderers.png_backend import PNGRenderer  # noqa: E402
-
-BASELINE_DPI = 72
-BASELINE_DIR = _REPO / "tests" / "visual" / "fixtures" / "reference_cards"
-
-
-def regenerate_one(template_id: str) -> Path:
-    """Render ``template_id`` and write its baseline PNG. Returns the path."""
-    out_path = BASELINE_DIR / f"{template_id}.png"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    generator = CardGenerator(renderer=PNGRenderer(dpi=BASELINE_DPI))
-    card = generator.create_card(template_id=template_id)
-    commands = compile_card(card)
-    generator.renderer.render(commands, out_path)
-    return out_path
+from visual_gate import (  # noqa: E402
+    BACKENDS,
+    MAX_PANEL_RATIO,
+    Backend,
+    baseline_path,
+    build_card,
+    load_sheet,
+    panel_crop_boxes,
+    panel_ratios,
+    png_layout_matches_baselines,
+    render_sheet,
+    shipped_template_ids,
+)
 
 
-def main() -> int:
-    templates = sorted(discover_templates(), key=lambda t: t["id"])
-    if not templates:
+def _describe_change(old: Path, boxes: dict[str, tuple[int, int, int, int]], new: Image.Image) -> str:
+    if not old.exists():
+        return "new"
+    before = load_sheet(old)
+    if before.size != new.size:
+        return f"size {before.size} -> {new.size}"
+    ratios = panel_ratios(new, before, boxes)
+    return "  ".join(
+        f"{name}={ratio:.3%}{'*' if ratio > MAX_PANEL_RATIO else ''}" for name, ratio in ratios.items()
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--backend", choices=[*BACKENDS, "all"], default="all")
+    parser.add_argument(
+        "--template",
+        action="append",
+        metavar="ID",
+        help="regenerate only this template (repeatable; default: every shipped template)",
+    )
+    args = parser.parse_args(argv)
+
+    shipped = shipped_template_ids()
+    if not shipped:
         print("No templates discovered; baseline generation aborted.", file=sys.stderr)
         return 1
+    template_ids = args.template or shipped
+    unknown = sorted(set(template_ids) - set(shipped))
+    if unknown:
+        print(f"Unknown template id(s): {unknown}", file=sys.stderr)
+        return 2
+    backends: tuple[Backend, ...] = BACKENDS if args.backend == "all" else (args.backend,)
+    if "png" in backends and not png_layout_matches_baselines():
+        print(
+            "Refusing to write PNG baselines: Pillow has no raqm text layout on this host "
+            "(install libfribidi). The committed PNG baselines are raqm renders from "
+            "ubuntu-latest; use the visual-baselines workflow.",
+            file=sys.stderr,
+        )
+        return 2
 
-    for entry in templates:
-        path = regenerate_one(entry["id"])
-        size_kb = path.stat().st_size / 1024
-        print(f"  {entry['id']:<35} → {path.relative_to(_REPO)} ({size_kb:.1f} KB)")
+    with tempfile.TemporaryDirectory() as tmp:
+        for backend in backends:
+            for template_id in template_ids:
+                card = build_card(template_id)
+                sheet = render_sheet(card, backend, Path(tmp))
+                path = baseline_path(backend, template_id)
+                change = _describe_change(path, panel_crop_boxes(card), sheet)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                sheet.save(path, optimize=True)
+                print(f"  {backend}  {template_id:<32} {change}")
 
-    print(f"\nRegenerated {len(templates)} baseline(s) in {BASELINE_DIR.relative_to(_REPO)}/")
+    print(
+        f"\nRegenerated {len(template_ids) * len(backends)} baseline(s). "
+        f"'*' marks panels over the {MAX_PANEL_RATIO:.2%} gate. Eyeball every PNG before committing."
+    )
     return 0
 
 

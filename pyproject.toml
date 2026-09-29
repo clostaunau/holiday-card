@@ -45,7 +45,6 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "hypothesis>=6.0",
-    "imagehash>=4.3",
     "mypy>=1.0",
     "ruff>=0.1",
     "pre-commit>=3.7",
@@ -66,7 +65,8 @@ holiday-card = "holiday_card.cli:app"
 packages = ["src/holiday_card"]
 
 [tool.uv]
-# numpy arrives transitively (imagehash, Pillow's typing). numpy 2.5 ships
+# numpy arrived transitively via imagehash (dropped in #68); nothing locks it
+# today, but any dependency that pulls it back in must stay below 2.5. numpy 2.5 ships
 # stubs using the PEP 695 `type` statement, which mypy rejects while
 # `[tool.mypy] python_version = "3.11"`. Keep the lock below 2.5 until the
 # supported floor moves to 3.12; the weekly latest-deps workflow ignores this

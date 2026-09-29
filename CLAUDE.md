@@ -32,7 +32,7 @@ holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," -
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 1740 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 1907 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -151,10 +151,14 @@ tests/
                         #   test_per_panel_output, test_voice_flag, test_md_inside,
                         #   test_png_ir_fixtures (PNG clip/dash/alpha/font IR fixtures, #61),
                         #   test_ai_asset_cli (L3 ai-asset generate subcommand)
-  visual/               # Perceptual-hash regression gate over all 17 shipped templates
-                        #   (test_visual_regression.py); baselines in
-                        #   fixtures/reference_cards/. Regenerate via
-                        #   scripts/regenerate_visual_baselines.py.
+  visual/               # Per-panel pixel-ratio gate (#68): all 21 templates × {png, pdf}
+                        #   × 4 panels at 144 DPI (test_visual_regression.py); helpers +
+                        #   calibrated constants in visual_gate.py, locked by
+                        #   test_visual_gate_sensitivity.py. Full-sheet baselines in
+                        #   fixtures/reference_cards/{png,pdf}/, generated on Ubuntu CI
+                        #   by the visual-baselines workflow
+                        #   (scripts/regenerate_visual_baselines.py); eyeball before commit.
+  rasterize.py          # Shared pypdfium2 PDF rasterizer (conformance + visual gate)
   conformance/          # Cross-backend conformance (#67, D12): cases.py (37 one-feature
                         #   IR pages), capabilities.py (the pdf/png status matrix),
                         #   conftest.py (resvg-py / pypdfium2 rasterizers + tolerances),
@@ -181,12 +185,13 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 1740 tests pass
+uv run pytest                            # All 1907 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit
-`uv.lock`. `[tool.uv] constraint-dependencies` pins `numpy<2.5` because
+`uv.lock`. `[tool.uv] constraint-dependencies` pins `numpy<2.5` (nothing
+pulls numpy in since imagehash was dropped in #68, but the pin stays) because
 numpy 2.5's stubs use the Python 3.12 `type` statement, which mypy rejects
 while `python_version = "3.11"`. The weekly `latest-deps.yml` workflow
 ignores the lock and the constraint; a red run means bump the lock or lift
@@ -334,6 +339,41 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — Per-panel 144 DPI visual gate on PNG and PDF (expert-panel
+  §P12 / D12, issue #68)**: The old gate hashed the whole 72 DPI PNG sheet
+  (64-bit phash, threshold 5), so "all fonts → Lato" (distance 6) and
+  inside-panel changes slipped through, and PDF had no pixel baseline.
+  `tests/visual/test_visual_regression.py` now renders every shipped template
+  × {png, pdf} on the letter target (fold marks off) at 144 DPI (PDF via
+  pypdfium2), crops each panel where `imposition.panel_placements` puts it
+  (inset 2 px), and fails a panel when more than 0.25% of its pixels differ by
+  more than 32 on any channel: 21 × 2 × 4 = 168 comparisons. Helpers and the
+  calibrated constants (`DPI`, `CHANNEL_DELTA`, `MAX_PANEL_RATIO`,
+  `CROP_INSET_PX`) live in `tests/visual/visual_gate.py`, shared with
+  `scripts/regenerate_visual_baselines.py` (now `--backend {png,pdf,all}`,
+  `--template ID`, prints per-panel ratios vs the old baseline).
+  `test_visual_gate_sensitivity.py` applies the calibration mutations to
+  christmas-classic on both backends and requires every touched panel to trip
+  (smallest: inside text removed, 0.51% PNG), so raising the limit fails it.
+  Baselines are full sheets in `fixtures/reference_cards/{png,pdf}/`
+  (1.9 MB), **generated on ubuntu-latest** by the new `visual-baselines`
+  workflow (`workflow_dispatch`, uploads an artifact to eyeball and commit);
+  the old root-level 72 DPI PNGs are deleted. On failure the CI test job
+  uploads fresh sheets, crops and red diff heatmaps (`visual-out-*`,
+  `HOLIDAY_CARD_VISUAL_OUT`). **Cross-host finding:** PDF rasters are
+  identical on macOS and Ubuntu, but PNG text depends on whether Pillow can
+  load libfribidi, which switches on its raqm (kerning) layout: without it
+  text panels differ by up to 1.64%. ubuntu-latest has it; CI installs
+  fribidi on macOS (exported `DYLD_FALLBACK_LIBRARY_PATH`, since SIP strips
+  it from `/bin/bash`), which brings macOS to ≤ 0.102%, so both OSes are
+  gated. `HOLIDAY_CARD_REQUIRE_PNG_VISUAL=1` (set in CI) turns the no-raqm
+  skip into a failure, and the regenerate script refuses PNG without raqm.
+  `tests/rasterize.py` now holds the pdfium rasterizer shared with the
+  conformance suite. `imagehash` (and with it numpy) left the dev deps.
+  Guarded by `test_visual_gate_sensitivity.py`,
+  `test_visual_gate_crops.py` (boxes tile the sheet, 612×792 px each) and
+  `test_regenerate_baselines_script.py`.
 
 - **2026-09-29 — IR `Transform` is an explicit affine: pivot, rotate,
   scale about the pivot, offset (expert-panel §P11 / §P7 / D14, issue
