@@ -11,7 +11,9 @@ from pathlib import Path
 
 import pytest
 from PIL import Image
+from typer.testing import CliRunner
 
+from holiday_card.cli.commands import app
 from holiday_card.core.compiler import CompileContext, compile_card
 from holiday_card.core.generators import CardGenerator
 from holiday_card.renderers.png_backend import PNGRenderer
@@ -62,16 +64,27 @@ def test_png_renders_valid_image(template_id: str, tmp_path: Path) -> None:
 def test_png_dimensions_match_letter_at_chosen_dpi(
     template_id: str, tmp_path: Path
 ) -> None:
-    """Letter trim is 8.5" × 11"; with the default 0.125" bleed the
-    media canvas is 8.75" × 11.25" → 630 × 810 pixels at 72 DPI.
+    """Letter is 8.5" × 11" with no bleed (D7, #59) → 612 × 792 pixels
+    at 72 DPI.
     """
     out = tmp_path / f"{template_id}.png"
     _render_png(template_id, out, dpi=72)
     img = Image.open(out)
-    assert img.size == (630, 810), (
-        f"{template_id} PNG should be 630x810 (letter + 0.125\" bleed) "
+    assert img.size == (612, 792), (
+        f"{template_id} PNG should be 612x792 (letter, no bleed) "
         f"at 72 DPI, got {img.size}"
     )
+
+
+def test_preview_command_at_144_dpi_is_letter_sized(tmp_path: Path) -> None:
+    """``preview --dpi 144`` is 8.5x11 at 144 px/in: exactly 1224x1584 (#59)."""
+    out = tmp_path / "preview.png"
+    result = CliRunner().invoke(
+        app,
+        ["preview", "christmas-classic", "--dpi", "144", "--no-open", "-o", str(out)],
+    )
+    assert result.exit_code == 0, result.output
+    assert Image.open(out).size == (1224, 1584)
 
 
 def test_png_higher_dpi_produces_proportionally_larger_image(tmp_path: Path) -> None:
@@ -89,29 +102,32 @@ def test_png_christmas_classic_has_red_pixel_in_front_panel(tmp_path: Path) -> N
     """christmas-classic has a red front panel background. Sample a pixel
     from the front-panel area and confirm the red channel dominates.
 
-    The 0.125" bleed shifts every IR coord by +9 pixels at 72 DPI, so
-    the canvas is 630x810 (not 612x792). We sample (400, 700) — well
-    inside the front-panel red flood and clear of the centered greeting
-    text glyphs.
+    The canvas is 612x792 at 72 DPI (no bleed, #59). We sample
+    (391, 691) — well inside the front-panel red flood (bottom-right
+    quadrant) and clear of the centered greeting text glyphs.
     """
     out = tmp_path / "christmas.png"
     _render_png("christmas-classic", out, dpi=72)
     img = Image.open(out).convert("RGB")
-    r, g, b = img.getpixel((400, 700))
+    r, g, b = img.getpixel((391, 691))
     assert r > 150, f"Expected red-dominant pixel; got rgb=({r},{g},{b})"
     assert r > g and r > b, f"Expected red-dominant pixel; got rgb=({r},{g},{b})"
 
 
 def test_png_canvas_includes_bleed_pixels_on_every_side(tmp_path: Path) -> None:
-    """The PNG canvas grows by ``2 * bleed_px`` on each axis; we expect
+    """With a bleed geometry the PNG canvas grows by ``2 * bleed_px`` on
+    each axis; we expect
     the bleed border to be filled by the panel's background-color flood
     where the panel touches a page-trim edge. Sample a pixel in the
     bleed band right next to the trim corner — for christmas-classic's
     front panel (red bg, touches right + bottom of page), the
-    bottom-right bleed strip should be red.
+    bottom-right bleed strip should be red. The default letter page has
+    no bleed (#59), so this compiles with an explicit 0.125" geometry.
     """
     out = tmp_path / "bleed_band.png"
-    _render_png("christmas-classic", out, dpi=72)
+    card = CardGenerator().create_card(template_id="christmas-classic")
+    ctx = CompileContext(geometry=PageGeometry.us_letter(bleed_in=0.125))
+    PNGRenderer(dpi=72).render(compile_card(card, ctx), out)
     img = Image.open(out).convert("RGB")
     # Canvas is 630 x 810 (letter trim 612x792 + 9pt bleed each side).
     # The bottom-right bleed strip (x: 621..629, y: 801..809) sits past

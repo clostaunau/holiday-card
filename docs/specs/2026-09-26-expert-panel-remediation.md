@@ -71,11 +71,12 @@ Section IDs (§P1 …) are what issues cite.
 - No model forbids extra keys: a YAML with `colr:`, `font_famly:`, `font_family: NotAFont`, `x: 99` passes `holiday-card validate` as "Template valid"; `create` then fails `Error creating card: 'NotAFont'`.
 - Only schema doc is stale `specs/004-*/contracts/yaml-schema.md`.
 
-### §P4 Letter imposition wrong [verified] — PRINT P6, P7
+### §P4 Letter imposition wrong [verified] [closed by #58, #59] — PRINT P6, P7
 - Templates (e.g. `templates/christmas/classic.yaml:14-71`): front BR (x 4.25, y 0), back BL, `inside_left` TL (x 0, y 5.5, rot 180), `inside_right` TR (x 4.25, y 5.5, rot 180). Folding print-side-out (top half back, then left half back so front BR is the cover): **TR ends up behind the front cover = the left inside page.** The 180° rotation is right; left/right positions are mirrored. Affects every 4-panel template.
 - Labelled `fold_type: half_fold` but 4 panels on Letter is a quarter-fold; only the horizontal fold mark is drawn.
 - Letter PDF MediaBox is 630×810 pt (8.75×11.25") because bleed is added; CropBox = MediaBox (`renderers/reportlab_backend.py:144`). Home printers "fit" → ~2.9% shrink.
-- **Status (2026-09-29): imposition bullets closed by #58.** `core/imposition.py` computes the slots from the fold type (front BR, back BL, inside_left TR r180, inside_right TL r180); templates carry no panel coordinates; `half_fold` is a legacy alias of `quarter_fold` and both draw two fold marks. The MediaBox / bleed bullet remains with #59.
+- **Status (2026-09-29): imposition bullets closed by #58.** `core/imposition.py` computes the slots from the fold type (front BR, back BL, inside_left TR r180, inside_right TL r180); templates carry no panel coordinates; `half_fold` is a legacy alias of `quarter_fold` and both draw two fold marks.
+- **Status (2026-09-29): MediaBox / bleed bullet closed by #59.** `PageGeometry.us_letter()` defaults to bleed 0 and backs the `letter` target; MediaBox = CropBox = TrimBox = BleedBox = 612×792; background extension is capped at the page geometry's bleed. POD targets keep 0.125". §P4 is fully closed.
 
 ### §P5 Fail-loud violations — ARCH F6, UX F4, REND F1, SEC P1 [partly verified]
 - **[closed by #60]** `core/generators.py:198-199` `except ThemeNotFoundError: pass` [verified] — `--theme nope` exits 0; `SetMetadata` still records the theme id (`core/compiler.py:201`).

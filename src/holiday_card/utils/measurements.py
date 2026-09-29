@@ -156,12 +156,14 @@ class PageGeometry:
     safe_margin_in: float = SAFE_MARGIN
 
     @classmethod
-    def us_letter(cls, bleed_in: float = DEFAULT_BLEED) -> PageGeometry:
+    def us_letter(cls, bleed_in: float = 0.0) -> PageGeometry:
         """US Letter (8.5×11) sheet == trim, with the requested bleed.
 
-        Default bleed is 0.125" (industry standard). Pass ``bleed_in=0``
-        for the legacy "no bleed" behavior used in tests that need
-        byte-stable output independent of the bleed pass.
+        The default is **no bleed** (D7, #59): this geometry backs the
+        ``letter`` export target, which is for home printers, so the
+        MediaBox must be a true 8.5×11 page or the print dialog will
+        "fit to page" and shrink the sheet. Pass ``bleed_in=DEFAULT_BLEED``
+        (0.125") to model a commercial-print page with bleed.
         """
         return cls(
             sheet_width_in=PAGE_WIDTH,

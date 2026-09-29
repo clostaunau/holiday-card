@@ -32,7 +32,7 @@ holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," -
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 1201 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 1208 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -172,7 +172,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 1201 tests pass
+uv run pytest                            # All 1208 tests pass
 ```
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit
@@ -231,9 +231,11 @@ only, content-probed; template `source_path` is relative to the YAML
 file — absolute, `..` and symlink escapes are load errors, D5) with
 circle / rectangle / ellipse / star clip masks, fold lines, identity
 or rotation-only group transforms, and **bleed extension** on edges
-that touch the page trim (default 0.125", set per Card via
-`card.bleed` or per Panel via `panel.bleed`). **All 21 shipped
-templates currently compile cleanly:**
+that touch the page trim (`card.bleed` / `panel.bleed` default to
+0.125", capped at the page geometry's bleed: the default `letter`
+page has **no bleed** so nothing extends, while the POD targets carry
+0.125", D7 / #59). **All 21 shipped templates currently compile
+cleanly:**
 
 ```
 christmas-classic         christmas-geometric        christmas-modern
@@ -314,6 +316,35 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Recent changes
 
+- **2026-09-29 — The `letter` target is a true 8.5×11 page with no bleed
+  (expert-panel §P4 / D7, issue #59)**: `holiday-card create` wrote a
+  630×810 pt page (8.75×11.25") because `PageGeometry.us_letter()`
+  defaulted to 0.125" of bleed and `CropBox = MediaBox`. Home print
+  dialogs "fit to page" that onto Letter, shrinking it ~2.9% and moving
+  the fold lines off the physical centre. `PageGeometry.us_letter(bleed_in=
+  0.0)` is now the default; the `letter` target uses `us_letter()`; the
+  default `CompileContext` (`preview`, `--debug-emit-ir`, the visual
+  suite, the scripts) therefore produces a bleed-free Letter page. The
+  PDF declares MediaBox = CropBox = TrimBox = BleedBox = `[0 0 612 792]`
+  and ArtBox `[18 18 594 774]`; SVG is `width="612" height="792"
+  viewBox="0 0 612 792"`; `preview` at 144 DPI is 1224×1584. In
+  `_bleed_extended_panel_rect` the extension is `min(panel-or-card bleed,
+  geometry.bleed_in)`, so with a zero-bleed page no background rect
+  leaves the trim (before, they sat at −9 pt off the page). POD output is
+  unchanged: `per-panel-pdf` and `moo-a6` keep their 0.125" geometries and
+  TrimBox stays inset 9 pt. `svg_backend._fmt` normalises IEEE `-0.0`
+  to `0` (a zero bleed produced `viewBox="-0 -0 …"`). **Tests that
+  exercise bleed must pass an explicit `PageGeometry.us_letter(bleed_in=
+  0.125)`** (`test_compiler._NO_IMPOSE` does). All 16 compile snapshots
+  (`BeginPage.bleed` 9 → 0, rects unextended) and all 21 visual baselines
+  (630×810 → 612×792) were regenerated and eyeballed. Guarded by
+  `TestLetterPageBoxes` in `test_full_generation.py` (pikepdf boxes + SVG
+  canvas), `TestBeginPageBleedFields` / `TestBleedExtension` in
+  `test_compiler.py` (default bleed 0, every rect inside the trim,
+  explicit-bleed geometry still extends, cap at geometry bleed),
+  `test_preview_command_at_144_dpi_is_letter_sized` in
+  `test_png_backend.py`, and a `moo-a6` MediaBox ≠ TrimBox guard in
+  `test_per_panel_output.py`.
 - **2026-09-29 — Letter imposition is computed from the fold type; inside
   panels land on the correct pages (expert-panel §P4 / D6, issue #58)**:
   Every shipped template placed `inside_left` top-left and `inside_right`
@@ -860,6 +891,9 @@ template editing; a JSON "render plan" backend for downstream tooling.
   PDF declares distinct `MediaBox` / `TrimBox` / `BleedBox` / `ArtBox`;
   SVG `viewBox` and PNG canvas grow to include the bleed band. Lays the
   rails for `--export-for moo-a6` (Leapfrog 1) without shipping it yet.
+  (Since #59 the default `letter` page carries no bleed; this
+  behaviour now applies to the POD targets and to any explicit
+  `PageGeometry` with `bleed_in > 0`.)
 - **2026-05-10 — Wave 2 complete + v1.1.0 release**: IR seam
   (PRs #4-#10), three rendering backends (PRs #7/#11/#12), working
   `preview` command (PR #12), version bump + zero mypy errors + strict

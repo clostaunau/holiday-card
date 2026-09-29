@@ -285,8 +285,12 @@ def _single_panel_card(
 
 
 # Hand-placed fixture panels test the bleed-edge maths on arbitrary
-# coordinates, so they opt out of the letter imposition (#58).
-_NO_IMPOSE = CompileContext(impose=False)
+# coordinates, so they opt out of the letter imposition (#58). The default
+# letter geometry carries no bleed (#59), so the bleed tests ask for the
+# industry 0.125" explicitly.
+_NO_IMPOSE = CompileContext(
+    geometry=PageGeometry.us_letter(bleed_in=0.125), impose=False
+)
 
 
 def _bg_rect(commands: list[object]) -> RectGeom:
@@ -353,11 +357,31 @@ class TestBleedExtension:
         card = _single_panel_card(
             x=0, y=0, width=8.5, height=11.0, card_bleed=0.125, panel_bleed=0.25
         )
-        rect = _bg_rect(compile_card(card, _NO_IMPOSE))
+        ctx = CompileContext(geometry=PageGeometry.us_letter(bleed_in=0.25), impose=False)
+        rect = _bg_rect(compile_card(card, ctx))
         # 0.25" = 18 pt extension on every side.
         assert rect.x == -18.0 and rect.y == -18.0
         assert rect.width == 612.0 + 36.0
         assert rect.height == 792.0 + 36.0
+
+    def test_extension_is_capped_at_the_page_geometry_bleed(self) -> None:
+        # The panel asks for 0.25" but the page only has 0.125" of bleed
+        # area: extending further would draw off the media box (#59).
+        card = _single_panel_card(
+            x=0, y=0, width=8.5, height=11.0, card_bleed=0.125, panel_bleed=0.25
+        )
+        rect = _bg_rect(compile_card(card, _NO_IMPOSE))
+        assert rect.x == -9.0 and rect.y == -9.0
+        assert rect.width == 612.0 + 18.0
+        assert rect.height == 792.0 + 18.0
+
+    def test_no_extension_on_a_page_without_bleed(self) -> None:
+        # Card and panel both carry the template default of 0.125", but the
+        # default letter geometry has no bleed, so nothing extends (#59).
+        card = _single_panel_card(x=0, y=0, width=8.5, height=11.0)
+        rect = _bg_rect(compile_card(card, CompileContext(impose=False)))
+        assert rect.x == 0.0 and rect.y == 0.0
+        assert rect.width == 612.0 and rect.height == 792.0
 
     def test_rotated_180_panel_extends_on_swapped_local_edges(self) -> None:
         # Inside-left of a half-fold: x=0, y=5.5, w=4.25, h=5.5, rotation=180.
@@ -384,16 +408,46 @@ class TestBleedExtension:
 class TestBeginPageBleedFields:
     """``BeginPage`` now carries the bleed and safe-margin in points."""
 
-    def test_default_geometry_emits_industry_bleed(self) -> None:
-        # Default CompileContext = PageGeometry.us_letter() with 0.125" bleed.
+    def test_default_geometry_emits_no_bleed(self) -> None:
+        # Default CompileContext = PageGeometry.us_letter(): a true 8.5x11
+        # home-printer page with no bleed (D7, #59).
         card = CardGenerator().create_card(template_id="christmas-classic")
         commands = compile_card(card)
         bp = commands[0]
         assert isinstance(bp, BeginPage)
-        assert bp.width == 612.0  # trim width unchanged
+        assert bp.width == 612.0
         assert bp.height == 792.0
-        assert bp.bleed == 9.0  # 0.125" in points
+        assert bp.bleed == 0.0
         assert bp.safe_margin == 18.0  # 0.25" in points
+
+    def test_default_geometry_keeps_every_rect_inside_the_trim(self) -> None:
+        # With no bleed there is nowhere to extend to: no background rect
+        # may start below (0, 0) or reach past 612x792 (#59).
+        card = CardGenerator().create_card(template_id="christmas-classic")
+        rects = [
+            c.geometry for c in compile_card(card)
+            if isinstance(c, DrawShape) and isinstance(c.geometry, RectGeom)
+        ]
+        assert rects
+        for rect in rects:
+            assert rect.x >= 0.0 and rect.y >= 0.0, rect
+            assert rect.x + rect.width <= 612.0, rect
+            assert rect.y + rect.height <= 792.0, rect
+
+    def test_explicit_bleed_geometry_still_extends_backgrounds(self) -> None:
+        # The cap is geometry-driven: ask for 0.125" of bleed and the same
+        # template's backgrounds extend past the trim again (#59).
+        card = CardGenerator().create_card(template_id="christmas-classic")
+        ctx = CompileContext(geometry=PageGeometry.us_letter(bleed_in=0.125))
+        commands = compile_card(card, ctx)
+        bp = commands[0]
+        assert isinstance(bp, BeginPage)
+        assert bp.bleed == 9.0
+        rects = [
+            c.geometry for c in commands
+            if isinstance(c, DrawShape) and isinstance(c.geometry, RectGeom)
+        ]
+        assert any(rect.x < 0.0 or rect.y < 0.0 for rect in rects)
 
     def test_zero_bleed_geometry_zeros_the_field(self) -> None:
         card = CardGenerator().create_card(template_id="christmas-classic")
