@@ -80,7 +80,7 @@ def fake_client(monkeypatch: pytest.MonkeyPatch) -> FakeImageClient:
 
 
 def _generate_args(reference: Path | None, out: Path, *, subject: str, occasion: str, extra: list[str] | None = None) -> list[str]:
-    args = ["ai-asset", "generate", "--subject", subject, "--occasion", occasion, "--out", str(out)]
+    args = ["ai-asset", "generate", "--subject", subject, "--occasion", occasion, "--output", str(out)]
     if reference is not None:
         args += ["--reference", str(reference)]
     args += extra or []

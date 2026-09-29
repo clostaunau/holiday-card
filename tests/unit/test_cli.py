@@ -1166,3 +1166,283 @@ class TestTemplatePaths:
         listed = json.loads(result.stdout)["templates"]
         assert sum(t["source"] == "builtin" for t in listed) == 21
         assert {t["id"]: t["source"] for t in listed}["extra-card"] == "env"
+
+
+# ---------------------------------------------------------------------------
+# Discovery surface (#80, D16): short flags, listing tables, help panels,
+# exit codes. Rich help is rendered at a fixed width so it is deterministic.
+# ---------------------------------------------------------------------------
+
+_WIDE = {"COLUMNS": "120"}
+
+
+def _plain(output: str) -> str:
+    # Rich forces colour under GITHUB_ACTIONS; compare the text without ANSI styles.
+    import re
+
+    return re.sub(r"\x1b\[[0-9;]*m", "", output)
+
+
+def _help(runner: CliRunner, *command: str) -> str:
+    result = runner.invoke(app, [*command, "--help"], env=_WIDE)
+    assert result.exit_code == 0, result.output
+    return _plain(result.output)
+
+
+def _help_line(help_text: str, long: str) -> str:
+    # The one option row that declares ``long`` (``--out`` must not match ``--output``).
+    import re
+
+    rows = [line for line in help_text.splitlines() if re.match(_option_row(long), line)]
+    assert len(rows) == 1, f"{long}: {rows}"
+    return rows[0]
+
+
+def _option_row(long: str) -> str:
+    # A Rich option row: the box edge, an optional required ``*``, then the flag.
+    return rf"│\s+(\*\s+)?{long}(?![\w-])"
+
+
+def _short_flags(line: str) -> set[str]:
+    import re
+
+    return set(re.findall(r"(?<![\w-])-[a-zA-Z](?![\w-])", line))
+
+
+class TestShortFlags:
+    @pytest.mark.parametrize(
+        ("command", "long", "short"),
+        [
+            ((), "--version", "-V"),
+            (("templates",), "--occasion", None),
+            (("templates",), "--fold-type", "-f"),
+            (("templates",), "--format", None),
+            (("themes",), "--occasion", None),
+            (("themes",), "--format", None),
+            (("create",), "--message", "-m"),
+            (("create",), "--output", "-o"),
+            (("create",), "--fold-type", "-f"),
+            (("create",), "--image", "-i"),
+            (("create",), "--theme", "-t"),
+            (("preview",), "--message", "-m"),
+            (("preview",), "--output", "-o"),
+            (("preview",), "--dpi", "-d"),
+            (("preview",), "--fold-type", "-f"),
+            (("preview",), "--image", "-i"),
+            (("preview",), "--theme", "-t"),
+            (("init",), "--occasion", None),
+            (("init",), "--fold-type", "-f"),
+            (("init",), "--output", "-o"),
+            (("ai-asset", "generate"), "--output", "-o"),
+        ],
+    )
+    def test_short_flag_table(
+        self, runner: CliRunner, command: tuple[str, ...], long: str, short: str | None
+    ) -> None:
+        line = _help_line(_help(runner, *command), long)
+        assert _short_flags(line) == ({short} if short else set()), line
+
+    def test_ai_asset_has_no_out_option(self, runner: CliRunner) -> None:
+        import re
+
+        text = _help(runner, "ai-asset", "generate")
+        assert not any(re.match(_option_row("--out"), line) for line in text.splitlines())
+
+    @pytest.mark.parametrize("command", ["templates", "themes"])
+    def test_dash_o_is_no_longer_occasion(self, runner: CliRunner, command: str) -> None:
+        result = runner.invoke(app, [command, "-o", "christmas"])
+        assert result.exit_code == 2
+        assert "No such option: -o" in _plain(result.output)
+
+    def test_long_occasion_still_filters(self, runner: CliRunner) -> None:
+        result = runner.invoke(app, ["templates", "--occasion", "christmas"])
+        assert result.exit_code == 0, result.output
+
+    def test_init_dash_o_is_the_output_dir(self, runner: CliRunner, tmp_path: Path) -> None:
+        out = tmp_path / "d"
+        result = runner.invoke(app, ["init", "x", "-o", str(out)])
+        assert result.exit_code == 0, result.output
+        assert (out / "x.yaml").is_file()
+
+    def test_ai_asset_out_is_gone(self, runner: CliRunner, tmp_path: Path) -> None:
+        result = runner.invoke(
+            app,
+            ["ai-asset", "generate", "--subject", "pine", "--out", str(tmp_path / "p.png")],
+        )
+        assert result.exit_code == 2
+        assert "No such option: --out" in _plain(result.output)
+
+
+def _table_rows(output: str) -> tuple[list[str], list[list[str]]]:
+    # The header, then one row per line up to the blank line before the count.
+    lines = output.splitlines()
+    rows = []
+    for line in lines[1:]:
+        if not line.strip():
+            break
+        rows.append(line.split())
+    return lines[0].split(), rows
+
+
+class TestListingTables:
+    def test_template_table_starts_with_the_id(self, runner: CliRunner) -> None:
+        result = runner.invoke(app, ["templates"])
+        assert result.exit_code == 0, result.output
+        header, rows = _table_rows(result.output)
+        assert header[:3] == ["ID", "OCCASION", "FOLD"]
+        assert header[-1] == "NAME"
+        assert "SOURCE" not in header  # every template is builtin
+        assert "DESCRIPTION" not in header
+        payload = json.loads(runner.invoke(app, ["templates", "--format", "json"]).output)
+        ids = {t["id"] for t in payload["templates"]}
+        assert len(rows) == len(ids) == 21
+        assert {row[0] for row in rows} == ids
+
+    def test_every_listed_id_is_accepted_by_create(self, runner: CliRunner, tmp_path: Path) -> None:
+        # The acceptance criterion: `create <id> -o x.pdf` exits 0 for every row.
+        _, rows = _table_rows(runner.invoke(app, ["templates"]).output)
+        for row in rows:
+            out = tmp_path / f"{row[0]}.pdf"
+            result = runner.invoke(app, ["create", row[0], "-o", str(out)])
+            assert result.exit_code == 0, (row[0], result.output)
+            assert out.is_file()
+
+    def test_template_rows_sorted_by_occasion_then_id(self, runner: CliRunner) -> None:
+        _, rows = _table_rows(runner.invoke(app, ["templates"]).output)
+        keys = [(row[1], row[0]) for row in rows]
+        assert keys == sorted(keys)
+
+    def test_ids_are_not_truncated(self, runner: CliRunner) -> None:
+        _, rows = _table_rows(runner.invoke(app, ["templates"]).output)
+        assert "christmas-holiday-masterpiece" in {row[0] for row in rows}
+
+    def test_source_column_appears_with_a_user_template(
+        self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        user = tmp_path / "xdg" / "holiday-card" / "templates"
+        user.mkdir(parents=True)
+        source = _CLASSIC_YAML.read_text()
+        assert 'id: "christmas-classic"' in source
+        (user / "mine.yaml").write_text(
+            source.replace('id: "christmas-classic"', 'id: "aaa-mine"', 1)
+        )
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+        result = runner.invoke(app, ["templates"])
+        assert result.exit_code == 0, result.output
+        header, rows = _table_rows(result.output)
+        assert header == ["ID", "OCCASION", "FOLD", "SOURCE", "NAME"]
+        sources = {row[0]: row[3] for row in rows}
+        assert sources["aaa-mine"] == "user"
+        assert sources["christmas-classic"] == "builtin"
+
+    def test_theme_table_shows_ids_sorted(self, runner: CliRunner) -> None:
+        result = runner.invoke(app, ["themes"])
+        assert result.exit_code == 0, result.output
+        header, rows = _table_rows(result.output)
+        assert header[:2] == ["ID", "OCCASION"]
+        assert header[-1] == "NAME"
+        payload = json.loads(runner.invoke(app, ["themes", "--format", "json"]).output)
+        assert {row[0] for row in rows} == {t["id"] for t in payload["themes"]}
+        keys = [(row[1], row[0]) for row in rows]
+        assert keys == sorted(keys)
+
+    def test_every_listed_theme_id_is_accepted_by_create(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        _, rows = _table_rows(runner.invoke(app, ["themes"]).output)
+        theme = rows[0][0]
+        out = tmp_path / "t.pdf"
+        result = runner.invoke(app, ["create", "christmas-classic", "-t", theme, "-o", str(out)])
+        assert result.exit_code == 0, result.output
+
+    @pytest.mark.parametrize("command", ["templates", "themes"])
+    def test_unknown_format_is_a_usage_error(self, runner: CliRunner, command: str) -> None:
+        result = runner.invoke(app, [command, "--format", "xml"])
+        assert result.exit_code == 2
+        assert "xml" in _plain(result.output)
+
+    def test_json_keeps_full_descriptions(self, runner: CliRunner) -> None:
+        payload = json.loads(runner.invoke(app, ["templates", "--format", "json"]).output)
+        assert any(len(t["description"]) > 30 for t in payload["templates"])
+
+
+class TestHelpPanels:
+    _PANELS = {
+        "Content": [
+            "--message", "--inside-message", "--inside-message-md", "--voice",
+            "--seed", "--blank-inside", "--theme", "--image",
+        ],
+        "Inside letter": ["--salutation", "--signoff", "--signature", "--ps", "--signature-font"],
+        "Layout": ["--fold-type"],
+        "Output": ["--output"],
+    }
+
+    @staticmethod
+    def _panel_of(help_text: str, long: str) -> str:
+        import re
+
+        panel = None
+        for line in help_text.splitlines():
+            header = re.match(r"╭─ (.+?) ─", line)
+            if header:
+                panel = header.group(1)
+            elif re.match(_option_row(long), line):
+                assert panel is not None
+                return panel
+        raise AssertionError(f"{long} not in help")
+
+    @pytest.mark.parametrize("command", ["create", "preview"])
+    def test_options_are_grouped(self, runner: CliRunner, command: str) -> None:
+        text = _help(runner, command)
+        for panel, options in self._PANELS.items():
+            for option in options:
+                assert self._panel_of(text, option) == panel, (command, option)
+
+    @pytest.mark.parametrize("command", ["create", "preview"])
+    def test_panels_appear_in_reading_order(self, runner: CliRunner, command: str) -> None:
+        import re
+
+        panels = re.findall(r"╭─ (.+?) ─", _help(runner, command))
+        assert panels == ["Arguments", "Options", "Content", "Inside letter", "Layout", "Output"]
+
+    def test_create_only_options(self, runner: CliRunner) -> None:
+        text = _help(runner, "create")
+        assert self._panel_of(text, "--with-fold-marks") == "Layout"
+        for option in ("--format", "--export-for"):
+            assert self._panel_of(text, option) == "Output"
+        assert "--debug-emit-ir" not in text
+
+    def test_preview_only_options(self, runner: CliRunner) -> None:
+        text = _help(runner, "preview")
+        for option in ("--dpi", "--open"):
+            assert self._panel_of(text, option) == "Output"
+
+
+class TestExitCodes:
+    def test_values_are_stable(self) -> None:
+        from holiday_card.cli.exit_codes import ExitCode
+
+        assert {c.name: c.value for c in ExitCode} == {
+            "OK": 0,
+            "ERROR": 1,
+            "USAGE": 2,
+            "CONSENT_REQUIRED": 3,
+            "ENVIRONMENT": 4,
+            "RAIL_REFUSED": 5,
+        }
+
+    def test_root_help_lists_every_code(self, runner: CliRunner) -> None:
+        import re
+
+        text = _help(runner)
+        assert "Exit codes" in text
+        for code in range(6):
+            assert re.search(rf"(?m)^\s*{code}\s+\S", text), code
+
+    def test_commands_use_named_exit_codes(self) -> None:
+        import re
+
+        import holiday_card.cli.commands as commands
+
+        source = Path(commands.__file__).read_text()
+        assert not re.search(r"typer\.Exit\([0-9]", source)
