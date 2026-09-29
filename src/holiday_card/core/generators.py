@@ -19,6 +19,7 @@ from holiday_card.core.models import (
     Card,
     FoldType,
     Panel,
+    Template,
     TextElement,
     Theme,
 )
@@ -178,21 +179,49 @@ class CardGenerator:
         theme_id: str | None = None,
         fold_type: FoldType | None = None,
         photos: Sequence[Path] | None = None,
-        front_message: str | None = None,
         inside_message: str | None = None,
     ) -> Card:
-        """Create a card from a template.
+        """Load ``template_id`` and build a card from it.
+
+        See :meth:`create_card_from_template` for the arguments and errors;
+        this adds ``TemplateNotFoundError`` / ``TemplateLoadError`` from the
+        loader.
+        """
+        template = load_template(template_id, self.templates_dir)
+        return self.create_card_from_template(
+            template,
+            message=message,
+            output_path=output_path,
+            theme_id=theme_id,
+            fold_type=fold_type,
+            photos=photos,
+            inside_message=inside_message,
+        )
+
+    def create_card_from_template(
+        self,
+        template: Template,
+        *,
+        message: str | None = None,
+        output_path: Path | None = None,
+        theme_id: str | None = None,
+        fold_type: FoldType | None = None,
+        photos: Sequence[Path] | None = None,
+        inside_message: str | None = None,
+    ) -> Card:
+        """Build a card from an already-loaded template.
 
         Args:
-            template_id: Template identifier.
-            message: Optional greeting message (applied to front, for backwards compatibility).
-            output_path: Output PDF file path.
-            theme_id: Optional theme to apply.
-            fold_type: Optional fold type override.
-            photos: Optional photos for the template's photo slots, in slot
-                order (see :func:`fill_photo_slots`).
-            front_message: Optional message for the front panel greeting.
-            inside_message: Optional message for the inside panel.
+            template: The template to copy panels from.
+            message: Optional front greeting. ``""`` is a deliberate blank;
+                ``None`` keeps the template's text.
+            output_path: Output file path recorded on the card.
+            theme_id: Theme to apply (``template.default_theme_id`` if None).
+            fold_type: Fold type override (``template.fold_type`` if None).
+            photos: Photos for the template's photo slots, in slot order
+                (see :func:`fill_photo_slots`).
+            inside_message: Optional inside message; ``""`` clears the
+                template's inside text.
 
         Returns:
             Created Card object.
@@ -202,10 +231,6 @@ class CardGenerator:
             ImageSourceError: A photo is missing or not a PNG/JPEG.
             ThemeNotFoundError: ``theme_id`` names no known theme.
         """
-        # Load template
-        template = load_template(template_id, self.templates_dir)
-
-        # Create card from template
         card = Card(
             name=f"{template.name} - {datetime.now().strftime('%Y-%m-%d')}",
             template_id=template.id,
@@ -216,13 +241,10 @@ class CardGenerator:
             output_path=output_path,
         )
 
-        # Apply front message (front_message takes precedence over message).
-        # Empty string is a valid intentional value (e.g. --voice with no
-        # cover sentiment found, or a blank-cover deliberate choice), so
-        # we distinguish None ("not provided") from "" ("intentionally empty").
-        if front_message is not None:
-            self._apply_front_message(card, front_message)
-        elif message is not None:
+        # Empty string is a valid intentional value (a blank-cover
+        # deliberate choice), so we distinguish None ("not provided")
+        # from "" ("intentionally empty").
+        if message is not None:
             self._apply_front_message(card, message)
 
         # Apply inside message — same None-vs-empty distinction. ""
@@ -508,7 +530,6 @@ class CardGenerator:
         fold_type: FoldType | None = None,
         photos: Sequence[Path] | None = None,
         theme_id: str | None = None,
-        front_message: str | None = None,
         inside_message: str | None = None,
     ) -> tuple[Card, Path]:
         """Create a card and generate the PDF in one step.
@@ -520,7 +541,6 @@ class CardGenerator:
             fold_type: Optional fold type override.
             photos: Optional photos for the template's photo slots.
             theme_id: Optional theme to apply.
-            front_message: Optional message for the front panel greeting.
             inside_message: Optional message for the inside panel.
 
         Returns:
@@ -533,7 +553,6 @@ class CardGenerator:
             theme_id=theme_id,
             fold_type=fold_type,
             photos=photos,
-            front_message=front_message,
             inside_message=inside_message,
         )
 

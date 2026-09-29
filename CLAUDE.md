@@ -31,8 +31,8 @@ holiday-card create christmas-classic --inside-message-md letter.md   # Markdown
 holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," --signature "C" --ps "PS hi"   # structured letter
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
-holiday-card preview christmas-classic                          # writes a PNG and opens it
-uv run pytest                       # all 1055 tests, mypy-clean, ruff-clean
+holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
+uv run pytest                       # all 1140 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -88,6 +88,7 @@ src/holiday_card/
     sentiments.py       # Sentiment library loader for --voice
     markdown.py         # Tiny Markdown subset for --inside-message-md
     letter.py           # LetterContent model for --salutation/--signoff/--signature/--ps
+    card_request.py     # CardRequest + build_card / plan_output: the ONE owner of CLI precedence (D15)
     color_management.py # sRGB→CMYK conversion + ICC profile path resolution
     data_paths.py       # data_path(kind): the ONE resolver for bundled data (+ env overrides)
     ai_rails.py         # L3 hard category rails (occasion + prompt blocklists)
@@ -136,6 +137,7 @@ tests/
                         #   test_per_panel, test_markdown, test_render_changed
                         # L3 AI imagery: test_ai_rails, test_ai_provenance, test_ai_assets
                         # Loader: test_templates_loading (extra="forbid", fail-loud keys)
+                        # CLI seam: test_card_request (precedence rules 1-18, #78)
     __snapshots__/      # JSON snapshots of compile_card() output per template (16 files)
   integration/          # test_full_generation, test_svg_backend, test_png_backend,
                         #   test_per_panel_output, test_voice_flag, test_md_inside,
@@ -165,7 +167,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 1055 tests pass
+uv run pytest                            # All 1140 tests pass
 ```
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit
@@ -307,6 +309,48 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Recent changes
 
+- **2026-09-28 — `CardRequest` + `build_card` / `plan_output`: one pipeline
+  behind `create`, `preview` and `--debug-emit-ir` (expert-panel §P14 /
+  D15, issue #78)**: `create()` was a 437-line Typer function that owned
+  every precedence rule; `preview` accepted only `-m/-o/--dpi/--open`
+  (so `preview --voice spare` was `No such option`) and `_emit_ir_debug`
+  forwarded 5 of ~20 inputs. New `core/card_request.py`: `CardRequest`
+  (frozen, `extra="forbid"`; every `create` input minus the debug switch)
+  refuses the flag conflicts in a `model_validator` in `create()`'s old
+  order (unknown `--export-for` → unknown `--voice` → `--inside-message`
+  + `--inside-message-md` → the #60 combos → letter part + Markdown →
+  unparsable Markdown); `--fold-type` and `--format` are parsed by field
+  validators with the old messages. `build_card_with_report(request,
+  templates_dir=) -> (Card, BuildReport)` owns theme check, template
+  load, voice picks (occasion read from `Template.occasion`, so a
+  template in the wrong directory no longer gets `generic` copy),
+  `--blank-inside`, letter / Markdown / plain inside modes, fold-type fit
+  and photos; `build_card(r)` is `[0]`. `plan_output(request, now=) ->
+  OutputPlan(target, output_format, path)` owns format inference, the
+  timestamped default path and the `-o` checks. Errors are plain
+  `ValueError`s (no `Error:` prefix); `validation_message` /
+  `unwrap_validation_error` pull the original error out of a
+  `ValidationError`. `CardGenerator.create_card` now delegates to a new
+  `create_card_from_template(template, ...)`; the unreachable
+  `front_message` kwarg is gone from `create_card` / `create_and_generate`.
+  CLI: `create` = build request → `plan_output` → `build_card_with_report`
+  → `generate` → summary; `preview` takes every content option (shared
+  `_*_OPTION` objects, same short flags) and its docstring no longer
+  claims WYSIWYG for inputs it ignored; `--debug-emit-ir` is
+  `compile_card(build_card(request))`. `_exit_for_card_error` is the one
+  error→exit mapping for both commands (`ValidationError` / `ValueError`
+  → exit 2). Deleted from the CLI: `_template_occasion`,
+  `_resolve_output_format`, `_check_flag_combinations`, `_pick_voice_line`,
+  `_check_fold_type_fits`, `_validate_output_path`. Every exit-2 message
+  is byte-identical to before, including the quoted `Error: "unknown
+  export target …"` (a `KeyError` `str()` artifact, kept on purpose).
+  One ordering change: a missing `--inside-message-md` file is now
+  reported before other flag conflicts, because the CLI reads the file
+  before it builds the request. Guarded by `tests/unit/test_card_request.py`
+  (one test per precedence rule, 69 tests), `TestPipelineParity` in
+  `tests/unit/test_cli.py` (the three entry points build the same request;
+  `--debug-emit-ir` output equals the compiled `build_card`) and
+  `TestPreviewVoiceFlag` in `tests/integration/test_voice_flag.py`.
 - **2026-09-26 — `create`/`preview` fail loud on ignored or contradictory
   inputs; global `--debug` (expert-panel §P5 / D4, issue #60)**: Each of
   these used to exit 0 with the input ignored, or exit 1 with a bare
