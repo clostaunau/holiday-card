@@ -29,6 +29,7 @@ import pytest
 
 from holiday_card.core.compiler import (
     CompileContext,
+    SafeZoneWarning,
     UnknownFontError,
     UnsupportedFeatureError,
     compile_card,
@@ -695,3 +696,137 @@ class TestTextRotation:
             and c.transform.rotate_deg == -15
         )
         assert [type(c) for c in commands[idx + 1:idx + 4]] == [DrawText, DrawText, EndGroup]
+
+
+# ---------------------------------------------------------------------------
+# Per-panel fit: one compiler-emitted scale group (D8 / D14, #73)
+# ---------------------------------------------------------------------------
+
+
+_A6_W_PT = 4.13 * 72
+_A6_H_PT = 5.83 * 72
+_FILL_S = 5.83 / 5.5         # max(4.13/4.25, 5.83/5.5)
+_LETTERBOX_S = 4.13 / 4.25   # min(...)
+
+
+def _native_panel(**kwargs: object) -> Panel:
+    return Panel(
+        position=PanelPosition.FRONT,
+        width=4.25, height=5.5,
+        background_color=Color(r=1.0, g=0.0, b=0.0),
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+
+def _fit_card(*panels: Panel) -> Card:
+    return Card(
+        name="fit-fixture", template_id="fit-fixture",
+        fold_type=FoldType.HALF_FOLD, panels=list(panels),
+    )
+
+
+def _fit_ctx(panel_fit: str) -> CompileContext:
+    return CompileContext(
+        geometry=PageGeometry.moo_a6(), emit_fold_lines=False,
+        impose=False, panel_fit=panel_fit,  # type: ignore[arg-type]
+    )
+
+
+def _scale_groups(commands: list[object]) -> list[BeginGroup]:
+    return [
+        c for c in commands
+        if isinstance(c, BeginGroup)
+        and (c.transform.scale_x != 1.0 or c.transform.scale_y != 1.0)
+    ]
+
+
+class TestPanelFit:
+    def test_native_is_the_default_and_emits_no_scale(self) -> None:
+        assert CompileContext().panel_fit == "native"
+        commands = compile_card(_fit_card(_native_panel()), _fit_ctx("native"))
+        assert _scale_groups(commands) == []
+
+    def test_fill_wraps_the_panel_in_one_centred_scale_group(self) -> None:
+        commands = compile_card(_fit_card(_native_panel()), _fit_ctx("fill"))
+        groups = _scale_groups(commands)
+        assert len(groups) == 1
+        t = groups[0].transform
+        assert t.scale_x == pytest.approx(_FILL_S) and t.scale_y == pytest.approx(_FILL_S)
+        assert t.scale_x == pytest.approx(1.0600, abs=1e-4)
+        assert (t.pivot_x, t.pivot_y, t.rotate_deg) == (0.0, 0.0, 0.0)
+        assert t.offset_x == pytest.approx((_A6_W_PT - 4.25 * 72 * _FILL_S) / 2)
+        assert t.offset_x == pytest.approx(-0.1875 * 72, abs=0.01)
+        assert t.offset_y == pytest.approx(0.0, abs=1e-9)
+        # The group is the outermost one of the panel: every draw sits inside it.
+        first_draw = next(i for i, c in enumerate(commands) if isinstance(c, DrawShape))
+        assert commands.index(groups[0]) < first_draw
+
+    def test_letterbox_scale_is_the_min_and_centres_vertically(self) -> None:
+        commands = compile_card(_fit_card(_native_panel()), _fit_ctx("letterbox"))
+        groups = _scale_groups(commands)
+        assert len(groups) == 1
+        t = groups[0].transform
+        assert t.scale_x == pytest.approx(_LETTERBOX_S)
+        assert t.scale_x == pytest.approx(0.9718, abs=1e-4)
+        assert t.offset_x == pytest.approx(0.0, abs=1e-9)
+        assert t.offset_y == pytest.approx((_A6_H_PT - 5.5 * 72 * _LETTERBOX_S) / 2)
+
+    def test_fit_with_two_panels_raises(self) -> None:
+        back = _native_panel().model_copy(update={"position": PanelPosition.BACK})
+        with pytest.raises(ValueError, match="exactly one panel"):
+            compile_card(_fit_card(_native_panel(), back), _fit_ctx("fill"))
+
+    def test_fit_with_a_placed_panel_raises(self) -> None:
+        with pytest.raises(ValueError, match="origin"):
+            compile_card(_fit_card(_native_panel(x=1.0)), _fit_ctx("fill"))
+
+    def test_fill_extends_the_background_by_bleed_over_s_on_all_sides(self) -> None:
+        commands = compile_card(_fit_card(_native_panel()), _fit_ctx("fill"))
+        rect = _bg_rect(commands)
+        ext = 9.0 / _FILL_S
+        assert rect.x == pytest.approx(-ext)
+        assert rect.y == pytest.approx(-ext)
+        assert rect.width == pytest.approx(4.25 * 72 + 2 * ext)
+        assert rect.height == pytest.approx(5.5 * 72 + 2 * ext)
+
+    def test_letterbox_extends_only_the_edges_that_reach_the_trim(self) -> None:
+        commands = compile_card(_fit_card(_native_panel()), _fit_ctx("letterbox"))
+        rect = _bg_rect(commands)
+        ext = 9.0 / _LETTERBOX_S
+        assert rect.x == pytest.approx(-ext)
+        assert rect.width == pytest.approx(4.25 * 72 + 2 * ext)
+        assert rect.y == pytest.approx(0.0)
+        assert rect.height == pytest.approx(5.5 * 72)
+
+
+class TestSafeZoneWarning:
+    def _card(self, text: TextElement) -> Card:
+        return _fit_card(_native_panel(id="front-panel", text_elements=[text]))
+
+    def test_text_near_the_edge_warns_naming_panel_element_and_overshoot(self) -> None:
+        text = TextElement(id="greeting", content="Edge", x=0.1, y=3.0, font_family="Lato")
+        with pytest.warns(SafeZoneWarning) as record:
+            compile_card(self._card(text), _fit_ctx("fill"))
+        message = str(record[0].message)
+        assert "front" in message
+        assert "greeting" in message
+        assert '"' in message  # overshoot in inches
+
+    def test_centred_text_does_not_warn(self) -> None:
+        import warnings
+
+        text = TextElement(
+            id="greeting", content="Centre", x=2.125, y=3.0,
+            font_family="Lato", alignment="center",
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", SafeZoneWarning)
+            compile_card(self._card(text), _fit_ctx("fill"))
+
+    def test_native_fit_never_warns(self) -> None:
+        import warnings
+
+        text = TextElement(id="greeting", content="Edge", x=0.0, y=3.0, font_family="Lato")
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", SafeZoneWarning)
+            compile_card(self._card(text), _fit_ctx("native"))

@@ -7,6 +7,7 @@ All commands support both human-readable and JSON output formats.
 import json
 import os
 import sys
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any, NoReturn
@@ -27,7 +28,7 @@ from holiday_card.core.card_request import (
     unwrap_validation_error,
     validation_message,
 )
-from holiday_card.core.compiler import UnsupportedFeatureError
+from holiday_card.core.compiler import SafeZoneWarning, UnsupportedFeatureError
 from holiday_card.core.export_targets import (
     REGISTRY as EXPORT_TARGET_REGISTRY,
 )
@@ -421,6 +422,16 @@ def create(
     signature: str | None = _SIGNATURE_OPTION,
     ps: str | None = _PS_OPTION,
     signature_font: str | None = _SIGNATURE_FONT_OPTION,
+    panel_fit: str | None = typer.Option(
+        None,
+        "--panel-fit",
+        help=(
+            "How a fixed-trim target (moo-a6) maps each panel onto its trim: "
+            "'fill' (the default) scales the art to cover the trim and crops "
+            "the overflow; 'letterbox' fits it whole and leaves paper bands. "
+            "Refused for targets that keep the panel's native size."
+        ),
+    ),
     with_fold_marks: bool | None = typer.Option(
         None,
         "--with-fold-marks/--no-fold-marks",
@@ -466,6 +477,7 @@ def create(
             output_format=output_format,
             export_for=export_for,
             fold_marks=with_fold_marks,
+            panel_fit=panel_fit,
         )
         if debug_emit_ir:
             _emit_ir_debug(request)
@@ -479,9 +491,18 @@ def create(
 
         card, report = build_card_with_report(request)
         generator = CardGenerator(renderer=_make_renderer(plan.output_format))
-        written = generator.generate(
-            card, plan.path, target, emit_fold_lines=request.fold_marks,
-        )
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", SafeZoneWarning)
+            written = generator.generate(
+                card, plan.path, target, emit_fold_lines=request.fold_marks,
+            )
+        for warning in caught:
+            if issubclass(warning.category, SafeZoneWarning):
+                typer.secho(f"Warning: {warning.message}", fg=typer.colors.YELLOW, err=True)
+            else:
+                warnings.showwarning(
+                    warning.message, warning.category, warning.filename, warning.lineno,
+                )
 
         # Success output
         if target.layout == "per-panel":

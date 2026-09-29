@@ -32,7 +32,7 @@ holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," -
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 1907 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 1948 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -85,7 +85,7 @@ src/holiday_card/
     render_ir.py        # The 11-command IR (Wave 2 Step 1)
     compiler.py         # Card → list[RenderCommand] (Wave 2 Step 2b)
     export_targets.py   # Named print targets for --export-for
-    per_panel.py        # Per-panel rendering helpers (POD layouts)
+    per_panel.py        # Per-panel card + CompileContext (native panel; the compiler fits it, #73)
     sentiments.py       # Sentiment library loader for --voice
     markdown.py         # Tiny Markdown subset for --inside-message-md
     letter.py           # LetterContent model for --salutation/--signoff/--signature/--ps
@@ -185,7 +185,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 1907 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 1948 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
 
@@ -212,7 +212,8 @@ holiday-card validate src/holiday_card/data/templates/christmas/classic.yaml  # 
 
 # Per-panel POD output: --export-for emits one file per panel
 holiday-card create christmas-classic --export-for moo-a6 -o out/moo-card/
-# → out/moo-card/{front,back,inside-left,inside-right}.pdf at A6 trim + bleed
+# → out/moo-card/{front,back,inside-left,inside-right}.pdf at A6 trim + bleed,
+#   art scaled to fill the trim and cropped (--panel-fit letterbox: fit whole)
 holiday-card create christmas-classic --export-for per-panel-pdf -o out/files/
 # → out/files/{front,back,inside-left,inside-right}.pdf at panel-native trim + bleed
 
@@ -339,6 +340,52 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — moo-a6 fills the A6 trim via one compiler scale group;
+  letterbox is opt-in (expert-panel §P11 / §P8 / D8, issue #73)**: MOO A6
+  panels had ~0.24" of white paper top and bottom, because
+  `per_panel.prepare_scaled_panel` scaled by `min(4.13/4.25, 5.83/5.5)`
+  and centred the result, and bleed only extended edges that touched the
+  trim. Its per-type rescaling also skipped images, SVGPath `x`/`y`,
+  radial-gradient geometry, strokes, borders, pattern spacing and
+  letter/rich text sizes, and it rounded `font_size`. `ExportTarget.
+  scale_panels_to_fit` is replaced by `panel_fit: Literal["native",
+  "fill", "letterbox"]` (`PanelFit`): `per-panel-pdf` is `native` and
+  `moo-a6` is `fill`, with the description and docstring rewritten.
+  `CompileContext.panel_fit` makes `compile_card` require exactly one
+  panel at the origin with no rotation (otherwise `ValueError`). It then
+  replaces that panel's group transform with `Transform(scale = s,
+  offset = centre)`, pivot (0,0), where `s = max(tw/pw, th/ph)` for fill
+  (1.0600 letter→A6) and `min` for letterbox (0.9718). Every element,
+  photos included, scales inside that one group, so no per-type code is
+  left. `_fitted_bleed_rect` extends the background by `bleed / s` in the
+  native frame on every edge the scaled panel reaches: all four under
+  fill, left/right only under letterbox. `_warn_outside_safe_zone`
+  maps each `DrawText` run's measured box (advance width ×
+  ascent/descent, through the fit group and any text-rotation group) and
+  emits `SafeZoneWarning(UserWarning)` naming
+  `<template>/<panel>/<element>` and the overshoot in inches when the
+  box leaves the ArtBox. It fires only for `panel_fit != "native"`. The
+  CLI prints each warning as `Warning: …` on stderr and exits 0. Six
+  shipped templates warn under moo-a6: the classic, festive-stripes,
+  modern, winter-sky and mothers-day greetings (0.005–0.17"), and
+  photo-ornament's inside message (1.5"). The last is a template bug: it
+  is centre-aligned at x=0.5", so it hangs off the panel on every target.
+  New `create --panel-fit fill|letterbox` goes through
+  `CardRequest.panel_fit`. On a native target it is refused with exit 2
+  (D4). Otherwise `plan_output` returns `replace(target,
+  panel_fit=…)`. Deleted (D17): `prepare_scaled_panel`, `_scale_text`,
+  `_scale_shape` and `build_per_panel_card`'s `target` argument; the
+  panel always stays native. MediaBox is unchanged at 315.36×437.76 pt.
+  Compile snapshots and visual baselines are unchanged (both are
+  letter-only). Guarded by `TestPanelFit` / `TestSafeZoneWarning` in
+  `test_compiler.py`, `TestMooA6FillsTrim` (PNG + pdfium edge pixels on
+  all 4 panels), `TestMooA6Photo` (image rect native inside the scale
+  group; a pixel inside the ornament clip matches the native photo) and
+  `test_moo_a6_has_no_white_band_the_native_panel_lacks` (all 21
+  templates: every white row/column in the A6 trim maps to a white one in
+  the native render) in `test_per_panel_output.py`, `TestPanelFit` in
+  `test_card_request.py` and `TestPanelFitOption` in `test_cli.py`.
 
 - **2026-09-29 — Per-panel 144 DPI visual gate on PNG and PDF (expert-panel
   §P12 / D12, issue #68)**: The old gate hashed the whole 72 DPI PNG sheet
@@ -1245,7 +1292,9 @@ template editing; a JSON "render plan" backend for downstream tooling.
   and `moo-a6` (each panel at true A6 with content uniformly scaled to
   fit). Adds `core/export_targets.py` (registry) and `core/per_panel.py`
   (panel-content scaling helpers). Lays the rails for CMYK / ICC /
-  PDF/X-1a (next slice of Leapfrog 1).
+  PDF/X-1a (next slice of Leapfrog 1). (Since #73, moo-a6 fills the trim
+  and crops via one compiler scale group; the domain-level scaling
+  helpers are gone.)
 - **2026-05-10 — Bleed support + `PageGeometry` abstraction**: Backgrounds
   now extend past the trim edge by 0.125" (industry default) on edges that
   touch the page trim. `Card.bleed` and `Panel.bleed` configure it; the

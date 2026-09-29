@@ -153,6 +153,7 @@ class TestCardRequestModel:
             "output_format": "auto",
             "export_for": "letter",
             "fold_marks": None,
+            "panel_fit": None,
         }
 
     def test_images_are_a_tuple_of_paths(self) -> None:
@@ -628,3 +629,31 @@ class TestPrecedenceRules:
     def test_template_mode_when_nothing_touches_the_inside(self) -> None:
         _, report = build_card_with_report(CardRequest(template=CLASSIC))
         assert report == BuildReport(picked_cover=None, picked_inside=None, inside_mode="template")
+
+
+class TestPanelFit:
+    """--panel-fit only applies to targets that fit panels (#73, D4)."""
+
+    def test_default_keeps_the_registry_target(self) -> None:
+        plan = plan_output(CardRequest(template=CLASSIC, export_for="moo-a6"), now=NOW)
+        assert plan.target.panel_fit == "fill"
+
+    def test_letterbox_override_lands_on_the_plan_target(self) -> None:
+        plan = plan_output(
+            CardRequest(template=CLASSIC, export_for="moo-a6", panel_fit="letterbox"), now=NOW,
+        )
+        assert plan.target.panel_fit == "letterbox"
+        assert plan.target.name == "moo-a6"
+
+    @pytest.mark.parametrize("target", ["letter", "per-panel-pdf"])
+    def test_panel_fit_on_a_native_target_is_refused(self, target: str) -> None:
+        assert _refused_request(
+            template=CLASSIC, export_for=target, panel_fit="letterbox"
+        ) == (
+            f"--panel-fit only applies to targets that scale panels to a fixed trim "
+            f"(moo-a6); --export-for {target} renders panels at their native size"
+        )
+
+    def test_unknown_panel_fit_is_refused(self) -> None:
+        with pytest.raises(ValidationError):
+            CardRequest(template=CLASSIC, export_for="moo-a6", panel_fit="stretch")  # type: ignore[arg-type]

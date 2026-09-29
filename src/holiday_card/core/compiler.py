@@ -31,8 +31,10 @@ flips ``CardGenerator`` over.
 from __future__ import annotations
 
 import io
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas as _reportlab_canvas
@@ -105,6 +107,7 @@ from holiday_card.utils.measurements import (
 
 __all__ = [
     "CompileContext",
+    "SafeZoneWarning",
     "compile_card",
     "flatten_transparency",
     "UnknownFontError",
@@ -123,6 +126,10 @@ _EDGE_TOUCH_EPSILON: float = 1e-3
 
 class UnknownFontError(UnsupportedFeatureError):
     """Raised when a text element names a font no backend can render."""
+
+
+class SafeZoneWarning(UserWarning):
+    """A fitted panel's text crosses the page's safe zone (ArtBox) (D8)."""
 
 
 @dataclass(frozen=True)
@@ -147,6 +154,10 @@ class CompileContext:
     # PDF/X targets (D10, #71): resolve every alpha < 1 against a known
     # solid backdrop and emit opaque draws, or raise.
     flatten_transparency: bool = False
+    # Per-panel fixed-trim targets (D8, #73): fit the one native panel onto
+    # the trim with a single scale group. "fill" scales by max (crops the
+    # overflow) and warns when text crosses the safe zone; "letterbox" by min.
+    panel_fit: Literal["native", "fill", "letterbox"] = "native"
 
     @property
     def page_width_inches(self) -> float:
@@ -190,8 +201,9 @@ def compile_card(card: Card, ctx: CompileContext | None = None) -> list[RenderCo
     commands.extend(_emit_metadata(card))
 
     panels = impose_letter(card.panels, card.fold_type) if ctx.impose else card.panels
+    fit = _panel_fit_transform(panels, ctx) if ctx.panel_fit != "native" else None
     for panel in panels:
-        commands.extend(_compile_panel(panel, card, ctx, measurer))
+        commands.extend(_compile_panel(panel, card, ctx, measurer, fit))
 
     if ctx.emit_fold_lines:
         commands.extend(_emit_fold_lines(card.fold_type, ctx))
@@ -222,11 +234,43 @@ def _emit_metadata(card: Card) -> list[RenderCommand]:
 # ---------------------------------------------------------------------------
 
 
+def _panel_fit_transform(panels: list[Panel], ctx: CompileContext) -> Transform:
+    """The one scale group that fits a native panel onto the trim (D8 / D14).
+
+    ``s`` is ``max`` (fill) or ``min`` (letterbox) of the two axis ratios;
+    the pivot is the origin and the offset centres the scaled panel.
+    """
+    if len(panels) != 1:
+        raise ValueError(
+            f"panel_fit={ctx.panel_fit!r} needs exactly one panel, got {len(panels)}"
+        )
+    panel = panels[0]
+    if panel.x != 0 or panel.y != 0 or panel.rotation != 0:
+        raise ValueError(
+            f"panel_fit={ctx.panel_fit!r} needs a native panel at the origin with no "
+            f"rotation (see per_panel.prepare_native_panel); panel "
+            f"{panel.position.value!r} is at ({panel.x}, {panel.y}) rotated {panel.rotation}"
+        )
+    geometry = ctx.geometry
+    ratios = (
+        geometry.trim_width_in / panel.width,
+        geometry.trim_height_in / panel.height,
+    )
+    s = max(ratios) if ctx.panel_fit == "fill" else min(ratios)
+    return Transform(
+        scale_x=s,
+        scale_y=s,
+        offset_x=(geometry.trim_width_pts - inches_to_points(panel.width) * s) / 2,
+        offset_y=(geometry.trim_height_pts - inches_to_points(panel.height) * s) / 2,
+    )
+
+
 def _compile_panel(
     panel: Panel,
     card: Card,
     ctx: CompileContext,
     measurer: _reportlab_canvas.Canvas,
+    fit: Transform | None = None,
 ) -> list[RenderCommand]:
     if panel.background_image:
         raise UnsupportedFeatureError(
@@ -247,11 +291,12 @@ def _compile_panel(
     out: list[RenderCommand] = []
 
     # Panel rotation is about its center; the pivot is materialized here so
-    # backends never compute it (see the ``Transform`` docstring).
-    transform = _panel_transform(panel)
+    # backends never compute it (see the ``Transform`` docstring). A fitted
+    # panel is native (no rotation), so the fit group takes its place.
+    transform = fit if fit is not None else _panel_transform(panel)
     out.append(BeginGroup(transform=transform))
 
-    out.extend(emit(_emit_panel_background(panel, card, ctx.geometry), "background"))
+    out.extend(emit(_emit_panel_background(panel, card, ctx.geometry, fit), "background"))
     out.extend(emit(_emit_panel_border(panel), "border"))
 
     for kind, element in _flatten_and_sort(panel):
@@ -259,8 +304,13 @@ def _compile_panel(
             out.extend(emit(_compile_shape(element, panel), _element_label(panel, element)))
         elif kind == "text":
             assert isinstance(element, TextElement)  # narrowed via _flatten_and_sort
-            out.extend(emit(_compile_text(element, panel, measurer),
-                            _element_label(panel, element)))
+            text_commands = _compile_text(element, panel, measurer)
+            if fit is not None:
+                _warn_outside_safe_zone(
+                    text_commands, fit, ctx.geometry, measurer,
+                    where=f"{where_panel}/{element.id}",
+                )
+            out.extend(emit(text_commands, _element_label(panel, element)))
         elif kind == "image":
             assert isinstance(element, ImageElement)  # narrowed via _flatten_and_sort
             out.extend(emit(_compile_image(element, panel), _element_label(panel, element)))
@@ -312,7 +362,7 @@ def _panel_transform(panel: Panel) -> Transform:
 
 
 def _emit_panel_background(
-    panel: Panel, card: Card, geometry: PageGeometry
+    panel: Panel, card: Card, geometry: PageGeometry, fit: Transform | None = None
 ) -> list[RenderCommand]:
     """Emit the panel's solid-color background, extended by bleed on
     edges that touch the page trim.
@@ -328,10 +378,16 @@ def _emit_panel_background(
     background extends outward by the bleed amount in **panel-local
     coords** — the mapping accounts for panel rotation so that a 180°
     rotated panel still bleeds in the correct page direction.
+
+    A fitted panel (``fit``) is detected in the fitted frame instead: see
+    :func:`_fitted_bleed_rect`.
     """
     if panel.background_color is None:
         return []
-    rect = _bleed_extended_panel_rect(panel, card, geometry)
+    if fit is not None:
+        rect = _fitted_bleed_rect(panel, card, geometry, fit)
+    else:
+        rect = _bleed_extended_panel_rect(panel, card, geometry)
     return [
         DrawShape(
             geometry=rect,
@@ -401,6 +457,102 @@ def _bleed_extended_panel_rect(
         + (bleed_pt if local_top else 0.0)
     )
     return RectGeom(x=x_pt, y=y_pt, width=width_pt, height=height_pt)
+
+
+def _fitted_bleed_rect(
+    panel: Panel, card: Card, geometry: PageGeometry, fit: Transform
+) -> RectGeom:
+    """Background ``RectGeom`` for a panel drawn inside the fit group (#73).
+
+    An edge extends when the scaled panel reaches or overflows that trim
+    edge (every edge under fill; only the fitted axis under letterbox), by
+    ``bleed / s`` in the panel-native frame so it lands exactly on the
+    bleed edge after scaling.
+    """
+    requested_bleed_in = panel.bleed if panel.bleed is not None else card.bleed
+    bleed_pt = inches_to_points(min(requested_bleed_in, geometry.bleed_in))
+    w_pt = inches_to_points(panel.width)
+    h_pt = inches_to_points(panel.height)
+    eps = inches_to_points(_EDGE_TOUCH_EPSILON)
+    reaches_x = fit.offset_x <= eps  # centred, so both sides alike
+    reaches_y = fit.offset_y <= eps
+    ext_x = bleed_pt / fit.scale_x if reaches_x else 0.0
+    ext_y = bleed_pt / fit.scale_y if reaches_y else 0.0
+    return RectGeom(x=-ext_x, y=-ext_y, width=w_pt + 2 * ext_x, height=h_pt + 2 * ext_y)
+
+
+def _warn_outside_safe_zone(
+    commands: list[RenderCommand],
+    fit: Transform,
+    geometry: PageGeometry,
+    measurer: _reportlab_canvas.Canvas,
+    *,
+    where: str,
+) -> None:
+    """Warn when a fitted text element's measured ink box leaves the ArtBox (D8).
+
+    Each run's box (advance width × ascent/descent) goes through the fit
+    transform and any group inside the element (text rotation), then is
+    compared with the trim inset by ``safe_margin_in``.
+    """
+    from reportlab.pdfbase.pdfmetrics import getAscentDescent
+
+    margin = geometry.safe_margin_pts
+    art = (margin, margin, geometry.trim_width_pts - margin, geometry.trim_height_pts - margin)
+    stack = [fit.to_matrix()]
+    overshoot = 0.0
+    for cmd in commands:
+        if isinstance(cmd, BeginGroup):
+            stack.append(_compose(stack[-1], cmd.transform.to_matrix()))
+        elif isinstance(cmd, EndGroup):
+            stack.pop()
+        elif isinstance(cmd, DrawText) and cmd.run.text.strip():
+            run = cmd.run
+            width = measurer.stringWidth(run.text, run.font_id, run.size_pt)
+            ascent, descent = getAscentDescent(run.font_id, run.size_pt)
+            x0 = run.origin.x - {"left": 0.0, "center": width / 2, "right": width}[run.align]
+            corners = [
+                _apply(stack[-1], x, y)
+                for x in (x0, x0 + width)
+                for y in (run.origin.y + descent, run.origin.y + ascent)
+            ]
+            xs = [p[0] for p in corners]
+            ys = [p[1] for p in corners]
+            overshoot = max(
+                overshoot,
+                art[0] - min(xs), art[1] - min(ys), max(xs) - art[2], max(ys) - art[3],
+            )
+    if overshoot > 0.01:
+        warnings.warn(
+            SafeZoneWarning(
+                f"{where}: text crosses the safe zone by {overshoot / 72:.3f}\" "
+                f"(keep text {geometry.safe_margin_in}\" inside the trim; the cutter "
+                f"may trim it)"
+            ),
+            stacklevel=2,
+        )
+
+
+_Matrix = tuple[float, float, float, float, float, float]
+
+
+def _compose(outer: _Matrix, inner: _Matrix) -> _Matrix:
+    """``outer · inner`` for PDF ``cm`` tuples (``inner`` applies first)."""
+    a1, b1, c1, d1, e1, f1 = outer
+    a2, b2, c2, d2, e2, f2 = inner
+    return (
+        a1 * a2 + c1 * b2,
+        b1 * a2 + d1 * b2,
+        a1 * c2 + c1 * d2,
+        b1 * c2 + d1 * d2,
+        a1 * e2 + c1 * f2 + e1,
+        b1 * e2 + d1 * f2 + f1,
+    )
+
+
+def _apply(m: _Matrix, x: float, y: float) -> tuple[float, float]:
+    a, b, c, d, e, f = m
+    return (a * x + c * y + e, b * x + d * y + f)
 
 
 def _emit_panel_border(panel: Panel) -> list[RenderCommand]:

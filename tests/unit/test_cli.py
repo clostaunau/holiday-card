@@ -936,3 +936,46 @@ class TestInitScaffold:
             panels=template.panels,
         )
         assert panel_placements(card)[PanelPosition.INSIDE_LEFT].quadrant == "TR"
+
+
+_EDGE_GREETING = """    text_elements:
+      - id: "greeting"
+        content: "Merry Christmas!"
+        x: 2.125  # Center of panel"""
+
+
+class TestPanelFitOption:
+    """``create --panel-fit`` and the safe-zone warning (#73, D8 / D4)."""
+
+    def test_panel_fit_with_letter_exits_2(self, runner: CliRunner, workdir: Path) -> None:
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "--panel-fit", "letterbox", "-o", "c.pdf"]
+        )
+        _refused(result, workdir, "Error: --panel-fit only applies to targets")
+
+    def test_letterbox_with_moo_a6_exits_0(self, runner: CliRunner, workdir: Path) -> None:
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "--export-for", "moo-a6",
+                  "--panel-fit", "letterbox", "-o", "out"],
+        )
+        assert result.exit_code == 0, result.output
+        assert sorted(p.name for p in (workdir / "out").iterdir()) == [
+            "back.pdf", "front.pdf", "inside-left.pdf", "inside-right.pdf",
+        ]
+
+    def test_text_outside_the_safe_zone_warns_on_stderr_and_exits_0(
+        self, runner: CliRunner, workdir: Path, tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _custom_templates(
+            tmp_path, monkeypatch, _EDGE_GREETING,
+            # Centre-aligned at x=0.05": half the greeting hangs off the panel.
+            _EDGE_GREETING.replace("x: 2.125  # Center of panel", "x: 0.05"),
+        )
+        result = runner.invoke(
+            app, ["create", "christmas-classic", "--export-for", "moo-a6", "-o", "out"]
+        )
+        assert result.exit_code == 0, result.output
+        assert "Warning: " in result.stderr
+        assert "greeting" in result.stderr
+        assert (workdir / "out" / "front.pdf").exists()

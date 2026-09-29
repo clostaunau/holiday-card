@@ -14,9 +14,18 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+from PIL import Image
+
+from holiday_card.core.compiler import compile_card
 from holiday_card.core.export_targets import get_target
 from holiday_card.core.generators import CardGenerator
+from holiday_card.core.models import Card, Color
+from holiday_card.core.per_panel import build_per_panel_card, build_per_panel_context
+from holiday_card.core.render_ir import BeginGroup, DrawImage, EndGroup, RenderCommand
+from holiday_card.core.templates import discover_templates
 from holiday_card.renderers.png_backend import PNGRenderer
+from rasterize import rasterize_pdf
 
 # Christmas-classic is the canonical half-fold card used by every other
 # integration test; reuse it here so the per-panel suite shares fixtures.
@@ -205,7 +214,7 @@ def _count_fold_lines(card: object, target: str, **gen_kwargs) -> int:
     # Per-panel: count across all panels
     total = 0
     for panel in card.panels:  # type: ignore[attr-defined]
-        per_card = build_per_panel_card(card, panel, t)  # type: ignore[arg-type]
+        per_card = build_per_panel_card(card, panel)  # type: ignore[arg-type]
         ctx = build_per_panel_context(panel, t)
         if fold_marks and not ctx.emit_fold_lines:
             from dataclasses import replace
@@ -245,3 +254,168 @@ class TestFoldMarksGate:
         # Either zero or one per panel is acceptable; assert no error.
         n = _count_fold_lines(card, "per-panel-pdf", emit_fold_lines=True)
         assert n >= 0  # the assertion is "no error during compile"
+
+
+# ---------------------------------------------------------------------------
+# moo-a6 fills the A6 page: no white bands inside the trim (D8, #73)
+# ---------------------------------------------------------------------------
+
+_DPI = 72
+_A6_FILL_S = 5.83 / 5.5
+_A6_OFFSET_X_PT = (4.13 * 72 - 4.25 * 72 * _A6_FILL_S) / 2
+_PANEL_STEMS = {
+    "front": "front", "back": "back",
+    "inside_left": "inside-left", "inside_right": "inside-right",
+}
+
+
+def _rgb(color: Color) -> tuple[int, int, int]:
+    return (round(color.r * 255), round(color.g * 255), round(color.b * 255))
+
+
+def _close(a: tuple[int, ...], b: tuple[int, ...], tol: int = 2) -> bool:
+    return all(abs(x - y) <= tol for x, y in zip(a, b, strict=False))
+
+
+def _edge_samples(img: Image.Image) -> dict[str, tuple[int, ...]]:
+    w, h = img.size
+    return {
+        "top": img.getpixel((w // 2, 3)), "bottom": img.getpixel((w // 2, h - 4)),
+        "left": img.getpixel((3, h // 2)), "right": img.getpixel((w - 4, h // 2)),
+    }
+
+
+def _render_moo(tmp_path: Path, template_id: str, renderer: object) -> tuple[Card, Path]:
+    gen = CardGenerator(renderer=renderer)  # type: ignore[arg-type]
+    card = gen.create_card(template_id=template_id)
+    out = tmp_path / template_id
+    gen.generate(card, out, target="moo-a6")
+    return card, out
+
+
+class TestMooA6FillsTrim:
+    def test_png_front_is_red_just_inside_the_trim_top_and_bottom(self, tmp_path: Path) -> None:
+        _, out = _render_moo(tmp_path, TEMPLATE_ID, PNGRenderer(dpi=_DPI))
+        img = Image.open(out / "front.png").convert("RGB")
+        w, h = img.size
+        assert _close(img.getpixel((w // 2, 12)), (204, 26, 26))
+        assert _close(img.getpixel((w // 2, h - 12)), (204, 26, 26))
+
+    def test_png_every_panel_reaches_every_media_edge(self, tmp_path: Path) -> None:
+        card, out = _render_moo(tmp_path, TEMPLATE_ID, PNGRenderer(dpi=_DPI))
+        for panel in card.panels:
+            assert panel.background_color is not None
+            img = Image.open(out / f"{_PANEL_STEMS[panel.position.value]}.png").convert("RGB")
+            for edge, pixel in _edge_samples(img).items():
+                assert _close(pixel, _rgb(panel.background_color), tol=3), (
+                    f"{panel.position.value} {edge}: {pixel}"
+                )
+
+    def test_pdf_every_panel_reaches_every_media_edge(self, tmp_path: Path) -> None:
+        card, out = _render_moo(tmp_path, TEMPLATE_ID, None)
+        for panel in card.panels:
+            assert panel.background_color is not None
+            img = rasterize_pdf(out / f"{_PANEL_STEMS[panel.position.value]}.pdf", _DPI)
+            for edge, pixel in _edge_samples(img).items():
+                # CMYK round trip through GRACoL moves the colour a little.
+                assert _close(pixel, _rgb(panel.background_color), tol=40), (
+                    f"{panel.position.value} {edge}: {pixel}"
+                )
+                if min(_rgb(panel.background_color)) < 240:
+                    assert pixel != (255, 255, 255), f"{panel.position.value} {edge}"
+
+
+def _front_ir(template_id: str, target_name: str) -> list[RenderCommand]:
+    card = CardGenerator().create_card(template_id=template_id)
+    target = get_target(target_name)
+    front = next(p for p in card.panels if p.position.value == "front")
+    return compile_card(
+        build_per_panel_card(card, front), build_per_panel_context(front, target),
+    )
+
+
+class TestMooA6Photo:
+    def test_image_is_drawn_at_its_native_rect_inside_the_scale_group(self) -> None:
+        native = [c for c in _front_ir("christmas-photo-ornament", "per-panel-pdf")
+                  if isinstance(c, DrawImage)]
+        moo = _front_ir("christmas-photo-ornament", "moo-a6")
+        scale_idx = next(
+            i for i, c in enumerate(moo)
+            if isinstance(c, BeginGroup) and c.transform.scale_x != 1.0
+        )
+        end_idx = max(i for i, c in enumerate(moo) if isinstance(c, EndGroup))
+        images = [(i, c) for i, c in enumerate(moo) if isinstance(c, DrawImage)]
+        assert images and len(images) == len(native)
+        for (i, img), ref in zip(images, native, strict=True):
+            assert scale_idx < i < end_idx
+            assert img.image.rect == ref.image.rect
+
+    def test_png_pixel_just_inside_the_ornament_clip_is_photo(self, tmp_path: Path) -> None:
+        gen = CardGenerator(renderer=PNGRenderer(dpi=_DPI))
+        card = gen.create_card(template_id="christmas-photo-ornament")
+        gen.generate(card, tmp_path / "moo", target="moo-a6")
+        gen.generate(card, tmp_path / "native", target="per-panel-pdf")
+        front = next(p for p in card.panels if p.position.value == "front")
+        assert front.background_color is not None
+        # Clip circle centre (2.125, 2.75)", radius 1.5": sample 1.4" left of
+        # centre, inside the ornament's gold stroke (radius 1.6" ± 4 pt).
+        nx_pt, ny_pt = (2.125 - 1.4) * 72, 2.75 * 72
+        moo = Image.open(tmp_path / "moo" / "front.png").convert("RGB")
+        nat = Image.open(tmp_path / "native" / "front.png").convert("RGB")
+        photo = nat.getpixel((round(nx_pt + 9), nat.size[1] - round(ny_pt + 9)))
+        px = round(nx_pt * _A6_FILL_S + _A6_OFFSET_X_PT + 9)
+        py = moo.size[1] - round(ny_pt * _A6_FILL_S + 9)
+        pixel = moo.getpixel((px, py))
+        assert not _close(photo, _rgb(front.background_color), tol=10), photo
+        assert _close(pixel, photo, tol=12), (pixel, photo)
+
+
+def _white_lines(img: Image.Image, axis: str, box: tuple[int, int, int, int]) -> set[int]:
+    """Indices of rows (axis='row') or columns inside ``box`` that are all near-white."""
+    x0, y0, x1, y1 = box
+    px = img.load()
+    assert px is not None
+    lines = range(y0, y1) if axis == "row" else range(x0, x1)
+    across = range(x0, x1) if axis == "row" else range(y0, y1)
+    white = set()
+    for i in lines:
+        pixels = (px[j, i] if axis == "row" else px[i, j] for j in across)
+        if all(min(p[:3]) >= 250 for p in pixels):
+            white.add(i)
+    return white
+
+
+@pytest.mark.parametrize("template_id", sorted(t["id"] for t in discover_templates()))
+def test_moo_a6_has_no_white_band_the_native_panel_lacks(
+    template_id: str, tmp_path: Path,
+) -> None:
+    """Every white row / column inside the A6 trim is white in the native panel too."""
+    gen = CardGenerator(renderer=PNGRenderer(dpi=_DPI))
+    card = gen.create_card(template_id=template_id)
+    gen.generate(card, tmp_path / "moo", target="moo-a6")
+    gen.generate(card, tmp_path / "native", target="per-panel-pdf")
+    bleed = 9
+    for panel in card.panels:
+        stem = _PANEL_STEMS[panel.position.value]
+        moo = Image.open(tmp_path / "moo" / f"{stem}.png").convert("RGB")
+        nat = Image.open(tmp_path / "native" / f"{stem}.png").convert("RGB")
+        mw, mh = moo.size
+        nw, nh = nat.size
+        moo_trim = (bleed, bleed, mw - bleed, mh - bleed)
+        nat_trim = (bleed, bleed, nw - bleed, nh - bleed)
+        nat_white_rows = _white_lines(nat, "row", nat_trim)
+        nat_white_cols = _white_lines(nat, "col", nat_trim)
+        for r in _white_lines(moo, "row", moo_trim):
+            y_trim = (mh - bleed) - (r + 0.5)           # pt above the trim bottom
+            native_y = y_trim / _A6_FILL_S
+            nr = round((nh - bleed) - native_y - 0.5)
+            assert {nr - 1, nr, nr + 1} & nat_white_rows, (
+                f"{panel.position.value}: moo-a6 row {r} is white, native row {nr} is not"
+            )
+        for c in _white_lines(moo, "col", moo_trim):
+            x_trim = (c + 0.5) - bleed
+            native_x = (x_trim - _A6_OFFSET_X_PT) / _A6_FILL_S
+            nc = round(native_x + bleed - 0.5)
+            assert {nc - 1, nc, nc + 1} & nat_white_cols, (
+                f"{panel.position.value}: moo-a6 column {c} is white, native column {nc} is not"
+            )

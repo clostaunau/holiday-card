@@ -65,6 +65,9 @@ holiday-card create christmas-classic -m "Merry Christmas, Sarah" \
 # 3. Export per-panel files for a POD service
 holiday-card create christmas-classic --export-for moo-a6 -o ./moo/
 # → ./moo/{front,back,inside-left,inside-right}.pdf at A6 trim + 0.125" bleed
+#   Each panel is scaled to fill the A6 trim and the overflow is cropped; text
+#   that crosses the 0.25" safe zone prints a `Warning:` (exit 0).
+#   `--panel-fit letterbox` fits the whole panel instead (white bands top/bottom).
 
 # 4. Skip the printer dialog — preview as PNG
 holiday-card preview christmas-classic --voice spare
@@ -88,7 +91,7 @@ holiday-card create birthday-balloons --inside-message-md letter.md
 | **Sentiments** | 303 hand-tagged copy lines across 9 occasions × up-to-5 voices × 2 roles. Sympathy-class occasions ship a curated voice subset ("absent rather than wrong" — witty + irreverent never appear for grief contexts) |
 | **Fonts** | 6 curated SIL OFL families (Cormorant Garamond, Playfair Display, Lato, Inter, Caveat, Comfortaa) embedded in every PDF |
 | **Photo cards** | `ImageElement` + circle / rectangle / ellipse / star clip masks; render a portrait into a styled frame |
-| **POD targets** | `letter` (single imposed 8.5×11 sheet for home printing, no bleed), `per-panel-pdf` (native trim per panel + 0.125" bleed), `moo-a6` (A6 + 0.125" bleed with content scaled to fit + DeviceCMYK PDF/X-1a:2003 + GRACoL2013 ICC) |
+| **POD targets** | `letter` (single imposed 8.5×11 sheet for home printing, no bleed), `per-panel-pdf` (native trim per panel + 0.125" bleed), `moo-a6` (A6 + 0.125" bleed, art scaled to fill the trim and cropped — `--panel-fit letterbox` to fit it whole — + DeviceCMYK PDF/X-1a:2003 + GRACoL2013 ICC) |
 | **Output formats** | PDF (default), SVG, PNG |
 | **Quality gates** | ruff + mypy strict + 882 tests + per-panel 144 DPI visual-regression gate (PNG and PDF rasters) across all 21 templates + a smoke job that installs the built wheel and runs it outside any checkout, covering each voice and the CMYK export |
 
