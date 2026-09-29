@@ -32,7 +32,7 @@ holiday-card create christmas-classic --salutation "Dear M," --signoff "Love," -
 holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF/X-1a:2003 for MOO
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 1392 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 1557 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -105,6 +105,7 @@ src/holiday_card/
     svg_backend.py        # IR → SVG (browser-openable)
     png_backend.py        # IR → PNG (powers `preview`); clips/dashes/text alpha honoured, bundled TTFs only
     pdfx_postprocess.py   # pikepdf-based PDF/X-1a:2003 upgrade
+    pdfx_preflight.py     # Rule-based PDF/X-1a:2003 checker (D11; veraPDF has no PDF/X)
     image_effects.py      # Pillow effects (sepia/grayscale/vignette/blur)
   data/                 # Package data shipped in the wheel (no __init__.py);
                         #   resolved only via core/data_paths.data_path()
@@ -178,7 +179,8 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 1392 tests pass
+uv run pytest                            # All 1557 tests pass
+uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit
@@ -329,6 +331,47 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 ## Recent changes
 
+- **2026-09-29 — PDF/X-1a: embedded initial font, correct Info/XMP
+  identification, and a rule preflight gated in CI (expert-panel §P9 /
+  D11, issue #69)**: (1) `IRReportLabRenderer` created its canvas with
+  ReportLab's default initial font, base-14 Helvetica, which it never
+  embeds, so every page of every PDF (sRGB and CMYK) opened with `/F1 12
+  Tf` on an unembedded font. The canvas now passes `initialFontName=
+  resolve_font_id("Helvetica")` (LiberationSans); `pdffonts` shows
+  `emb yes` on every row. (2) `apply_pdfx1a` writes `/Info
+  /GTS_PDFXVersion` and `/GTS_PDFXConformance` = `PDF/X-1a:2003`; the
+  XMP `pdfx:GTS_PDFXVersion` is `PDF/X-1a:2003` (ISO 15930-4; it said the
+  2001 identifier `PDF/X-1:2001` and the old test enforced that) and gains
+  `xmp:CreateDate` / `ModifyDate` / `MetadataDate` converted from the Info
+  `D:` dates. The OutputIntent says `/OutputConditionIdentifier
+  (CGATS21-2-CRPC6)` and `/OutputCondition (GRACoL 2013, CRPC6 — CGATS
+  21-2)`, matching the bundled profile (was `CGATS TR 006`). (3) New
+  `renderers/pdfx_preflight.py`: `preflight_pdfx1a(path) ->
+  list[PreflightViolation(rule, page, detail)]` checks header 1.4, `/ID`,
+  no `/Encrypt`, Info keys + `Trapped` + `GTS_PDFXVersion`, XMP ↔ Info
+  equality, exactly one `/GTS_PDFX` OutputIntent with an `N=4` profile,
+  MediaBox ⊇ BleedBox ⊇ TrimBox ⊇ ArtBox, embedded fonts (Form XObjects,
+  tiling patterns and Type 0 descendants included), transparency
+  (`/ca`/`/CA` < 1, `/BM`, `/SMask`, image `/SMask`, transparency
+  groups), RGB-family colour spaces (DeviceRGB / CalRGB / ICCBased / Lab)
+  in content operators, images and shadings, and JavaScript / JPX /
+  transfer functions. It reports; it never raises, and the generator does
+  not call it yet (#71 wires it in). (4) New CI job `pdfx-preflight`
+  (ubuntu + `poppler-utils` + `ghostscript`) runs `pytest -m pdfx` with
+  `HOLIDAY_CARD_REQUIRE_PREFLIGHT_TOOLS=1`, which turns a missing tool
+  into a failure (elsewhere those tests skip); `build` needs it. The new
+  `pdfx` marker covers `tests/unit/test_pdfx_preflight.py` (one hand-built
+  PDF per rule, mutated from a clean CMYK render),
+  `test_pdfx_moo_a6.py` and `tests/integration/
+  test_pdfx_preflight_all_templates.py` (moo-a6 for all 21 templates:
+  font / metadata / box rules clean, `pdffonts` all `emb yes`, `gs
+  -sDEVICE=inkcov` 4 values per page, plus the default `letter` PDF's
+  fonts). `transparency.*` is a strict xfail for 13 templates and
+  `colorspace.rgb_image` for the 5 photo templates; #71 trims
+  `TRANSPARENCY_TEMPLATES` / `RGB_IMAGE_TEMPLATES` as it fixes them.
+  D11 was already amended (veraPDF has no PDF/X profile). Removing
+  `initialFontName` turns 52 `pdfx` tests red. Snapshots and visual
+  baselines unchanged.
 - **2026-09-29 — Cross-backend conformance suite + capability matrix
   (expert-panel §P12 / D12, issue #67)**: New `tests/conformance/` (no
   `__init__.py`). `cases.py` holds 37 frozen `Case`s, each a 144×144 pt
@@ -950,8 +993,8 @@ template editing; a JSON "render plan" backend for downstream tooling.
   `--export-for moo-a6` now emits DeviceCMYK PDFs (k/K operators,
   no RGB), with the GRACoL2013_CRPC6 ICC profile embedded as the
   OutputIntent's `/DestOutputProfile`, an XMP metadata stream
-  declaring `GTS_PDFXVersion="PDF/X-1:2001"` /
-  `GTS_PDFXConformance="PDF/X-1a:2003"`, `/Info /Trapped` set to
+  declaring PDF/X-1a:2003 (it wrongly said `GTS_PDFXVersion=
+  "PDF/X-1:2001"` until #69), `/Info /Trapped` set to
   `/False`, and the PDF header forced to 1.4. Implementation:
   `core/color_management.py` (naive sRGB→CMYK conversion + ICC
   path resolution), `renderers/pdfx_postprocess.py` (pikepdf-based
