@@ -512,7 +512,7 @@ class CardGenerator:
         # (e.g. an unknown font) leaves no half-written directory behind.
         compiled: list[tuple[str, list[RenderCommand]]] = []
         for panel in card.panels:
-            per_card = build_per_panel_card(card, panel, target)
+            per_card = build_per_panel_card(card, panel)
             ctx = build_per_panel_context(panel, target)
             # Per-panel mode: respect the override if the user explicitly
             # passed --with-fold-marks. Otherwise build_per_panel_context's

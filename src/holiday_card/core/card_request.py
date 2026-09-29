@@ -21,7 +21,7 @@ domain errors of the modules this one calls: ``TemplateNotFoundError``,
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -29,6 +29,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator, model_validator
 
 from holiday_card.core.export_targets import (
+    REGISTRY,
     ExportTarget,
     ExportTargetNotFoundError,
     get_target,
@@ -104,6 +105,7 @@ class CardRequest(BaseModel):
     output_format: Literal["auto", "pdf", "svg"] = "auto"   # --format
     export_for: str = "letter"                      # --export-for
     fold_marks: bool | None = None                  # --with-fold-marks / --no-fold-marks
+    panel_fit: Literal["fill", "letterbox"] | None = None   # --panel-fit (None: target's)
 
     @field_validator("fold_type", mode="before")
     @classmethod
@@ -135,9 +137,16 @@ class CardRequest(BaseModel):
     def _check_conflicts(self) -> CardRequest:
         """Refuse contradictory or unknown inputs, in ``create()``'s original order (D4)."""
         try:
-            get_target(self.export_for)  # rule 1
+            target = get_target(self.export_for)  # rule 1
         except ExportTargetNotFoundError as e:
             raise UnknownExportTargetError(str(e)) from e
+        if self.panel_fit is not None and target.panel_fit == "native":  # D4, #73
+            fitting = ", ".join(n for n, t in sorted(REGISTRY.items()) if t.panel_fit != "native")
+            raise ValueError(
+                f"--panel-fit only applies to targets that scale panels to a fixed trim "
+                f"({fitting}); --export-for {self.export_for} renders panels at their "
+                f"native size"
+            )
         if self.voice is not None and self.voice not in VOICES:  # rule 2
             raise ValueError(
                 f"Unknown --voice value {self.voice!r}. Available: {', '.join(VOICES)}"
@@ -360,6 +369,8 @@ def plan_output(request: CardRequest, *, now: datetime) -> OutputPlan:
         ValueError: ``-o`` clashes with the format or the target.
     """
     target = get_target(request.export_for)
+    if request.panel_fit is not None:
+        target = replace(target, panel_fit=request.panel_fit)
     output_format = _resolve_output_format(request)
     ext = f".{output_format}"
     output = request.output

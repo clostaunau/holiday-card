@@ -1,7 +1,7 @@
 """Registry of named export targets for ``holiday-card create``.
 
-A target is a (name, layout, [geometry]) triple plus an optional
-content-scaling flag. The two layouts:
+A target is a (name, layout, [geometry]) triple plus a panel-fit mode.
+The two layouts:
 
 * ``imposition`` — the today-default: every panel is laid out on a
   single sheet (US Letter, half-fold imposition). One file out.
@@ -23,7 +23,18 @@ from holiday_card.utils.measurements import (
     PageGeometry,
 )
 
-__all__ = ["ExportTarget", "REGISTRY", "get_target", "ExportTargetNotFoundError"]
+__all__ = [
+    "ExportTarget",
+    "PanelFit",
+    "REGISTRY",
+    "get_target",
+    "ExportTargetNotFoundError",
+]
+
+# How a per-panel target maps a panel onto its fixed trim (D8). ``native``
+# keeps the panel's own size; ``fill`` scales by ``max`` and crops the
+# overflow; ``letterbox`` scales by ``min`` and leaves paper bands.
+PanelFit = Literal["native", "fill", "letterbox"]
 
 
 class ExportTargetNotFoundError(KeyError):
@@ -39,13 +50,15 @@ class ExportTarget:
 
     For ``per-panel`` targets:
 
-    * ``geometry=None, scale_panels_to_fit=False`` — each output file
-      uses the panel's native dimensions; only ``bleed_in`` and
+    * ``geometry=None, panel_fit="native"`` — each output file uses
+      the panel's native dimensions; only ``bleed_in`` and
       ``safe_margin_in`` from this target apply.
-    * ``geometry=<PageGeometry>, scale_panels_to_fit=True`` — each
-      output file lands at ``geometry``'s trim, with panel content
-      uniformly scaled to fit (letterboxed on the off-axis if the
-      aspect ratios disagree).
+    * ``geometry=<PageGeometry>, panel_fit="fill"`` — each output file
+      lands at ``geometry``'s trim. The compiler wraps the panel in one
+      uniform scale group (``max`` of the two axis ratios), so the art
+      covers the whole trim + bleed and the off-axis overflow is cropped
+      (D8). ``"letterbox"`` (opt-in via ``--panel-fit``) uses ``min``
+      instead and leaves paper bands on the off-axis.
     """
 
     name: str
@@ -54,7 +67,7 @@ class ExportTarget:
     bleed_in: float = DEFAULT_BLEED
     safe_margin_in: float = SAFE_MARGIN
     geometry: PageGeometry | None = None
-    scale_panels_to_fit: bool = False
+    panel_fit: PanelFit = "native"
     # Default fold-mark behavior for this target. Imposition targets
     # (single sheet for home printer) default ON — the user folds the
     # printed sheet by hand and the dashed grey guide helps align the
@@ -100,21 +113,22 @@ REGISTRY: dict[str, ExportTarget] = {
             "a specific finished-card size."
         ),
         layout="per-panel",
-        scale_panels_to_fit=False,
+        panel_fit="native",
         fold_marks_default=False,
     ),
     "moo-a6": ExportTarget(
         name="moo-a6",
         description=(
             "MOO A6 folded card: each panel as a separate PDF/SVG/PNG "
-            "at 4.13\"x5.83\" trim + 0.125\" bleed. Panel content is "
-            "uniformly scaled to fit; aspect-ratio mismatch produces "
-            "letterbox bands. PDF output is CMYK + PDF/X-1a:2003 "
+            "at 4.13\"x5.83\" trim + 0.125\" bleed. Panel art is "
+            "scaled to fill the trim and the overflow is cropped (text "
+            "that crosses the safe zone is warned about; --panel-fit "
+            "letterbox opts out). PDF output is CMYK + PDF/X-1a:2003 "
             "compliant for direct MOO submission."
         ),
         layout="per-panel",
         geometry=PageGeometry.moo_a6(),
-        scale_panels_to_fit=True,
+        panel_fit="fill",
         fold_marks_default=False,
         color_space="cmyk",
         pdfx="PDF/X-1a:2003",

@@ -1,8 +1,6 @@
-"""Unit tests for per-panel preparation and scaling helpers."""
+"""Unit tests for per-panel preparation helpers."""
 
 from __future__ import annotations
-
-import pytest
 
 from holiday_card.core.export_targets import get_target
 from holiday_card.core.models import (
@@ -20,7 +18,6 @@ from holiday_card.core.per_panel import (
     build_per_panel_card,
     build_per_panel_context,
     prepare_native_panel,
-    prepare_scaled_panel,
 )
 
 
@@ -86,98 +83,19 @@ class TestPrepareNativePanel:
         assert result.shape_elements[0] == original.shape_elements[0]
 
 
-class TestPrepareScaledPanel:
-    """``prepare_scaled_panel`` scales every coordinate and font size to
-    fit the target trim, with letterbox semantics on the off-axis."""
-
-    def test_scale_factor_is_uniform_min(self) -> None:
-        # 4.25x5.5 panel into 4.13x5.83 A6:
-        # sx = 4.13/4.25 = 0.9718; sy = 5.83/5.5 = 1.06
-        # uniform = min = 0.9718
-        result = prepare_scaled_panel(
-            _panel_with_content(), target_width_in=4.13, target_height_in=5.83,
-        )
-        # Width fills target (the constrained axis).
-        assert result.width == pytest.approx(4.13, rel=1e-6)
-        # Height is shorter than target (letterbox top + bottom).
-        assert result.height == pytest.approx(5.5 * (4.13 / 4.25), rel=1e-6)
-
-    def test_offset_centers_on_letterbox_axis(self) -> None:
-        result = prepare_scaled_panel(
-            _panel_with_content(), target_width_in=4.13, target_height_in=5.83,
-        )
-        # x=0 (no letterbox on width — fills the target).
-        assert result.x == pytest.approx(0.0, abs=1e-9)
-        # y centered: (5.83 - scaled_height) / 2.
-        scaled_h = 5.5 * (4.13 / 4.25)
-        assert result.y == pytest.approx((5.83 - scaled_h) / 2, rel=1e-6)
-
-    def test_text_element_position_and_size_scaled(self) -> None:
-        result = prepare_scaled_panel(
-            _panel_with_content(), target_width_in=4.13, target_height_in=5.83,
-        )
-        scale = 4.13 / 4.25
-        text = result.text_elements[0]
-        assert text.x == pytest.approx(2.0 * scale, rel=1e-6)
-        assert text.y == pytest.approx(3.0 * scale, rel=1e-6)
-        assert text.width == pytest.approx(4.0 * scale, rel=1e-6)
-        # Font size: round(24 * 0.9718) = 23
-        assert text.font_size == 23
-        assert text.min_font_size == max(6, round(12 * scale))
-
-    def test_rectangle_shape_scaled(self) -> None:
-        result = prepare_scaled_panel(
-            _panel_with_content(), target_width_in=4.13, target_height_in=5.83,
-        )
-        scale = 4.13 / 4.25
-        rect = result.shape_elements[0]
-        assert isinstance(rect, Rectangle)
-        assert rect.x == pytest.approx(0.5 * scale, rel=1e-6)
-        assert rect.y == pytest.approx(0.5 * scale, rel=1e-6)
-        assert rect.width == pytest.approx(2.0 * scale, rel=1e-6)
-        assert rect.height == pytest.approx(1.0 * scale, rel=1e-6)
-
-    def test_circle_shape_scaled(self) -> None:
-        result = prepare_scaled_panel(
-            _panel_with_content(), target_width_in=4.13, target_height_in=5.83,
-        )
-        scale = 4.13 / 4.25
-        circle = result.shape_elements[1]
-        assert isinstance(circle, Circle)
-        assert circle.center_x == pytest.approx(3.0 * scale, rel=1e-6)
-        assert circle.center_y == pytest.approx(4.0 * scale, rel=1e-6)
-        assert circle.radius == pytest.approx(0.75 * scale, rel=1e-6)
-
-    def test_rotation_is_dropped(self) -> None:
-        # Even though source panel had rotation=180 (imposition), the
-        # scaled per-panel output never folds.
-        result = prepare_scaled_panel(
-            _panel_with_content(), target_width_in=4.13, target_height_in=5.83,
-        )
-        assert result.rotation == 0.0
-
-
 class TestBuildPerPanelCard:
-    """``build_per_panel_card`` dispatches on ``target.scale_panels_to_fit``."""
+    """``build_per_panel_card`` always keeps the panel's native dimensions:
+    fitting to a fixed trim is one compiler-emitted scale group (#73), not
+    a rewrite of the domain model."""
 
-    def test_per_panel_pdf_uses_native_dims(self) -> None:
+    def test_panel_is_placed_at_the_origin_with_native_content(self) -> None:
         panel = _panel_with_content()
-        card = _card_for(panel)
-        target = get_target("per-panel-pdf")
-        result = build_per_panel_card(card, panel, target)
+        result = build_per_panel_card(_card_for(panel), panel)
         out_panel = result.panels[0]
-        assert out_panel.x == 0.0 and out_panel.y == 0.0
-        assert out_panel.width == 4.25 and out_panel.height == 5.5
-        assert out_panel.rotation == 0.0
-
-    def test_moo_a6_scales_into_a6(self) -> None:
-        panel = _panel_with_content()
-        card = _card_for(panel)
-        target = get_target("moo-a6")
-        result = build_per_panel_card(card, panel, target)
-        out_panel = result.panels[0]
-        # Width fills A6 (the constrained axis).
-        assert out_panel.width == pytest.approx(4.13, rel=1e-6)
+        assert (out_panel.x, out_panel.y, out_panel.rotation) == (0.0, 0.0, 0.0)
+        assert (out_panel.width, out_panel.height) == (4.25, 5.5)
+        assert out_panel.text_elements == panel.text_elements
+        assert out_panel.shape_elements == panel.shape_elements
 
 
 class TestBuildPerPanelContext:
@@ -202,3 +120,15 @@ class TestBuildPerPanelContext:
         assert ctx.geometry.bleed_in == 0.125
         assert ctx.emit_fold_lines is False
         assert ctx.impose is False
+        assert ctx.panel_fit == "fill"
+
+    def test_native_dim_target_passes_native_fit(self) -> None:
+        ctx = build_per_panel_context(_panel_with_content(), get_target("per-panel-pdf"))
+        assert ctx.panel_fit == "native"
+
+    def test_letterbox_override_reaches_the_context(self) -> None:
+        from dataclasses import replace
+
+        target = replace(get_target("moo-a6"), panel_fit="letterbox")
+        ctx = build_per_panel_context(_panel_with_content(), target)
+        assert ctx.panel_fit == "letterbox"

@@ -23,18 +23,26 @@ class TestRegistry:
         assert target.layout == "per-panel"
         # Native-dim per-panel: no fixed geometry; uses the panel's own dims.
         assert target.geometry is None
-        assert target.scale_panels_to_fit is False
+        assert target.panel_fit == "native"
 
     def test_moo_a6_is_registered_with_a6_geometry(self) -> None:
         target = get_target("moo-a6")
         assert target.layout == "per-panel"
-        assert target.scale_panels_to_fit is True
+        assert target.panel_fit == "fill"
         assert target.geometry is not None
         # A6 trim is approximately 4.13" x 5.83"
         assert target.geometry.trim_width_in == 4.13
         assert target.geometry.trim_height_in == 5.83
         # Bleed is 0.125" (industry standard)
         assert target.geometry.bleed_in == 0.125
+
+    def test_letter_is_native_fit(self) -> None:
+        assert get_target("letter").panel_fit == "native"
+
+    def test_moo_a6_description_no_longer_promises_letterbox_bands(self) -> None:
+        description = get_target("moo-a6").description
+        assert "letterbox bands" not in description
+        assert "fill" in description
 
     def test_unknown_target_raises_with_helpful_list(self) -> None:
         with pytest.raises(ExportTargetNotFoundError, match="unknown export target"):
