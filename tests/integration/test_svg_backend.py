@@ -18,11 +18,12 @@ from pathlib import Path
 
 import pytest
 
-from holiday_card.core.compiler import compile_card
+from holiday_card.core.compiler import CompileContext, compile_card
 from holiday_card.core.generators import CardGenerator
 from holiday_card.core.images import ImageSourceError
 from holiday_card.core.models import ImageElement
 from holiday_card.renderers.svg_backend import SVGRenderer
+from holiday_card.utils.measurements import PageGeometry
 
 # Every shipped template; mirrors ``test_png_backend.py``'s
 # ``PNG_TEMPLATES``. ``tests/unit/test_compiler.py``'s
@@ -75,12 +76,11 @@ def test_svg_renders_valid_xml(template_id: str, tmp_path: Path) -> None:
         f"Root element is {root.tag!r}, expected svg"
     )
 
-    # Letter trim is 612x792 pt; with the default 0.125" bleed the
-    # media canvas is 630x810 pt.
-    assert root.get("width") == "630", "Unexpected SVG width"
-    assert root.get("height") == "810", "Unexpected SVG height"
-    # viewBox starts at -bleed so IR (0, 0) lands at the trim corner.
-    assert root.get("viewBox") == "-9 -9 630 810", "Unexpected SVG viewBox"
+    # The default letter geometry is a true 8.5x11 page with no bleed
+    # (D7, #59): 612x792 pt with the viewBox anchored at the trim corner.
+    assert root.get("width") == "612", "Unexpected SVG width"
+    assert root.get("height") == "792", "Unexpected SVG height"
+    assert root.get("viewBox") == "0 0 612 792", "Unexpected SVG viewBox"
 
 
 @pytest.mark.parametrize("template_id", SVG_TEMPLATES)
@@ -143,12 +143,15 @@ def test_svg_fold_line_is_dashed(tmp_path: Path) -> None:
 
 
 def test_svg_viewbox_includes_negative_bleed_offset(tmp_path: Path) -> None:
-    """The viewBox starts at ``(-bleed, -bleed)`` so IR (0, 0) lands at
-    the trim corner. Without this, content positioned at IR coords would
-    appear in the bleed area.
+    """With a bleed geometry the viewBox starts at ``(-bleed, -bleed)`` so
+    IR (0, 0) lands at the trim corner. Without this, content positioned
+    at IR coords would appear in the bleed area. The default letter page
+    has no bleed (#59), so this asks for 0.125" explicitly.
     """
     out = tmp_path / "viewbox.svg"
-    _render_svg("christmas-classic", out)
+    card = CardGenerator().create_card(template_id="christmas-classic")
+    ctx = CompileContext(geometry=PageGeometry.us_letter(bleed_in=0.125))
+    SVGRenderer().render(compile_card(card, ctx), out)
     root = ET.parse(out).getroot()
     vb = root.get("viewBox")
     parts = vb.split() if vb else []

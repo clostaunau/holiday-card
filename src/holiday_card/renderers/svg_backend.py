@@ -681,7 +681,8 @@ def _fmt(value: float) -> str:
     trailing zeros.
     """
     formatted = f"{value:.4f}".rstrip("0").rstrip(".")
-    return formatted or "0"
+    # ``-bleed`` with a zero bleed is IEEE -0.0; SVG wants a plain "0".
+    return "0" if formatted in ("", "-0") else formatted
 
 
 def _rgba_to_css(color: object) -> str:

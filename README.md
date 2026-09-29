@@ -12,9 +12,10 @@ holiday-card create christmas-classic --voice warm --seed 42
 ```
 
 That picks a voiced greeting from the curated sentiment library,
-renders it in Playfair Display + Cormorant, exports as a US Letter
-imposition with 0.125" bleed, and saves a PDF you can drop on your
-home printer or hand to a press.
+renders it in Playfair Display + Cormorant, exports as a true 8.5×11
+US Letter imposition (no bleed, so your print dialog never has to
+"fit to page"), and saves a PDF you can drop on your home printer.
+The `--export-for` POD targets carry the 0.125" bleed a press needs.
 
 ## Why this exists
 
@@ -87,7 +88,7 @@ holiday-card create birthday-balloons --inside-message-md letter.md
 | **Sentiments** | 303 hand-tagged copy lines across 9 occasions × up-to-5 voices × 2 roles. Sympathy-class occasions ship a curated voice subset ("absent rather than wrong" — witty + irreverent never appear for grief contexts) |
 | **Fonts** | 6 curated SIL OFL families (Cormorant Garamond, Playfair Display, Lato, Inter, Caveat, Comfortaa) embedded in every PDF |
 | **Photo cards** | `ImageElement` + circle / rectangle / ellipse / star clip masks; render a portrait into a styled frame |
-| **POD targets** | `letter` (single imposed sheet), `per-panel-pdf` (native trim per panel), `moo-a6` (A6 with content scaled to fit + DeviceCMYK PDF/X-1a:2003 + GRACoL2013 ICC) |
+| **POD targets** | `letter` (single imposed 8.5×11 sheet for home printing, no bleed), `per-panel-pdf` (native trim per panel + 0.125" bleed), `moo-a6` (A6 + 0.125" bleed with content scaled to fit + DeviceCMYK PDF/X-1a:2003 + GRACoL2013 ICC) |
 | **Output formats** | PDF (default), SVG, PNG |
 | **Quality gates** | ruff + mypy strict + 882 tests + visual-regression perceptual-hash gate across all 21 templates + a smoke job that installs the built wheel and runs it outside any checkout, covering each voice and the CMYK export |
 

@@ -80,6 +80,13 @@ class TestPageGeometryNoBleed:
     def geom(self) -> PageGeometry:
         return PageGeometry.us_letter(bleed_in=0.0)
 
+    def test_us_letter_defaults_to_no_bleed(self) -> None:
+        # D7 (#59): the home-printer page is a true 8.5x11 sheet.
+        geom = PageGeometry.us_letter()
+        assert geom.bleed_in == 0.0
+        assert geom.media_box_pts == (0.0, 0.0, 612.0, 792.0)
+        assert geom.media_box_pts == geom.trim_box_pts
+
     def test_all_boxes_equal_when_no_bleed(self, geom: PageGeometry) -> None:
         # ArtBox is inset by SAFE_MARGIN, so it's smaller than the rest.
         # Media / Trim / Bleed all collapse to the same rect when bleed=0.
@@ -100,7 +107,7 @@ class TestPageGeometryWithBleed:
 
     @pytest.fixture
     def geom(self) -> PageGeometry:
-        return PageGeometry.us_letter()  # default bleed = 0.125"
+        return PageGeometry.us_letter(bleed_in=DEFAULT_BLEED)
 
     def test_default_bleed_matches_industry_standard(self, geom: PageGeometry) -> None:
         assert geom.bleed_in == DEFAULT_BLEED == 0.125

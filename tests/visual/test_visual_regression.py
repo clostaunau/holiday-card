@@ -14,7 +14,7 @@ or scikit-image SSIM:
   hinting differs slightly between Linux and macOS even at the same
   Pillow version. The CI matrix runs on both.
 * **scikit-image SSIM** would add a ~30MB dev dependency. Overkill
-  for the resolution we render at (72 DPI letter = 630×810).
+  for the resolution we render at (72 DPI letter = 612×792).
 * **Perceptual hashing** is already in the dev extras
   (``imagehash>=4.3``), is robust to anti-aliasing noise, and
   catches the regressions that actually matter — text moved, a

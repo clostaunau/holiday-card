@@ -128,9 +128,11 @@ class CompileContext:
 
     Holds the :class:`PageGeometry` that tells the compiler the trim
     dimensions, the bleed extension, and the safe margin. Defaults to
-    ``PageGeometry.us_letter()`` with the industry-standard 0.125" bleed.
-    Tests that need byte-stable, no-bleed output construct the context
-    with ``PageGeometry.us_letter(bleed_in=0.0)``.
+    ``PageGeometry.us_letter()``: a true 8.5×11 home-printer page with
+    **no bleed** (D7, #59), which is what ``preview``, ``--debug-emit-ir``
+    and the ``letter`` export target use. Background bleed extension is
+    capped at ``geometry.bleed_in``, so on this default page nothing
+    extends past the trim. POD targets pass a geometry with 0.125".
     """
 
     geometry: PageGeometry = field(default_factory=PageGeometry.us_letter)
@@ -296,8 +298,10 @@ def _emit_panel_background(
     edges that touch the page trim.
 
     Effective bleed resolves as ``panel.bleed if panel.bleed is not None
-    else card.bleed``. Per-panel ``None`` is the inherit signal; an
-    explicit ``Panel(bleed=0.0)`` overrides the card default to zero.
+    else card.bleed``, capped at ``geometry.bleed_in`` (the page has no
+    media area beyond that, #59). Per-panel ``None`` is the inherit
+    signal; an explicit ``Panel(bleed=0.0)`` overrides the card default
+    to zero.
 
     Edge-detection is in **page coords** (panel.x, .y, .width, .height
     are page-coords already). For each page-edge the panel touches, the
@@ -325,7 +329,8 @@ def _bleed_extended_panel_rect(
     Returns coordinates in **points**, in the panel's local frame
     (i.e. inside the BeginGroup that applies ``_panel_transform``).
     """
-    effective_bleed_in = panel.bleed if panel.bleed is not None else card.bleed
+    requested_bleed_in = panel.bleed if panel.bleed is not None else card.bleed
+    effective_bleed_in = min(requested_bleed_in, geometry.bleed_in)
     if effective_bleed_in == 0.0:
         return RectGeom(
             x=inches_to_points(panel.x),

@@ -111,6 +111,21 @@ class TestMooA6:
             assert round(w, 2) == expected_media_w, f"{pdf.name}: media width mismatch"
             assert round(h, 2) == expected_media_h, f"{pdf.name}: media height mismatch"
 
+    def test_each_pdf_declares_distinct_trim_and_bleed(self, tmp_path: Path) -> None:
+        # Regression guard: the letter target lost its bleed (#59); the
+        # POD targets must keep theirs.
+        out_dir = tmp_path / "moo-a6"
+        gen = CardGenerator()
+        card = gen.create_card(template_id=TEMPLATE_ID)
+        gen.generate(card, out_dir, target="moo-a6")
+        for pdf in out_dir.glob("*.pdf"):
+            data = pdf.read_bytes()
+            media = _box(data, b"MediaBox")
+            trim = _box(data, b"TrimBox")
+            assert media != trim, f"{pdf.name}: MediaBox and TrimBox are identical"
+            # Trim sits inside the MediaBox at (bleed, bleed) = (9, 9).
+            assert trim[0] == 9.0 and trim[1] == 9.0
+
     def test_each_pdf_is_a_valid_nonempty_file(self, tmp_path: Path) -> None:
         out_dir = tmp_path / "moo-a6"
         gen = CardGenerator()
@@ -149,16 +164,14 @@ class TestImpositionUnchanged:
         assert written[0] == out
         assert out.exists()
 
-    def test_letter_target_page_size_matches_letter_plus_bleed(
-        self, tmp_path: Path
-    ) -> None:
+    def test_letter_target_page_size_is_us_letter(self, tmp_path: Path) -> None:
         out = tmp_path / "card.pdf"
         gen = CardGenerator()
         card = gen.create_card(template_id=TEMPLATE_ID)
         gen.generate(card, out, target="letter")
-        # Letter trim 612x792 + 0.125" bleed = 630x810
+        # Home-printer page: 8.5x11 with no bleed (D7, #59).
         w, h = _read_page_size(out.read_bytes())
-        assert (w, h) == (630.0, 810.0)
+        assert (w, h) == (612.0, 792.0)
 
 
 # ---------------------------------------------------------------------------

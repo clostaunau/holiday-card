@@ -1,6 +1,6 @@
 [
   {
-    "bleed": 9.0,
+    "bleed": 0.0,
     "cmd": "begin_page",
     "height": 792.0,
     "safe_margin": 18.0,
@@ -45,11 +45,11 @@
     },
     "geometry": {
       "corner_radius": 0.0,
-      "height": 405.0,
+      "height": 396.0,
       "kind": "rect",
-      "width": 315.0,
+      "width": 306.0,
       "x": 306.0,
-      "y": -9.0
+      "y": 0.0
     },
     "opacity": 1.0,
     "stroke": null
@@ -683,11 +683,11 @@
     },
     "geometry": {
       "corner_radius": 0.0,
-      "height": 405.0,
+      "height": 396.0,
       "kind": "rect",
-      "width": 315.0,
-      "x": 297.0,
-      "y": 387.0
+      "width": 306.0,
+      "x": 306.0,
+      "y": 396.0
     },
     "opacity": 1.0,
     "stroke": null
@@ -759,11 +759,11 @@
     },
     "geometry": {
       "corner_radius": 0.0,
-      "height": 405.0,
+      "height": 396.0,
       "kind": "rect",
-      "width": 315.0,
+      "width": 306.0,
       "x": 0.0,
-      "y": 387.0
+      "y": 396.0
     },
     "opacity": 1.0,
     "stroke": null
@@ -795,11 +795,11 @@
     },
     "geometry": {
       "corner_radius": 0.0,
-      "height": 405.0,
+      "height": 396.0,
       "kind": "rect",
-      "width": 315.0,
-      "x": -9.0,
-      "y": -9.0
+      "width": 306.0,
+      "x": 0.0,
+      "y": 0.0
     },
     "opacity": 1.0,
     "stroke": null

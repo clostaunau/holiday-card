@@ -84,11 +84,12 @@ REGISTRY: dict[str, ExportTarget] = {
     "letter": ExportTarget(
         name="letter",
         description=(
-            "US Letter (8.5\"x11\") imposition; one PDF/SVG/PNG with "
-            "all panels on a single sheet (default)."
+            "US Letter (8.5\"x11\") imposition for home printers; one "
+            "PDF/SVG/PNG with all panels on a single sheet, no bleed "
+            "(MediaBox = 8.5x11) (default)."
         ),
         layout="imposition",
-        geometry=PageGeometry.us_letter(bleed_in=DEFAULT_BLEED),
+        geometry=PageGeometry.us_letter(),
     ),
     "per-panel-pdf": ExportTarget(
         name="per-panel-pdf",
