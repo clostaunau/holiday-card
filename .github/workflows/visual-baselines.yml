@@ -1,0 +1,37 @@
+name: visual-baselines
+
+# Regenerates the per-panel visual gate's baselines (#68) on the canonical
+# runner. Baselines are generated here, never on a laptop: dispatch this on
+# your branch, download the `reference_cards` artifact, eyeball every PNG,
+# and commit it over tests/visual/fixtures/reference_cards/.
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend:
+        description: "Backend to regenerate"
+        type: choice
+        options: [all, png, pdf]
+        default: all
+
+permissions:
+  contents: read
+
+jobs:
+  regenerate:
+    name: Regenerate visual baselines (ubuntu-latest / py3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked --extra dev
+      - name: regenerate baselines
+        run: uv run python scripts/regenerate_visual_baselines.py --backend "${{ inputs.backend }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reference_cards
+          path: tests/visual/fixtures/reference_cards/
+          if-no-files-found: error

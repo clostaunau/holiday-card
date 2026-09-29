@@ -56,7 +56,18 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --extra dev
       - name: pytest
+        env:
+          # The visual gate (#68) writes fresh sheets, crops and diff heatmaps
+          # here when a panel fails or a baseline is missing.
+          HOLIDAY_CARD_VISUAL_OUT: ${{ runner.temp }}/visual-out
         run: uv run pytest -v --cov=holiday_card --cov-report=xml --cov-report=term-missing
+      - name: Upload visual-gate failures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-out-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: ${{ runner.temp }}/visual-out/
+          if-no-files-found: ignore
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         uses: actions/upload-artifact@v4

@@ -12,11 +12,11 @@ import io
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
-import pypdfium2 as pdfium
 import pytest
 import resvg_py
 from PIL import Image, ImageChops
 
+import rasterize
 from holiday_card.core.render_ir import RenderCommand
 from holiday_card.renderers.font_registry import FONT_DIR
 from holiday_card.renderers.png_backend import PNGRenderer
@@ -49,14 +49,6 @@ BBOX_TOLERANCE_PX = 3
 _INK_THRESHOLD = 16
 
 
-def _to_rgb_on_white(img: Image.Image) -> Image.Image:
-    if img.mode in ("RGBA", "LA", "P"):
-        rgba = img.convert("RGBA")
-        base = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
-        return Image.alpha_composite(base, rgba).convert("RGB")
-    return img.convert("RGB")
-
-
 # resvg falls back to its default families when a font-family matches nothing,
 # and those defaults resolve differently per host (Linux picked a bundled
 # serif, macOS drew nothing). Pointing every generic family at a name that is
@@ -78,15 +70,11 @@ def _rasterize_svg(path: Path, dpi: int = DPI) -> Image.Image:
         **dict.fromkeys(_FAMILY_OPTIONS, _NO_FALLBACK),
     )
     with Image.open(io.BytesIO(bytes(png))) as im:
-        return _to_rgb_on_white(im)
+        return rasterize.to_rgb_on_white(im)
 
 
 def _rasterize_pdf(path: Path, dpi: int = DPI) -> Image.Image:
-    doc = pdfium.PdfDocument(str(path))
-    try:
-        return _to_rgb_on_white(doc[0].render(scale=dpi / 72).to_pil())
-    finally:
-        doc.close()
+    return rasterize.rasterize_pdf(path, dpi)
 
 
 def _mismatch_ratio(a: Image.Image, b: Image.Image, channel_delta: int = CHANNEL_DELTA) -> float:
@@ -168,7 +156,7 @@ def render_png(tmp_path_factory: pytest.TempPathFactory) -> Callable[..., Image.
         out = out_dir / f"{name}.png"
         PNGRenderer(dpi=dpi).render(list(commands), out)
         with Image.open(out) as im:
-            return _to_rgb_on_white(im)
+            return rasterize.to_rgb_on_white(im)
 
     return _render
 
