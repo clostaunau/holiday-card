@@ -74,18 +74,18 @@ def test_minimal_template_loads(tmp_path: Path) -> None:
     ("mutate", "expected_loc"),
     [
         (lambda d: d.update(colour="red"), "colour"),
-        (lambda d: d["panels"][0].update(bordr=1), "panels.0.bordr"),
+        (lambda d: d["panels"][0].update(bordr=1), "panels[0].bordr"),
         (
             lambda d: d["panels"][0]["text_elements"][0].update(colr="#fff"),
-            "panels.0.text_elements.0.colr",
+            "panels[0].text_elements[0].colr",
         ),
         (
             lambda d: d["panels"][0]["shape_elements"][0].update(fill_colr="#fff"),
-            "panels.0.shape_elements.0.rectangle.fill_colr",
+            "panels[0].shape_elements[0].rectangle.fill_colr",
         ),
         (
             lambda d: d["panels"][0]["shape_elements"][0]["fill"].update(shade=1),
-            "panels.0.shape_elements.0.rectangle.fill.solid.shade",
+            "panels[0].shape_elements[0].rectangle.fill.solid.shade",
         ),
     ],
     ids=["template", "panel", "text", "shape", "fill"],
@@ -98,6 +98,28 @@ def test_unknown_key_raises_naming_key_path(
     with pytest.raises(TemplateLoadError) as exc:
         load_template_from_file(_write(tmp_path, data))
     assert expected_loc in str(exc.value)
+    assert [loc for loc, _ in exc.value.problems] == [expected_loc]
+
+
+def test_load_error_problems_carry_every_error(tmp_path: Path) -> None:
+    data = _base()
+    data["panels"][0]["text_elements"][0].update(colr="#fff", sise=3)
+    with pytest.raises(TemplateLoadError) as exc:
+        load_template_from_file(_write(tmp_path, data))
+    assert exc.value.problems == [
+        ("panels[0].text_elements[0].colr", "Extra inputs are not permitted"),
+        ("panels[0].text_elements[0].sise", "Extra inputs are not permitted"),
+    ]
+
+
+def test_unreadable_yaml_is_one_file_problem(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("a: [unclosed")
+    with pytest.raises(TemplateLoadError) as exc:
+        load_template_from_file(bad)
+    [(loc, message)] = exc.value.problems
+    assert loc == "<file>"
+    assert "while parsing" in message
 
 
 def test_unknown_shape_type_raises(tmp_path: Path) -> None:

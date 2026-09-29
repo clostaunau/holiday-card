@@ -6,7 +6,7 @@ name: "Metallic Ornaments"
 occasion: christmas
 fold_type: "quarter_fold"
 description: "Elegant Christmas card with shiny ornaments using radial gradients"
-default_theme_id: christmas-gold-burgundy
+default_theme_id: christmas-gold
 
 panels:
   # Front panel - Hanging ornaments with metallic sheen

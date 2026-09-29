@@ -149,6 +149,17 @@ to overwrite an existing file without `--force`, and prints the `create`
 command to run next. Image paths in a template resolve against the
 template file, so a template directory with its images is portable.
 
+#### Authoring templates
+
+[`docs/template-authoring.md`](docs/template-authoring.md) covers the
+coordinate system, every shape and fill type with a YAML example, and the
+font IDs. `holiday-card validate` is the pre-flight check: it lists every
+problem at once (unknown keys, unknown fonts, elements outside their panel,
+a missing default theme, anything the compiler refuses) and exits 2.
+`holiday-card schema -o template-schema.json` writes the JSON Schema
+([`docs/template-schema.json`](docs/template-schema.json)) for editor
+completion via `# yaml-language-server: $schema=…`.
+
 ### Images in templates
 
 A template's `image_elements[].source_path` is resolved **relative to

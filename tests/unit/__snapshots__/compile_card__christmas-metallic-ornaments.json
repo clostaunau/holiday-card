@@ -19,7 +19,7 @@
   {
     "cmd": "set_metadata",
     "key": "theme_id",
-    "value": "christmas-gold-burgundy"
+    "value": "christmas-gold"
   },
   {
     "cmd": "begin_group",

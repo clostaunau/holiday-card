@@ -95,7 +95,7 @@ def test_absolute_source_path_is_load_error(tmp_path: Path) -> None:
     path = _write(tmp_path / "tpl", str(secret))
     with pytest.raises(TemplateLoadError, match="absolute") as exc_info:
         load_template_from_file(path)
-    assert "panels.0.image_elements.0.source_path" in str(exc_info.value)
+    assert "panels[0].image_elements[0].source_path" in str(exc_info.value)
 
 
 def test_dotdot_source_path_is_load_error(tmp_path: Path) -> None:
