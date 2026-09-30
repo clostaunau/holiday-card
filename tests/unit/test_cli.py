@@ -1317,6 +1317,8 @@ class TestShortFlags:
             (("init",), "--fold-type", "-f"),
             (("init",), "--output", "-o"),
             (("ai-asset", "generate"), "--output", "-o"),
+            (("ai-asset", "generate"), "--provider", None),
+            (("ai-asset", "generate"), "--model", None),
         ],
     )
     def test_short_flag_table(

@@ -19,7 +19,7 @@ from typer.core import TyperGroup
 
 from holiday_card import __version__
 from holiday_card.cli.exit_codes import EXIT_CODES_HELP, ExitCode
-from holiday_card.core.ai_openai import make_image_client
+from holiday_card.core.ai_providers import AIProvider, make_image_client
 from holiday_card.core.card_request import (
     BuildReport,
     CardRequest,
@@ -959,7 +959,28 @@ def ai_asset_generate(
         "--export-for",
         help="Print target whose trim+bleed geometry sizes the image (300 DPI, /16).",
     ),
-    seed: int | None = typer.Option(None, "--seed", help="Recorded for reproducibility."),
+    provider: AIProvider = typer.Option(
+        AIProvider.OPENAI,
+        "--provider",
+        envvar="HOLIDAY_CARD_AI_PROVIDER",
+        help=(
+            "Image provider. Default: $HOLIDAY_CARD_AI_PROVIDER, else openai. "
+            "Never inferred from --model."
+        ),
+    ),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="Model id for --provider (default: the provider's default, gpt-image-2 for openai).",
+    ),
+    seed: int | None = typer.Option(
+        None,
+        "--seed",
+        help=(
+            "Seed, for models that support one (recorded in provenance). "
+            "Refused for models without a seed."
+        ),
+    ),
     i_know_what_im_doing: bool = typer.Option(
         False,
         "--i-know-what-im-doing",
@@ -1004,6 +1025,23 @@ def ai_asset_generate(
             f"Error: unknown occasion {occasion!r}.", fg=typer.colors.RED, err=True
         )
         raise typer.Exit(ExitCode.USAGE) from e
+
+    # Usage errors come before consent, so they never record it as a side effect.
+    from holiday_card.core.ai_providers import UnknownModelError, resolve_model, supports_seed
+
+    try:
+        resolved_model = resolve_model(provider, model)
+    except UnknownModelError as e:
+        typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(ExitCode.USAGE) from e
+    if seed is not None and not supports_seed(provider, resolved_model):
+        typer.secho(
+            f"Error: --seed is not supported by {provider.value} model {resolved_model!r} "
+            "(it takes no seed, so the image could not be reproduced). Omit --seed.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(ExitCode.USAGE)
 
     # Image-reference mode is the default; a missing reference is an error
     # unless the user explicitly opts into the unsafe no-anchor path.
@@ -1070,10 +1108,10 @@ def ai_asset_generate(
             for v in violations:
                 typer.secho(f"  [{v.category}] {v.reason}", fg=typer.colors.YELLOW)
 
-    from holiday_card.core.ai_openai import AIDependencyError
+    from holiday_card.core.ai_providers import AIDependencyError
 
     try:
-        client = make_image_client()
+        client = make_image_client(provider=provider, model=resolved_model)
     except AIDependencyError as e:
         typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(ExitCode.ENVIRONMENT) from e
@@ -1085,6 +1123,7 @@ def ai_asset_generate(
         trim_height_in=geom.trim_height_in,
         bleed_in=geom.bleed_in,
         reference_path=reference_path,
+        provider=client.provider,
         model=client.model,
     )
 

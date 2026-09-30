@@ -25,15 +25,17 @@ from typer.testing import CliRunner, Result
 import holiday_card.cli.commands as commands
 import openai_sdk_stub as sdk
 from holiday_card.cli.commands import app
-from holiday_card.core.ai_assets import GeneratedImage
+from holiday_card.core.ai_assets import GeneratedImage, PixelSize, RequestShape
 from holiday_card.core.ai_errors import ProviderError
-from holiday_card.core.ai_openai import AIDependencyError, OpenAIImageClient
+from holiday_card.core.ai_openai import OpenAIImageClient
+from holiday_card.core.ai_providers import AIDependencyError, AIProvider
 
 
 @dataclass
 class FakeImageClient:
     calls: list[dict] = field(default_factory=list)
     model: str = "gpt-image-2"
+    provider: AIProvider = AIProvider.OPENAI
     returns: tuple[int, int] | None = None
     raw: bytes | None = None
     cost_usd: float | None = 0.13
@@ -43,23 +45,15 @@ class FakeImageClient:
         *,
         prompt: str,
         reference_path: str | None,
-        width_px: int,
-        height_px: int,
-        moderation: str,
+        shape: RequestShape,
         seed: int | None,
     ) -> GeneratedImage:
         self.calls.append(
-            {
-                "prompt": prompt,
-                "reference_path": reference_path,
-                "width_px": width_px,
-                "height_px": height_px,
-                "moderation": moderation,
-                "seed": seed,
-            }
+            {"prompt": prompt, "reference_path": reference_path, "shape": shape, "seed": seed}
         )
+        assert isinstance(shape, PixelSize)
         buf = io.BytesIO()
-        size = self.returns or (width_px, height_px)
+        size = self.returns or (shape.width_px, shape.height_px)
         Image.new("RGB", size, (10, 120, 60)).save(buf, format="PNG")
         return GeneratedImage(
             image_bytes=self.raw if self.raw is not None else buf.getvalue(),
@@ -93,7 +87,7 @@ def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 @pytest.fixture
 def fake_client(monkeypatch: pytest.MonkeyPatch) -> FakeImageClient:
     client = FakeImageClient()
-    monkeypatch.setattr(commands, "make_image_client", lambda: client)
+    monkeypatch.setattr(commands, "make_image_client", lambda **_: client)
     return client
 
 
@@ -129,8 +123,7 @@ class TestHappyPath:
         assert out.exists()
         assert out.with_suffix(".license.yaml").exists()
         # The print-aware size was used (A6 trim+bleed >> 1024).
-        assert fake_client.calls[0]["width_px"] > 1024
-        assert fake_client.calls[0]["moderation"] == "auto"
+        assert fake_client.calls[0]["shape"] == PixelSize(1328, 1824)
         # The provider-reported cost is surfaced as such.
         assert "Cost: $0.13 (reported)" in _plain(result.output)
         # The written size, not the request size, is reported.
@@ -148,7 +141,7 @@ class TestHappyPath:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         client = FakeImageClient(model="gpt-image-1", returns=(1024, 1536))
-        monkeypatch.setattr(commands, "make_image_client", lambda: client)
+        monkeypatch.setattr(commands, "make_image_client", lambda **_: client)
         out = tmp_path / "low.png"
         result = runner.invoke(
             app,
@@ -161,7 +154,7 @@ class TestHappyPath:
             ),
         )
         assert result.exit_code == 0, result.output
-        assert (client.calls[0]["width_px"], client.calls[0]["height_px"]) == (1024, 1536)
+        assert client.calls[0]["shape"] == PixelSize(1024, 1536)
         assert "1314x1824px" in result.output
         assert "1024x1536" not in result.output.split("Size:")[1].splitlines()[0]
         assert "233.8 PPI" in result.output
@@ -197,7 +190,7 @@ class TestMissingDependency:
         reference_png: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        def boom() -> object:
+        def boom(**_: object) -> object:
             raise AIDependencyError("OPENAI_API_KEY is not set.")
 
         monkeypatch.setattr(commands, "make_image_client", boom)
@@ -319,6 +312,7 @@ def _chain_text(exc: BaseException | None) -> str:
 class RaisingImageClient:
     exc: BaseException
     model: str = "gpt-image-2"
+    provider: AIProvider = AIProvider.OPENAI
 
     def generate(self, **_kwargs: object) -> GeneratedImage:
         raise self.exc
@@ -333,7 +327,7 @@ def _run(
     *,
     debug: bool = False,
 ) -> Result:
-    monkeypatch.setattr(commands, "make_image_client", lambda: client)
+    monkeypatch.setattr(commands, "make_image_client", lambda **_: client)
     args = _generate_args(
         reference,
         tmp_path / "x.png",
@@ -470,7 +464,7 @@ class TestSecretSentinel:
         message = f"\x1b[31mIncorrect API key provided: {_SENTINEL}\x1b[0m"
         exc = make_exc(message)  # type: ignore[operator]
         sdk_client = SimpleNamespace(images=SimpleNamespace(edit=_raiser(exc), generate=_raiser(exc)))
-        client = OpenAIImageClient(sdk_client, api_key=SecretStr(_SENTINEL))
+        client = OpenAIImageClient(sdk_client, model="gpt-image-2", api_key=SecretStr(_SENTINEL))
         result = _run(runner, monkeypatch, client, tmp_path, reference_png, debug=debug)
         assert result.exit_code == code, result.output
         surfaces = [result.output, _chain_text(result.exception)]
@@ -533,7 +527,7 @@ class TestUntrustedPayload:
 
 @pytest.mark.usefixtures("isolated_config")
 class TestReferenceIsProbed:
-    def _no_client(self) -> object:
+    def _no_client(self, **_: object) -> object:
         raise AssertionError("an image client was built")
 
     def test_text_file_named_png_is_refused_before_any_client(
@@ -580,7 +574,7 @@ class TestReferenceIsProbed:
         reference_png: Path,
     ) -> None:
         client = FakeImageClient()
-        monkeypatch.setattr(commands, "make_image_client", lambda: client)
+        monkeypatch.setattr(commands, "make_image_client", lambda **_: client)
         monkeypatch.chdir(reference_png.parent)
         result = runner.invoke(
             app,
@@ -591,3 +585,137 @@ class TestReferenceIsProbed:
         )
         assert result.exit_code == 0, result.output
         assert client.calls[0]["reference_path"] == str(reference_png.resolve())
+
+
+# ---------------------------------------------------------------------------
+# --provider / --model, and --seed refused for seedless models (#146)
+# ---------------------------------------------------------------------------
+
+
+def _flat(output: str) -> str:
+    # Rich wraps its error box; compare on single-spaced plain text.
+    return " ".join(_plain(output).split())
+
+
+@pytest.fixture
+def factory(monkeypatch: pytest.MonkeyPatch) -> tuple[list[dict[str, object]], FakeImageClient]:
+    """A recording ``make_image_client`` whose client reports the model it was asked for."""
+    calls: list[dict[str, object]] = []
+    client = FakeImageClient()
+
+    def make(**kwargs: object) -> FakeImageClient:
+        calls.append(kwargs)
+        client.model = str(kwargs["model"])
+        return client
+
+    monkeypatch.setattr(commands, "make_image_client", make)
+    monkeypatch.delenv("HOLIDAY_CARD_AI_PROVIDER", raising=False)
+    return calls, client
+
+
+def _moo_args(reference: Path, out: Path, *extra: str) -> list[str]:
+    return _generate_args(
+        reference, out, subject="watercolor balloons", occasion="birthday",
+        extra=["--export-for", "moo-a6", "--accept-ai-terms", *extra],
+    )
+
+
+@pytest.mark.usefixtures("isolated_config")
+class TestProviderAndModel:
+    def test_defaults_to_openai_and_its_default_model(
+        self, runner: CliRunner, tmp_path: Path, reference_png: Path, factory: tuple
+    ) -> None:
+        calls, client = factory
+        result = runner.invoke(app, _moo_args(reference_png, tmp_path / "x.png"))
+        assert result.exit_code == 0, result.output
+        assert calls == [{"provider": AIProvider.OPENAI, "model": "gpt-image-2"}]
+        assert client.calls[0]["shape"] == PixelSize(1328, 1824)
+
+    def test_model_flag_sizes_for_that_model(
+        self, runner: CliRunner, tmp_path: Path, reference_png: Path, factory: tuple
+    ) -> None:
+        calls, client = factory
+        result = runner.invoke(
+            app, _moo_args(reference_png, tmp_path / "x.png", "--model", "gpt-image-1")
+        )
+        assert result.exit_code == 0, result.output
+        assert calls == [{"provider": AIProvider.OPENAI, "model": "gpt-image-1"}]
+        assert client.calls[0]["shape"] == PixelSize(1024, 1536)
+
+    def test_unknown_model_is_a_usage_error(
+        self, runner: CliRunner, tmp_path: Path, reference_png: Path, factory: tuple
+    ) -> None:
+        calls, _ = factory
+        result = runner.invoke(
+            app, _moo_args(reference_png, tmp_path / "x.png", "--model", "dall-e-9")
+        )
+        assert result.exit_code == 2, result.output
+        text = _flat(result.output)
+        assert "Error: unknown openai image model 'dall-e-9'; known:" in text
+        assert "gpt-image-2" in text
+        assert calls == []
+
+    def test_unknown_provider_flag_is_a_usage_error(
+        self, runner: CliRunner, tmp_path: Path, reference_png: Path, factory: tuple
+    ) -> None:
+        calls, _ = factory
+        result = runner.invoke(
+            app, _moo_args(reference_png, tmp_path / "x.png", "--provider", "bogus")
+        )
+        assert result.exit_code == 2, result.output
+        assert calls == []
+
+    def test_unknown_provider_env_names_the_variable(
+        self, runner: CliRunner, tmp_path: Path, reference_png: Path, factory: tuple
+    ) -> None:
+        calls, _ = factory
+        result = runner.invoke(
+            app,
+            _moo_args(reference_png, tmp_path / "x.png"),
+            env={"HOLIDAY_CARD_AI_PROVIDER": "bogus"},
+        )
+        assert result.exit_code == 2, result.output
+        text = _flat(result.output)
+        assert "HOLIDAY_CARD_AI_PROVIDER" in text
+        assert "bogus" in text
+        assert calls == []
+
+    @pytest.mark.parametrize("value", ["openai", ""], ids=["openai", "empty"])
+    def test_provider_env_openai_or_empty_works(
+        self,
+        runner: CliRunner,
+        tmp_path: Path,
+        reference_png: Path,
+        factory: tuple,
+        value: str,
+    ) -> None:
+        calls, _ = factory
+        result = runner.invoke(
+            app,
+            _moo_args(reference_png, tmp_path / "x.png"),
+            env={"HOLIDAY_CARD_AI_PROVIDER": value},
+        )
+        assert result.exit_code == 0, result.output
+        assert calls == [{"provider": AIProvider.OPENAI, "model": "gpt-image-2"}]
+
+
+class TestSeedRefused:
+    def test_seed_is_refused_before_consent_and_client(
+        self,
+        runner: CliRunner,
+        tmp_path: Path,
+        reference_png: Path,
+        isolated_config: Path,
+        factory: tuple,
+    ) -> None:
+        calls, _ = factory
+        out = tmp_path / "x.png"
+        result = runner.invoke(app, _moo_args(reference_png, out, "--seed", "42"))
+        assert result.exit_code == 2, result.output
+        assert (
+            "Error: --seed is not supported by openai model 'gpt-image-2' (it takes no seed, "
+            "so the image could not be reproduced). Omit --seed."
+        ) in _flat(result.output)
+        assert calls == []
+        assert not out.exists()
+        assert not any(isolated_config.rglob("*")), "consent was recorded"

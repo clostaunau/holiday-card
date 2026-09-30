@@ -12,8 +12,9 @@ Responsibilities, in order:
 2. **Hard rails** — refuse sympathy-class / trademark / religious /
    likeness requests unless ``override=True`` (the
    ``--i-know-what-im-doing`` path), recording the overridden reasons.
-3. **Generate** — call the client with ``moderation="auto"`` and a
-   request size the client's model accepts (:func:`choose_request_size`).
+3. **Generate** — call the client with the request shape its provider
+   and model accept (:func:`choose_request_shape`); a request sized for
+   another model is refused.
 4. **Bake** — open the model's bytes as untrusted input
    (:func:`open_generated_image`: PNG / JPEG / WebP only, matching the
    declared type, one frame, at most ``MAX_IMAGE_PIXELS``), then cover-crop + LANCZOS-resample the result to exactly
@@ -32,7 +33,7 @@ import math
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Literal, Protocol, assert_never
 
 from PIL import Image, ImageCms
 
@@ -41,16 +42,19 @@ from holiday_card.core.ai_provenance import (
     has_consented,
     write_sidecar,
 )
+from holiday_card.core.ai_providers import AIProvider
 from holiday_card.core.ai_rails import RailViolation, evaluate_rails
 from holiday_card.core.images import MAX_IMAGE_PIXELS
 from holiday_card.core.models import OccasionType
 from holiday_card.utils.measurements import DEFAULT_BLEED
 
 __all__ = [
-    "DEFAULT_AI_MODEL",
     "MODEL_SIZE_POLICIES",
     "ModelSizePolicy",
     "AIRequest",
+    "PixelSize",
+    "AspectSize",
+    "RequestShape",
     "GeneratedImage",
     "GenerationResult",
     "ImageClient",
@@ -62,6 +66,7 @@ __all__ = [
     "RailRefusedError",
     "decode_b64_image",
     "open_generated_image",
+    "choose_request_shape",
     "choose_request_size",
     "size_is_allowed",
     "build_ai_request",
@@ -69,9 +74,6 @@ __all__ = [
 ]
 
 SRGB_PROFILE_NAME = "sRGB IEC61966-2.1"
-
-#: The one model the live client calls and the sidecar records (issue #87).
-DEFAULT_AI_MODEL = "gpt-image-2"
 
 
 @dataclass(frozen=True)
@@ -221,23 +223,46 @@ class RailRefusedError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class PixelSize:
+    """A request sized in pixels (OpenAI's ``size``)."""
+
+    width_px: int
+    height_px: int
+
+
+@dataclass(frozen=True)
+class AspectSize:
+    """A request sized by aspect ratio and resolution tier (OpenRouter, spec §5.3).
+
+    ``aspect_ratio`` is an enum value such as ``"3:4"``, never ``"auto"``;
+    ``resolution`` is a tier (``"1K"``, ``"2K"`` …) or ``None`` when the
+    endpoint has none.
+    """
+
+    aspect_ratio: str
+    resolution: str | None
+
+
+RequestShape = PixelSize | AspectSize
+
+
+@dataclass(frozen=True)
 class AIRequest:
     """A resolved, POD-aware generation request (no model call yet).
 
     ``width_px`` × ``height_px`` is the exact baked size (trim + 2×bleed at
-    ``dpi``); ``request_width_px`` × ``request_height_px`` is the size sent
-    to ``model``, which the bake resamples to the target.
+    ``dpi``); ``shape`` is what is sent to ``provider`` / ``model``, whose
+    output the bake resamples to the target.
     """
 
     prompt: str
     width_px: int
     height_px: int
-    request_width_px: int
-    request_height_px: int
-    model: str = DEFAULT_AI_MODEL
+    shape: RequestShape
+    provider: AIProvider
+    model: str
     dpi: int = 300
     reference_path: str | None = None
-    moderation: str = "auto"
 
 
 ImageMediaType = Literal["image/png", "image/jpeg", "image/webp"]
@@ -297,15 +322,19 @@ class GenerationResult:
 
 
 class ImageClient(Protocol):
-    """The injectable image-generation seam.
+    """The injectable, provider-neutral image-generation seam.
 
-    The real implementation wraps the OpenAI Images API; tests inject a
-    fake. Keeping this a Protocol is what keeps the OpenAI dependency out
-    of the import graph unless the user installs ``holiday-card[ai]``.
-    ``model`` is the model the client calls; the sidecar records it.
-    The returned bytes are untrusted: the bake decodes them only through
-    :func:`open_generated_image`.
+    Live clients come from :func:`holiday_card.core.ai_providers.make_image_client`;
+    tests inject a fake. Keeping this a Protocol is what keeps provider SDKs
+    out of the import graph unless the user installs ``holiday-card[ai]``.
+    ``provider`` / ``model`` are what the client calls; the sidecar records
+    the model. A client refuses a ``shape`` or ``seed`` its model cannot
+    take. The returned bytes are untrusted: the bake decodes them only
+    through :func:`open_generated_image`.
     """
+
+    @property
+    def provider(self) -> AIProvider: ...
 
     @property
     def model(self) -> str: ...
@@ -315,9 +344,7 @@ class ImageClient(Protocol):
         *,
         prompt: str,
         reference_path: str | None,
-        width_px: int,
-        height_px: int,
-        moderation: str,
+        shape: RequestShape,
         seed: int | None,
     ) -> GeneratedImage: ...
 
@@ -390,6 +417,23 @@ def open_generated_image(image_bytes: bytes, media_type: ImageMediaType) -> Imag
         raise ImagePayloadError(f"the image could not be decoded ({type(e).__name__})") from e
 
 
+def choose_request_shape(
+    provider: AIProvider, model: str, target_w: int, target_h: int
+) -> RequestShape:
+    """The request shape ``provider`` / ``model`` accepts for a target size.
+
+    OpenAI takes pixels: :func:`choose_request_size`.
+
+    Raises:
+        ValueError: If ``model`` has no size policy.
+    """
+    match provider:
+        case AIProvider.OPENAI:
+            return PixelSize(*choose_request_size(model, target_w, target_h))
+        case _:
+            assert_never(provider)
+
+
 def build_ai_request(
     *,
     prompt: str,
@@ -398,30 +442,27 @@ def build_ai_request(
     bleed_in: float = DEFAULT_BLEED,
     dpi: int = 300,
     reference_path: str | None = None,
-    moderation: str = "auto",
-    model: str = DEFAULT_AI_MODEL,
+    provider: AIProvider,
+    model: str,
 ) -> AIRequest:
-    """Resolve print geometry to a pixel-sized request.
+    """Resolve print geometry to a request for ``provider`` / ``model``.
 
     The baked image is exactly **trim + 2×bleed** at ``dpi`` (``round(in ×
     dpi)``, no /16 rounding) so the model paints into the bleed band and
-    the render pipeline crops inward to trim. The API request size is
-    :func:`choose_request_size` for ``model`` (/16 rounding applies only
-    there).
+    the render pipeline crops inward to trim. The request shape is
+    :func:`choose_request_shape` (/16 rounding applies only there).
     """
     width_px = round((trim_width_in + 2 * bleed_in) * dpi)
     height_px = round((trim_height_in + 2 * bleed_in) * dpi)
-    request_w, request_h = choose_request_size(model, width_px, height_px)
     return AIRequest(
         prompt=prompt,
         width_px=width_px,
         height_px=height_px,
-        request_width_px=request_w,
-        request_height_px=request_h,
+        shape=choose_request_shape(provider, model, width_px, height_px),
+        provider=provider,
         model=model,
         dpi=dpi,
         reference_path=reference_path,
-        moderation=moderation,
     )
 
 
@@ -468,6 +509,10 @@ def generate_ai_asset(
     ``request.height_px`` and writes an sRGB-tagged 300 PPI PNG and a
     ``<asset>.license.yaml`` sidecar. The sidecar's ``model`` is
     ``client.model``, the model actually called.
+
+    Raises:
+        ValueError: If ``request`` was sized for another provider or model
+            than ``client`` calls (checked before anything is spent).
     """
     if not has_consented(consent_path):
         raise ConsentRequiredError(
@@ -478,12 +523,16 @@ def generate_ai_asset(
     if violations and not override:
         raise RailRefusedError(violations)
 
+    if (client.provider, client.model) != (request.provider, request.model):
+        raise ValueError(
+            f"the request was sized for {request.provider.value} model {request.model!r}, "
+            f"but the client calls {client.provider.value} model {client.model!r}"
+        )
+
     generated = client.generate(
         prompt=prompt,
         reference_path=request.reference_path,
-        width_px=request.request_width_px,
-        height_px=request.request_height_px,
-        moderation=request.moderation,
+        shape=request.shape,
         seed=seed,
     )
 
