@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 2964 tests, mypy-clean, ruff-clean, coverage ≥ 92%
+uv run pytest                       # all 2968 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -225,7 +225,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 2964 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 2968 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
@@ -433,7 +433,10 @@ template editing; a JSON "render plan" backend for downstream tooling.
   function-local `import openai`; `ImportError` or a non-SDK exception →
   `None`, re-raised unchanged) maps connection / timeout → `transient`,
   400 + `moderation_blocked` / `content_policy_violation` → `refused`,
-  401 / 403 → `environment`, 429 `insufficient_quota` → `environment`,
+  401 / 403 → `environment`, a 429 whose code is `insufficient_quota` or
+  one of the guide's billing / spend-limit codes (`credit_balance_exhausted`,
+  `organization_spend_limit_exceeded`, `project_spend_limit_exceeded`,
+  `organization_usage_limit_exceeded`; `_QUOTA_CODES`) → `environment`,
   other 429, 408, 409, ≥ 500 and a bare `APIError` → `transient`, any
   other 4xx → `usage`, and raises `from None` **after** the handler, so the
   SDK error is neither `__cause__` nor `__context__`. An empty `data` or
@@ -452,7 +455,7 @@ template editing; a JSON "render plan" backend for downstream tooling.
   `uv sync --extra dev --extra ai`). Guarded by `tests/unit/test_ai_errors.py`,
   the #142 block in `test_ai_openai.py`, `TestProviderErrors` /
   `TestSecretSentinel` in `test_ai_asset_cli.py` and `TestExitCodes`.
-  Tests 2887 → 2964.
+  Tests 2887 → 2968.
 
 - **2026-09-30 — christmas-photo-ornament's inside-left caption is on its
   panel; no shipped text leaves its panel (issue #134)**: the

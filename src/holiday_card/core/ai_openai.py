@@ -32,6 +32,17 @@ __all__ = ["OpenAIImageClient", "make_image_client", "AIDependencyError", "OPENA
 _PINNED_BASE_URL = "https://api.openai.com/v1"
 OPENAI_TIMEOUT_S = 300.0
 _REFUSAL_CODES = frozenset({"moderation_blocked", "content_policy_violation"})
+# 429s that retrying cannot fix: out of credit or over a spend / usage limit
+# (OpenAI error-code guide, accessed 2026-09-30).
+_QUOTA_CODES = frozenset(
+    {
+        "insufficient_quota",
+        "credit_balance_exhausted",
+        "organization_spend_limit_exceeded",
+        "project_spend_limit_exceeded",
+        "organization_usage_limit_exceeded",
+    }
+)
 
 # gpt-image pricing is per-image and tier-dependent; we surface the
 # value OpenAI returns when available and fall back to this estimate.
@@ -140,7 +151,7 @@ def _map_openai_error(e: Exception, secrets: Iterable[str]) -> ProviderError | N
         elif status in (401, 403):  # 403: unverified org / unsupported region
             kind = "environment"
         elif status == 429:
-            kind = "environment" if e.code == "insufficient_quota" else "transient"
+            kind = "environment" if e.code in _QUOTA_CODES else "transient"
         elif status in (408, 409) or status >= 500:
             kind = "transient"
         else:  # 400, 404, 422 and any other 4xx

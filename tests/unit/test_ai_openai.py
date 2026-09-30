@@ -176,6 +176,16 @@ _MAPPING_ROWS = [
     ("401", lambda: sdk.status_error(401, code="invalid_api_key"), "environment", 401, None),
     ("403", lambda: sdk.status_error(403, code="unsupported_country_region_territory"), "environment", 403, None),
     ("429-quota", lambda: sdk.status_error(429, code="insufficient_quota"), "environment", 429, None),
+    # The billing / spend-limit 429s in OpenAI's error-code guide (2026-09-30) are not retryable.
+    *[
+        (f"429-{c}", (lambda c=c: sdk.status_error(429, code=c)), "environment", 429, None)
+        for c in (
+            "credit_balance_exhausted",
+            "organization_spend_limit_exceeded",
+            "project_spend_limit_exceeded",
+            "organization_usage_limit_exceeded",
+        )
+    ],
     (
         "429-rate",
         lambda: sdk.status_error(429, code="rate_limit_exceeded", headers={"retry-after": "20"}),
