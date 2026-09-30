@@ -74,7 +74,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    PrivateAttr,
     ValidationInfo,
     field_validator,
     model_validator,
@@ -665,9 +664,6 @@ class TextElement(BaseModel):
         description="Minimum font size for SHRINK strategy (points)"
     )
 
-    # Private field for adjustment tracking (not serialized to YAML)
-    _adjustment_applied: AdjustmentResult | None = PrivateAttr(default=None)
-
     @model_validator(mode="after")
     def _no_letter_plus_rich(self) -> "TextElement":
         # ``letter_content`` and ``rich_content`` represent two
@@ -680,17 +676,6 @@ class TextElement(BaseModel):
                 "pick one authoring surface."
             )
         return self
-
-    def get_adjustment_result(self) -> AdjustmentResult | None:
-        """Get the overflow adjustment that was applied during rendering.
-
-        Returns None if not yet rendered or no adjustment needed.
-        """
-        return self._adjustment_applied
-
-    def set_adjustment_result(self, result: AdjustmentResult) -> None:
-        """Internal use: Record adjustment result during rendering."""
-        self._adjustment_applied = result
 
 
 # Vector Graphics Shape Models
