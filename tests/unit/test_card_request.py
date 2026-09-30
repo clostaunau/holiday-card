@@ -171,7 +171,7 @@ class TestCardRequestModel:
         card = build_card(request)
         with_report, report = build_card_with_report(request)
         assert isinstance(report, BuildReport)
-        volatile = {"id", "name", "created_at", "updated_at"}
+        volatile = {"id", "name"}
         assert card.model_dump(exclude=volatile) == with_report.model_dump(exclude=volatile)
 
 

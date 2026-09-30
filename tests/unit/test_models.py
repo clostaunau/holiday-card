@@ -1,8 +1,13 @@
 """Unit tests for core domain models."""
 
-import pytest
-from pydantic import ValidationError
+import inspect
 
+import pytest
+from pydantic import BaseModel, ValidationError
+
+from holiday_card.core import models
+from holiday_card.core.letter import LetterContent
+from holiday_card.core.markdown import RichTextContent, parse_markdown
 from holiday_card.core.models import (
     AdjustmentResult,
     BorderStyle,
@@ -15,10 +20,21 @@ from holiday_card.core.models import (
     OverflowStrategy,
     Panel,
     PanelPosition,
+    Rectangle,
     Template,
     TextAlignment,
     TextElement,
     Theme,
+)
+
+# Every non-frozen domain model defined in core/models.py (#81).
+_MUTABLE_MODEL_NAMES = sorted(
+    name
+    for name, cls in vars(models).items()
+    if inspect.isclass(cls)
+    and issubclass(cls, BaseModel)
+    and cls.__module__ == models.__name__
+    and not cls.model_config.get("frozen", False)
 )
 
 
@@ -357,3 +373,127 @@ class TestTheme:
         )
         assert theme.id == "test-theme"
         assert theme.primary == Colors.RED
+
+
+# ---------------------------------------------------------------------------
+# #81: invariants hold on assignment, not only at construction (D4)
+# ---------------------------------------------------------------------------
+
+
+def _panel(**kwargs: object) -> Panel:
+    return Panel(position=PanelPosition.FRONT, width=4.25, height=5.5, **kwargs)  # type: ignore[arg-type]
+
+
+def _letter() -> LetterContent:
+    return LetterContent(salutation="Dear M,", body="Hello", signoff="Love,", signature="C")
+
+
+def _rich() -> RichTextContent:
+    return parse_markdown("Hello **there**")
+
+
+class TestValidateAssignment:
+    """Every mutable domain model validates on assignment (#81)."""
+
+    def test_rich_content_on_a_letter_element_raises(self) -> None:
+        text = TextElement(content="", x=0, y=0, letter_content=_letter())
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            text.rich_content = _rich()
+
+    def test_font_size_above_the_limit_raises(self) -> None:
+        text = TextElement(content="x", x=0, y=0)
+        with pytest.raises(ValidationError):
+            text.font_size = 500
+        assert text.font_size == 12
+
+    def test_panel_background_color_must_be_a_color(self) -> None:
+        panel = _panel()
+        with pytest.raises(ValidationError):
+            panel.background_color = "red"  # type: ignore[assignment]
+
+    def test_card_panels_cannot_be_emptied(self) -> None:
+        card = Card(name="c", template_id="t", fold_type=FoldType.QUARTER_FOLD, panels=[_panel()])
+        with pytest.raises(ValidationError, match="at least one panel"):
+            card.panels = []
+
+    def test_color_component_out_of_range_raises(self) -> None:
+        color = Color(r=0.1, g=0.2, b=0.3)
+        with pytest.raises(ValidationError):
+            color.r = 2.0
+
+    def test_theme_color_must_be_a_color(self) -> None:
+        theme = Theme(
+            id="t", name="T", occasion=OccasionType.CHRISTMAS,
+            primary=Colors.RED, secondary=Colors.GREEN,
+        )
+        with pytest.raises(ValidationError):
+            theme.primary = "red"  # type: ignore[assignment]
+
+    def test_shape_stroke_width_is_checked(self) -> None:
+        shape = Rectangle(x=0, y=0, width=1, height=1)
+        with pytest.raises(ValidationError):
+            shape.stroke_width = -1
+
+    def test_panel_image_elements_are_validated_on_reassignment(self) -> None:
+        panel = _panel()
+        with pytest.raises(ValidationError):
+            panel.image_elements = [*panel.image_elements, "not an image"]  # type: ignore[list-item]
+
+    @pytest.mark.parametrize("name", _MUTABLE_MODEL_NAMES)
+    def test_every_mutable_model_validates_assignment(self, name: str) -> None:
+        cls = getattr(models, name)
+        assert cls.model_config.get("validate_assignment") is True, name
+
+    @pytest.mark.parametrize("name", _MUTABLE_MODEL_NAMES)
+    def test_every_mutable_model_forbids_extra_keys(self, name: str) -> None:
+        cls = getattr(models, name)
+        assert cls.model_config.get("extra") == "forbid", name
+
+    def test_the_mutable_model_list_is_not_empty(self) -> None:
+        assert {"Card", "Panel", "TextElement", "Theme", "Rectangle"} <= set(_MUTABLE_MODEL_NAMES)
+
+
+class TestWithInsideContent:
+    """``TextElement.with_inside_content`` sets exactly one surface (#81)."""
+
+    @staticmethod
+    def _surfaces(text: TextElement) -> list[str]:
+        set_ = []
+        if text.letter_content is not None:
+            set_.append("letter")
+        if text.rich_content is not None:
+            set_.append("rich")
+        if text.content:
+            set_.append("plain")
+        return set_
+
+    def test_with_inside_content_clears_other_surfaces(self) -> None:
+        text = TextElement(id="message", content="old", x=1, y=2, font_family="Lato")
+        text = text.with_inside_content(letter=_letter())
+        assert self._surfaces(text) == ["letter"]
+        text = text.with_inside_content(rich=_rich())
+        assert self._surfaces(text) == ["rich"]
+        text = text.with_inside_content(content="plain")
+        assert self._surfaces(text) == ["plain"]
+        text = text.with_inside_content(letter=_letter())
+        assert self._surfaces(text) == ["letter"]
+        assert (text.id, text.x, text.y, text.font_family) == ("message", 1, 2, "Lato")
+
+    def test_with_inside_content_returns_a_copy(self) -> None:
+        text = TextElement(content="old", x=0, y=0)
+        new = text.with_inside_content(content="new")
+        assert new is not text
+        assert text.content == "old"
+
+    def test_with_inside_content_refuses_two_surfaces(self) -> None:
+        text = TextElement(content="", x=0, y=0)
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            text.with_inside_content(rich=_rich(), letter=_letter())
+
+
+class TestCardHasNoTimestamps:
+    """``created_at`` / ``updated_at`` had no reader (D17, #81)."""
+
+    def test_card_has_no_timestamp_fields(self) -> None:
+        assert "created_at" not in Card.model_fields
+        assert "updated_at" not in Card.model_fields

@@ -11,7 +11,6 @@ This module contains all Pydantic models representing the domain entities:
 - Card: Complete card design
 """
 
-from datetime import datetime
 
 __all__ = [
     # Value objects
@@ -89,7 +88,7 @@ class Color(BaseModel):
     All color components must be in range 0.0 to 1.0.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     r: float = Field(ge=0.0, le=1.0, description="Red component (0.0-1.0)")
     g: float = Field(ge=0.0, le=1.0, description="Green component (0.0-1.0)")
@@ -259,7 +258,7 @@ class Border(BaseModel):
     All dimensions are in points for ReportLab compatibility.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     style: BorderStyle = Field(default=BorderStyle.SOLID, description="Border style")
     width: float = Field(default=1.0, ge=0.0, le=10.0, description="Border width in points")
@@ -272,6 +271,8 @@ class AdjustmentResult(BaseModel):
 
     Used for debugging, logging, and future preview warnings.
     """
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     was_adjusted: bool = Field(
         description="Whether any adjustment was applied"
@@ -305,7 +306,7 @@ class ColorStop(BaseModel):
     Defines a color at a specific position along the gradient.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     position: float = Field(ge=0.0, le=1.0, description="Position along gradient (0.0=start, 1.0=end)")
     color: str = Field(description="Color as hex string (#RRGGBB)")
@@ -328,7 +329,7 @@ class ColorStop(BaseModel):
 class SolidFill(BaseModel):
     """Solid color fill."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     type: Literal["solid"] = "solid"
     color: str = Field(description="Fill color as hex string (#RRGGBB)")
@@ -355,7 +356,7 @@ class LinearGradientFill(BaseModel):
     defined by the angle parameter.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     type: Literal["linear_gradient"] = "linear_gradient"
     angle: float = Field(default=0.0, ge=0.0, lt=360.0, description="Gradient angle in degrees (0=horizontal right)")
@@ -385,7 +386,7 @@ class RadialGradientFill(BaseModel):
     that way.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     type: Literal["radial_gradient"] = "radial_gradient"
     center_x: float = Field(default=0.0, ge=0.0, description="Center X position in inches (panel-relative)")
@@ -409,7 +410,7 @@ class PatternFill(BaseModel):
     Creates decorative repeating patterns like stripes, dots, grid, or checkerboard.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     type: Literal["pattern"] = "pattern"
     pattern_type: PatternType = Field(description="Pattern type (stripes, dots, grid, checkerboard)")
@@ -454,7 +455,7 @@ FillStyle = Annotated[
 class CircleClipMask(BaseModel):
     """Circular clipping mask for images."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     type: Literal["circle"] = "circle"
     center_x: float = Field(ge=0.0, description="Center X position in inches (relative to image)")
@@ -465,7 +466,7 @@ class CircleClipMask(BaseModel):
 class RectangleClipMask(BaseModel):
     """Rectangular clipping mask for images."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     type: Literal["rectangle"] = "rectangle"
     x: float = Field(ge=0.0, description="X position in inches (relative to image)")
@@ -477,7 +478,7 @@ class RectangleClipMask(BaseModel):
 class EllipseClipMask(BaseModel):
     """Elliptical clipping mask for images."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     type: Literal["ellipse"] = "ellipse"
     center_x: float = Field(ge=0.0, description="Center X position in inches (relative to image)")
@@ -489,7 +490,7 @@ class EllipseClipMask(BaseModel):
 class StarClipMask(BaseModel):
     """Star-shaped clipping mask for images."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     type: Literal["star"] = "star"
     center_x: float = Field(ge=0.0, description="Center X position in inches (relative to image)")
@@ -526,7 +527,7 @@ class ImageEffectType(StrEnum):
 class ImageEffects(BaseModel):
     """Collection of effects to apply to an image."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     grayscale: bool = Field(default=False, description="Convert to grayscale")
     sepia: bool = Field(default=False, description="Apply sepia tone")
@@ -550,7 +551,7 @@ class ImageElement(BaseModel):
     Positions are relative to the panel, in inches.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     id: str = Field(default_factory=lambda: str(uuid4()))
     source_path: str = Field(description="Path to source image file")
@@ -599,7 +600,7 @@ class TextElement(BaseModel):
     enforces this.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     id: str = Field(default_factory=lambda: str(uuid4()))
     content: str = Field(
@@ -677,6 +678,15 @@ class TextElement(BaseModel):
             )
         return self
 
+    def with_inside_content(
+        self, *, content: str = "", rich: RichTextContent | None = None,
+        letter: LetterContent | None = None,
+    ) -> "TextElement":
+        """Return a validated copy with exactly one inside authoring surface set."""
+        return TextElement.model_validate(
+            {**self.model_dump(), "content": content, "rich_content": rich, "letter_content": letter}
+        )
+
 
 # Vector Graphics Shape Models
 
@@ -687,7 +697,7 @@ class BaseShape(BaseModel):
     All measurements in inches except stroke_width (points).
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     id: str = Field(default_factory=lambda: str(uuid4()), description="Unique shape identifier")
     type: ShapeType = Field(description="Shape type discriminator")
@@ -837,7 +847,7 @@ class Panel(BaseModel):
     Positions are in inches from the page origin (bottom-left).
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     id: str = Field(default_factory=lambda: str(uuid4()))
     position: PanelPosition = Field(description="Panel position identifier")
@@ -890,7 +900,7 @@ class Template(BaseModel):
     Templates define the structure and default content for a card design.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     id: str = Field(description="Unique template identifier")
     name: str = Field(min_length=1, max_length=50, description="Display name")
@@ -927,6 +937,8 @@ class Theme(BaseModel):
     for a cohesive card design.
     """
 
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
     id: str = Field(description="Unique theme identifier")
     name: str = Field(min_length=1, max_length=50, description="Display name")
     occasion: OccasionType = Field(description="Occasion this theme is designed for")
@@ -945,7 +957,7 @@ class Card(BaseModel):
     different themes, messages, and images.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     id: str = Field(default_factory=lambda: str(uuid4()))
     name: str = Field(min_length=1, max_length=100, description="User-friendly card name")
@@ -963,8 +975,6 @@ class Card(BaseModel):
     )
     panels: list[Panel] = Field(description="Panel configurations")
     output_path: Path | None = Field(default=None, description="Target PDF file path")
-    created_at: datetime = Field(default_factory=datetime.now, description="Creation timestamp")
-    updated_at: datetime = Field(default_factory=datetime.now, description="Last modification")
 
     @field_validator("panels")
     @classmethod
@@ -973,7 +983,3 @@ class Card(BaseModel):
         if not v:
             raise ValueError("Card must have at least one panel")
         return v
-
-    def model_post_init(self, __context: object) -> None:
-        """Update timestamp on any change."""
-        self.updated_at = datetime.now()

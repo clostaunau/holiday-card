@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 2726 tests, mypy-clean, ruff-clean, coverage ≥ 92%
+uv run pytest                       # all 2800 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -218,7 +218,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 2726 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 2800 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
@@ -385,7 +385,9 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 - Type hints on every function; `mypy --strict` passes
 - Pydantic models for domain validation (frozen for IR, mutable for
-  Card so messages can be applied)
+  Card so messages can be applied) with `validate_assignment=True`;
+  use reassignment, not list mutation (`panel.text_elements =
+  [*panel.text_elements, t]`, never `.append`), so the validators run
 - Docstrings on public APIs; one-line comment max for private helpers
 - Measurements in inches in YAML/Python; converted to points once in
   the compiler
@@ -406,6 +408,41 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — Domain models validate on assignment; the generator
+  reassigns instead of mutating (expert-panel §P14 / D4 / D17, issue
+  #81)**: every invariant was checked only at construction, so
+  `t.font_size = 500` on a `TextElement` (`le=144`) went through, and
+  nothing stopped a `TextElement` holding both `letter_content` and
+  `rich_content` once built. Every mutable model in `core/models.py` now
+  has `ConfigDict(extra="forbid", validate_assignment=True)`: all 18
+  that already had `extra="forbid"`, plus `Theme` and `AdjustmentResult`,
+  which had no config (neither is loaded from raw YAML, so `forbid` is
+  safe). New `TextElement.with_inside_content(*, content="", rich=None,
+  letter=None)` returns a `model_validate`d copy with exactly one inside
+  surface set (not `model_copy(update=)`, which skips validation).
+  `generators._find_or_add_inside_target` returns `(panel, index)`, and
+  the new `_set_inside_content` swaps the copy in by index, so
+  `apply_inside_letter` / `apply_inside_rich_content` /
+  `_apply_inside_message` are one step each and order-independent. The
+  two `text_elements.append` sites (front greeting and the inside
+  auto-add) reassign the list. A front greeting over 1000 characters now
+  raises at assignment. `Card.created_at` / `updated_at` and
+  `model_post_init` (its docstring said "on any change", but it ran only
+  at construction) are deleted: nothing read them (D17).
+  `per_panel.py`'s two `model_copy(update=)` calls set constants
+  (#73 already deleted the scaling), so they stay. Compile snapshots
+  and visual baselines are unchanged, and suite time is the same
+  (139.7 → 139.0 s). Guarded by `TestValidateAssignment` (the issue's
+  four cases plus colour / theme / shape / list reassignment, and every
+  non-frozen model in `models.py` has `validate_assignment` and
+  `extra="forbid"`), `TestWithInsideContent` and
+  `TestCardHasNoTimestamps` in `tests/unit/test_models.py`, and the new
+  `tests/unit/test_generators_mutation.py` (an AST scan finds no
+  `.append` / `.extend` / item assignment on a model list in
+  `generators.py` or `card_request.py`, the inside surfaces switch in
+  any order, the element and list are replaced rather than edited).
+  Tests 2726 → 2800.
 
 - **2026-09-29 — The gallery emits only commands `create` accepts:
   curated voices, a photo field, script-safe JSON (expert-panel §P14 /
