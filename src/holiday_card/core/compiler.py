@@ -1743,6 +1743,11 @@ def _compile_image(image: ImageElement, panel: Panel) -> list[RenderCommand]:
       ``BeginGroup`` / ``EndGroup`` carrying a pivot-rotate transform
       around the image center (same idiom as panel rotation; see the
       ``Transform`` semantics in ``render_ir.py``).
+    * If ``image.resolved_fit`` is ``"cover"`` (the default for a photo
+      slot, #98) and the image's aspect differs from the element rect's,
+      the ``DrawImage`` rect grows to the image's aspect about the same
+      centre and a ``BeginClip`` of the element rect crops the overflow,
+      so no backend has to crop.
     * If ``image.clip_mask`` is set, wrap the ``DrawImage`` in
       ``BeginClip`` / ``EndClip`` with the geometry resolved from
       the ClipMask type. Clip-mask coords are panel-relative inches
@@ -1800,9 +1805,13 @@ def _compile_image(image: ImageElement, panel: Panel) -> list[RenderCommand]:
     width_pt = inches_to_points(image.width)
     height_pt = inches_to_points(image.height)
 
+    slot_rect = RectGeom(x=x_pt, y=y_pt, width=width_pt, height=height_pt)
+    draw_rect = slot_rect
+    if image.resolved_fit == "cover":
+        draw_rect = _cover_rect(slot_rect, probed.width_px, probed.height_px)
     image_ref = ImageRef(
         source=str(probed.path),
-        rect=RectGeom(x=x_pt, y=y_pt, width=width_pt, height=height_pt),
+        rect=draw_rect,
         format=probed.format,
         width_px=probed.width_px,
         height_px=probed.height_px,
@@ -1810,13 +1819,17 @@ def _compile_image(image: ImageElement, panel: Panel) -> list[RenderCommand]:
     )
     draw = DrawImage(image=image_ref, opacity=image.opacity)
 
-    # Inner layer: optional clip wrapping the DrawImage.
-    inner: list[RenderCommand] = []
+    # Inner layer: a cover crop to the element rect, then the optional clip mask.
+    clips: list[GeomU] = []
+    if draw_rect != slot_rect:
+        clips.append(slot_rect)
     if image.clip_mask is not None:
-        inner.append(BeginClip(geometry=_clip_mask_to_geom(image.clip_mask, panel)))
-    inner.append(draw)
-    if image.clip_mask is not None:
-        inner.append(EndClip())
+        clips.append(_clip_mask_to_geom(image.clip_mask, panel))
+    inner: list[RenderCommand] = [
+        *(BeginClip(geometry=g) for g in clips),
+        draw,
+        *(EndClip() for _ in clips),
+    ]
 
     # Outer layer: optional rotation group around the image center.
     if image.rotation != 0:
@@ -1829,6 +1842,24 @@ def _compile_image(image: ImageElement, panel: Panel) -> list[RenderCommand]:
         )
         return [BeginGroup(transform=transform), *inner, EndGroup()]
     return inner
+
+
+def _cover_rect(slot: RectGeom, width_px: int, height_px: int) -> RectGeom:
+    """``slot`` grown to the image's aspect so the image covers it, same centre (#98).
+
+    Returns ``slot`` itself when the aspects already match (within 1e-6 pt),
+    so a cover-fit image that needs no crop compiles exactly like contain.
+    """
+    scale = max(slot.width / width_px, slot.height / height_px)
+    width, height = width_px * scale, height_px * scale
+    if abs(width - slot.width) < 1e-6 and abs(height - slot.height) < 1e-6:
+        return slot
+    return RectGeom(
+        x=slot.x + (slot.width - width) / 2,
+        y=slot.y + (slot.height - height) / 2,
+        width=width,
+        height=height,
+    )
 
 
 def _clip_mask_to_geom(

@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 2833 tests, mypy-clean, ruff-clean, coverage ≥ 92%
+uv run pytest                       # all 2848 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -224,7 +224,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 2833 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 2848 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
@@ -414,6 +414,32 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-30 — Photo slots cover-fit: a clip larger than the photo's
+  contain box is filled, not cut flat (issue #98)**: mothers-day-photo
+  clips its 2.6×3.4" slot with a 2.0×3.1" ellipse; `preserve_aspect`
+  contain-fit a square photo to 2.6×2.6", so the ellipse was flat at the
+  top and bottom (on `main` too). New `ImageElement.fit: "contain" |
+  "cover" | None` and the `resolved_fit` property (`"stretch"` when
+  `preserve_aspect` is false; else `fit`; else `"cover"` for a `slot`
+  element, `"contain"` otherwise). `fit` with `preserve_aspect: false` is
+  a validation error. The compiler lowers cover (`_cover_rect`): the
+  `DrawImage` rect grows to the image's aspect about the slot's centre and
+  a `BeginClip` of the element rect wraps the clip mask, so the IR and all
+  three backends are unchanged (like patterns, D13). When the aspects
+  already match, the rect is the slot and no clip is added, so the other
+  four photo templates (all square slots) compile byte-identically.
+  `effective_ppi` sees the covering rect, so #66 measures the cropped
+  photo's real PPI (the 1200 px placeholder is 353 PPI in the 3.4" slot).
+  `docs/template-schema.json` regenerated; `docs/template-authoring.md`
+  documents `fit`. Regenerated on purpose: the mothers-day-photo entry of
+  `letter_content_sha256.json` and its PNG + PDF visual baselines
+  (`visual-baselines` workflow, eyeballed: full ellipse). Guarded by
+  `tests/unit/test_compiler_image_fit.py` (defaults, refusal, cover rect
+  and clip order, matching aspect, PPI) and
+  `tests/integration/test_image_cover_fit.py` (PNG + PDF pixels inside the
+  ellipse but outside the old contain box are the photo). Tests 2833 →
+  2848.
 
 - **2026-09-30 — README, CLAUDE.md and help text reconciled with the
   code; README examples run in CI (expert-panel §P15 / D16 / D17, issue

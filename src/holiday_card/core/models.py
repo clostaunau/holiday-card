@@ -568,6 +568,14 @@ class ImageElement(BaseModel):
     width: float | None = Field(default=None, ge=0.0, description="Image width in inches")
     height: float | None = Field(default=None, ge=0.0, description="Image height in inches")
     preserve_aspect: bool = Field(default=True, description="Maintain aspect ratio when scaling")
+    fit: Literal["contain", "cover"] | None = Field(
+        default=None,
+        description=(
+            "How an aspect-preserving image meets its rect: 'contain' fits it "
+            "inside (may leave margins), 'cover' fills the rect and crops the "
+            "overflow. Unset: 'cover' for a photo slot, 'contain' otherwise"
+        ),
+    )
     rotation: float = Field(default=0.0, description="Rotation in degrees")
     opacity: float = Field(default=1.0, ge=0.0, le=1.0, description="Image opacity (0-1)")
     z_index: int = Field(default=100, description="Rendering layer (higher = on top)")
@@ -576,6 +584,26 @@ class ImageElement(BaseModel):
     frame_style: PhotoFrameStyle = Field(default=PhotoFrameStyle.NONE, description="Photo frame style")
     frame_color: str | None = Field(default=None, description="Frame color as hex (#RRGGBB)")
     frame_width: float = Field(default=0.0, ge=0.0, le=0.5, description="Frame width in inches")
+
+    @model_validator(mode="after")
+    def _fit_needs_aspect(self) -> "ImageElement":
+        # ``fit`` chooses between two aspect-preserving scalings; with
+        # ``preserve_aspect: false`` the image is stretched and fit means nothing.
+        if self.fit is not None and not self.preserve_aspect:
+            raise ValueError(
+                f"ImageElement.fit={self.fit!r} requires preserve_aspect: true "
+                f"(preserve_aspect: false stretches the image to the rect)"
+            )
+        return self
+
+    @property
+    def resolved_fit(self) -> Literal["contain", "cover", "stretch"]:
+        """The scaling the compiler applies: ``fit``, else cover for a slot (#98)."""
+        if not self.preserve_aspect:
+            return "stretch"
+        if self.fit is not None:
+            return self.fit
+        return "cover" if self.slot is not None else "contain"
 
 
 class TextElement(BaseModel):
