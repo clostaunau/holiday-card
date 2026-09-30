@@ -52,7 +52,7 @@ uv sync --extra dev
 pip install -e ".[dev]"
 ```
 
-## Five things you can do today
+## Six things you can do today
 
 ```bash
 # 1. Pick a voice and let the sentiment library write your card
@@ -77,9 +77,10 @@ holiday-card create ./my-template.yaml -o my-card.pdf
 
 # 6. Christmas-letter mode: write the inside as Markdown
 holiday-card create birthday-balloons --inside-message-md letter.md
-# Where letter.md contains paragraphs with **bold** spans and hard
-# line breaks. Renders into the inside panel with proper paragraph
-# spacing.
+# Where letter.md contains paragraphs with **bold**, *italic* and
+# ***bold-italic*** spans and hard line breaks. Renders into the inside
+# panel with proper paragraph spacing.
+#   Or build the letter from parts: --salutation / --signoff / --signature / --ps
 ```
 
 ## What ships in the box
@@ -92,8 +93,8 @@ holiday-card create birthday-balloons --inside-message-md letter.md
 | **Fonts** | 6 curated SIL OFL families (Cormorant Garamond, Playfair Display, Lato, Inter, Caveat, Comfortaa) embedded in every PDF, and as glyph subsets in every SVG |
 | **Photo cards** | `ImageElement` + circle / rectangle / ellipse / star clip masks; render a portrait into a styled frame |
 | **POD targets** | `letter` (single imposed 8.5×11 sheet for home printing, no bleed), `per-panel-pdf` (native trim per panel + 0.125" bleed), `moo-a6` (A6 + 0.125" bleed, art scaled to fill the trim and cropped — `--panel-fit letterbox` to fit it whole — + DeviceCMYK PDF/X-1a:2003 + GRACoL2013 ICC) |
-| **Output formats** | PDF (default), SVG (self-contained: fonts are embedded as glyph subsets, photos as data URIs, so it renders the same on any machine), PNG |
-| **Quality gates** | ruff + mypy strict + 882 tests + per-panel 144 DPI visual-regression gate (PNG and PDF rasters) across all 21 templates + a smoke job that installs the built wheel and runs it outside any checkout, covering each voice and the CMYK export |
+| **Output formats** | PDF (default), SVG (self-contained: fonts are embedded as glyph subsets, photos as data URIs, so it renders the same on any machine) from `create`; PNG from `preview` (`create --format png` is refused) |
+| **Quality gates** | ruff + mypy strict + pytest (branch-coverage floor 92%) + a CI-run check that every `holiday-card` example in this README exits 0 + per-panel 144 DPI visual-regression gate (PNG and PDF rasters) across all 21 templates + a smoke job that installs the built wheel and runs it outside any checkout, covering each voice and the CMYK export |
 
 ### Where data lives / env overrides
 
@@ -269,7 +270,7 @@ git clone https://github.com/clostaunau/holiday-card.git
 cd holiday-card
 uv sync --extra dev            # locked deps from uv.lock (or: pip install -e ".[dev]")
 
-uv run pytest                            # 882 tests, runs in ~30s
+uv run pytest                            # full suite, a few minutes
 uv run ruff check src/ tests/ scripts/   # lint (zero warnings)
 uv run mypy src/                         # strict-mode type-check (zero errors)
 
@@ -311,7 +312,7 @@ export OPENAI_API_KEY=sk-...
 
 holiday-card ai-asset generate \
   --subject "watercolor pine bough border, sage green and burgundy" \
-  --reference fonts/curated/motif.png \
+  --reference path/to/reference.png \
   --style watercolor \
   --occasion christmas \
   --export-for moo-a6 \

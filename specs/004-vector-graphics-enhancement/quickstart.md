@@ -1,3 +1,5 @@
+> **Historical** — commands may not match the current CLI; see README.
+
 # Quickstart Guide: Vector Graphics Enhancement
 
 **Feature**: 004-vector-graphics-enhancement

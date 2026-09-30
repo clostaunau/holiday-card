@@ -1,3 +1,5 @@
+> **Historical** — commands may not match the current CLI; see README.
+
 # Quickstart Guide: Text Overflow Prevention
 
 **Feature**: 002-text-overflow-prevention
