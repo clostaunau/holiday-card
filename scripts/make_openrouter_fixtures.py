@@ -1,6 +1,7 @@
 """Generate the image-bearing OpenRouter test fixtures (#149).
 
-Writes, deterministically (fixed pixels, ``optimize=False``, no PNG
+Writes, deterministically (fixed pixels, ``optimize=False``, PNG at
+``compress_level=0`` so every zlib build emits the same bytes, no PNG
 ``tIME`` / text chunks), every fixture under ``tests/fixtures/openrouter/``
 that embeds image bytes, plus the golden request body. The error-body
 fixtures next to them are hand-written. ``bomb_png.json`` holds a PNG
@@ -44,7 +45,7 @@ def _pixels() -> Image.Image:
 def _encode(fmt: str) -> bytes:
     buf = io.BytesIO()
     options: dict[str, Any] = {
-        "PNG": {"optimize": False},
+        "PNG": {"optimize": False, "compress_level": 0},  # stored blocks: same under any zlib
         "JPEG": {"quality": 75, "optimize": False, "subsampling": 0},
         "WEBP": {"lossless": True, "quality": 0, "method": 0},
     }[fmt]

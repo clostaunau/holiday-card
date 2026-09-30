@@ -431,3 +431,17 @@ def test_https_round_trip_reads_under_the_read_timeout(
 
 def test_read_timeout_defaults_for_a_foreign_request() -> None:
     assert ai_openrouter._read_timeout(urllib.request.Request("https://x/")) == 300.0
+
+
+def test_invalid_header_value_is_transient_and_not_echoed(
+    serve: Callable[[Handler], Server],
+) -> None:
+    srv = serve(_reply(200, b"{}"))
+    secret = "sk-or-v1-" + "ef" * 32
+    headers = {"Authorization": f"Bearer {secret}\r\nX-Evil: 1"}
+    e = _transient(
+        lambda: TRANSPORT(srv.url, headers=headers, body=BODY, timeout_s=2.0, max_bytes=10)
+    )
+    assert secret not in str(e)
+    assert e.__cause__ is None and e.__context__ is None
+    assert srv.log == []

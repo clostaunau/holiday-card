@@ -199,13 +199,14 @@ class TestRequestContract:
         # Key order is part of the contract (spec §6.2).
         assert list(fake.body) == list(golden)
 
-    def test_body_is_compact_utf8_json(self) -> None:
+    def test_body_is_compact_ascii_json(self) -> None:
         client, fake = _client()
         client.generate(prompt="Frohe Weihnachten ✨", reference_path=None,
                         shape=AspectSize("3:4", "2K"), seed=None)  # fmt: skip
         raw = fake.calls[0]["body"]
         assert b", " not in raw and b": " not in raw
-        assert "✨".encode() in raw
+        assert raw.isascii()  # non-ASCII is JSON-escaped (surrogate-safe)
+        assert fake.body["prompt"] == "Frohe Weihnachten ✨"
 
     def test_a_changed_pin_changes_the_body(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # The golden is tied to the allowlist: moving the pin must turn it red.
@@ -788,3 +789,50 @@ def test_get_secret_value_is_called_only_in_the_two_helpers() -> None:
     visit(tree, "<module>")
     assert found, "the scan must see the unwrap"
     assert set(found) <= allowed, found
+
+
+# --------------------------------------------------------------------------- review findings
+
+
+class TestReviewFindings:
+    @pytest.mark.parametrize(
+        "key", [KEY + "\r", KEY + "\n", "sk-or-v1-dead beefdeadbeef", KEY + "\x00"]
+    )
+    def test_key_with_whitespace_or_controls_is_refused_without_echoing_it(self, key: str) -> None:
+        fake = FakeTransport()
+        with pytest.raises(ProviderError) as info:
+            OpenRouterImageClient(api_key=SecretStr(key), model=GEMINI, transport=fake)
+        assert info.value.kind == "environment"
+        _assert_absent(info.value, key.strip())
+        assert "beef" not in str(info.value)
+
+    def test_key_split_by_an_escape_sequence_is_still_redacted(self) -> None:
+        odd = "MyCustomKey123456"
+        body = json.dumps({"error": {"code": 401, "message": "bad key MyCustom\x1b[0mKey123456"}})
+        client, _fake = _client(
+            transport=FakeTransport([HttpResponse(401, {}, body.encode())]), key=odd
+        )
+        with pytest.raises(ProviderError) as info:
+            client.generate(prompt="x", reference_path=None,
+                            shape=AspectSize("3:4", "2K"), seed=None)  # fmt: skip
+        _assert_absent(info.value, odd)
+
+    def test_lone_surrogate_prompt_is_sent_escaped(self) -> None:
+        client, fake = _client()
+        client.generate(prompt="\udcff pine", reference_path=None,
+                        shape=AspectSize("3:4", "2K"), seed=None)  # fmt: skip
+        assert fake.body["prompt"] == "\udcff pine"
+
+    def test_unreadable_reference_after_the_probe_is_a_usage_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def gone(_self: Path) -> bytes:
+            raise PermissionError("denied")
+
+        monkeypatch.setattr(Path, "read_bytes", gone)
+        client, fake = _client()
+        with pytest.raises(ProviderError, match="--reference") as info:
+            client.generate(prompt="x", reference_path=str(REFERENCE_PNG),
+                            shape=AspectSize("3:4", "2K"), seed=None)  # fmt: skip
+        assert info.value.kind == "usage"
+        assert fake.calls == []

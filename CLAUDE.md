@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 3796 tests, mypy-clean, ruff-clean, coverage ≥ 92%
+uv run pytest                       # all 3804 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -247,7 +247,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 3796 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 3804 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
@@ -491,8 +491,10 @@ template editing; a JSON "render plan" backend for downstream tooling.
   decoding), invalid base64, magic bytes that don't match (or, with no
   `media_type`, identify none of the three), or a failed header-only open →
   `transient`. Provider text (`message`, `error_type`, `provider_code`,
-  `reasons`, `remedy_hint`) is redacted with the literal key before
-  `ProviderError`'s sanitiser; a pydantic `ValidationError` (which echoes its
+  `reasons`, `remedy_hint`) goes through `sanitize_provider_text` with the
+  literal key (escapes stripped *before* redaction, so a split key is caught);
+  a key containing whitespace or control characters (a CRLF `.env`) is refused
+  as `environment` before `http.client` could echo it; a pydantic `ValidationError` (which echoes its
   input) is never chained. `cost_usd` is `usage.cost` when finite and ≥ 0
   (`"reported"`), else `None` (`"unknown"`; a string cost is a malformed
   response); `generation_id` is `x-generation-id` only when it matches
@@ -524,7 +526,7 @@ template editing; a JSON "render plan" backend for downstream tooling.
   `core/ai_openrouter.py` among `src/`, plus the dev refresh script; no
   `openai` / `httpx` / `requests` there; importing the CLI loads neither
   `urllib.request` nor the client). Branch coverage of the module: 99%, no
-  `pragma: no cover`. Tests 3487 → 3796 (collected).
+  `pragma: no cover`. Tests 3487 → 3804 (collected).
 
 - **2026-09-30 — Tests enforce AI import confinement, scrub API keys and
   block the network (issue #143, OpenRouter program)**: three safety

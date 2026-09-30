@@ -15,9 +15,10 @@ three hardening rules:
 2. **Capped read.** An oversize ``Content-Length`` is refused before the
    body is read; otherwise the body is read in 64 KiB chunks and refused
    past ``max_bytes``.
-3. **Split timeouts.** Connecting has its own short timeout; every read
-   then has ``timeout_s``, and ``timeout_s`` is also a wall-clock deadline
-   for the whole body.
+3. **Split timeouts.** Connecting has its own short timeout; every socket
+   read then has ``timeout_s``, and ``timeout_s`` is also a wall-clock
+   deadline for the body, checked between reads (so a body takes at most
+   about ``2 × timeout_s`` after the headers).
 
 Only ``https`` is accepted. There is no retry, ever: the call is billed and
 not idempotent (spec §6.3.6).
@@ -61,7 +62,12 @@ from holiday_card.core.ai_assets import (
     decode_b64_image,
     probe_generated_image,
 )
-from holiday_card.core.ai_errors import ProviderError, ProviderErrorKind, parse_retry_after, redact
+from holiday_card.core.ai_errors import (
+    ProviderError,
+    ProviderErrorKind,
+    parse_retry_after,
+    sanitize_provider_text,
+)
 from holiday_card.core.ai_openrouter_models import OpenRouterModel, openrouter_model
 from holiday_card.core.images import ImageSourceError, probe_image
 
@@ -139,33 +145,33 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 class _Request(urllib.request.Request):
     """A request that carries the per-call read timeout to the connection."""
 
-    def __init__(self, url: str, *, data: bytes, headers: Mapping[str, str], read_timeout: float):
+    def __init__(
+        self, url: str, *, data: bytes, headers: Mapping[str, str], read_timeout: float
+    ) -> None:
         super().__init__(url, data=data, headers=dict(headers), method="POST")
         self.read_timeout = read_timeout
 
 
-class _HTTPConnection(http.client.HTTPConnection):
+class _ReadTimeout:
     """Connect under the connect timeout, then read under ``read_timeout``."""
 
-    def __init__(self, *args: Any, read_timeout: float, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self._read_timeout = read_timeout
-
-    def connect(self) -> None:
-        super().connect()
-        self.sock.settimeout(self._read_timeout)
-
-
-class _HTTPSConnection(http.client.HTTPSConnection):
-    """Connect (and handshake) under the connect timeout, then read under ``read_timeout``."""
+    sock: Any
 
     def __init__(self, *args: Any, read_timeout: float, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._read_timeout = read_timeout
 
     def connect(self) -> None:
-        super().connect()
+        super().connect()  # type: ignore[misc]  # the http.client base in the MRO
         self.sock.settimeout(self._read_timeout)
+
+
+class _HTTPConnection(_ReadTimeout, http.client.HTTPConnection):
+    pass
+
+
+class _HTTPSConnection(_ReadTimeout, http.client.HTTPSConnection):
+    """Connects and handshakes under the connect timeout."""
 
 
 def _read_timeout(req: urllib.request.Request) -> float:
@@ -256,7 +262,13 @@ class _UrllibTransport:
             raise _transient(f"OpenRouter request timed out ({type(e).__name__})") from e
         except (ssl.SSLError, urllib.error.URLError, http.client.HTTPException, OSError) as e:
             raise _transient(f"OpenRouter request failed ({type(e).__name__}: {e})") from e
-        return HttpResponse(status, resp_headers, data)
+        except ValueError as e:
+            # e.g. http.client's "Invalid header value …", which quotes the header:
+            # name the type only and do not chain it.
+            failure = type(e).__name__
+        else:
+            return HttpResponse(status, resp_headers, data)
+        raise _transient(f"OpenRouter request could not be sent ({failure})")
 
 
 def make_urllib_transport(*, require_https: bool = True) -> _UrllibTransport:
@@ -524,6 +536,12 @@ def _request_headers(api_key: SecretStr) -> dict[str, str]:
     key = api_key.get_secret_value()
     if not key.strip():
         raise ProviderError(f"{_KEY_ENV} is empty", kind="environment")
+    if not key.isprintable() or any(c.isspace() for c in key):
+        # http.client would reject it with the whole header value in the message.
+        raise ProviderError(
+            f"{_KEY_ENV} contains whitespace or control characters (check the line ending)",
+            kind="environment",
+        )
     return {
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
@@ -534,9 +552,11 @@ def _request_headers(api_key: SecretStr) -> dict[str, str]:
 
 
 def _key_redactor(api_key: SecretStr) -> Callable[[str], str]:
-    """Redact the literal key (and every key-shaped token) from provider text."""
+    """Sanitise provider text: strip escapes and controls, *then* redact the
+    literal key (and key-shaped tokens), then truncate, so a key split by an
+    escape sequence is rejoined before redaction looks for it."""
     secret = api_key.get_secret_value()
-    return lambda text: redact(text, secrets=(secret,))
+    return lambda text: sanitize_provider_text(text, secrets=(secret,))
 
 
 def _usage(message: str) -> ProviderError:
@@ -609,7 +629,11 @@ class OpenRouterImageClient:
                 probed = probe_image(Path(reference_path))
             except ImageSourceError as e:
                 raise _usage(f"--reference: {e}") from e
-            data = base64.b64encode(probed.path.read_bytes()).decode("ascii")
+            try:
+                raw = probed.path.read_bytes()
+            except OSError as e:
+                raise _usage(f"--reference: {probed.path} could not be read ({e})") from e
+            data = base64.b64encode(raw).decode("ascii")
             url = f"data:image/{probed.format};base64,{data}"
             body["input_references"] = [{"type": "image_url", "image_url": {"url": url}}]
         provider: dict[str, Any] = {"only": [entry.provider_tag], "allow_fallbacks": False}
@@ -617,7 +641,8 @@ class OpenRouterImageClient:
             slug = entry.provider_tag.split("/")[0]
             provider["options"] = {slug: {"moderation": "auto"}}
         body["provider"] = provider
-        return json.dumps(body, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        # ASCII-escaped: valid UTF-8 for any prompt, lone surrogates included.
+        return json.dumps(body, separators=(",", ":")).encode("ascii")
 
     def generate(
         self,
