@@ -1,0 +1,15 @@
+{
+ "status": 400,
+ "headers": {
+  "content-type": "application/json"
+ },
+ "body": {
+  "error": {
+   "code": 400,
+   "message": "Invalid aspect_ratio",
+   "metadata": {
+    "error_type": "invalid_request"
+   }
+  }
+ }
+}

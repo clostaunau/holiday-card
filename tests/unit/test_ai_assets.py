@@ -44,6 +44,7 @@ from holiday_card.core.ai_assets import (
     decode_b64_image,
     generate_ai_asset,
     open_generated_image,
+    probe_generated_image,
     size_is_allowed,
 )
 from holiday_card.core.ai_openrouter_models import (
@@ -640,6 +641,54 @@ class TestGeneratedImage:
     def test_unknown_cost_must_have_no_value(self) -> None:
         with pytest.raises(ValueError, match="cost_source"):
             GeneratedImage(image_bytes=b"", media_type="image/png", cost_usd=0.1, cost_source="unknown")
+
+
+    def test_route_fields_default_to_none(self) -> None:
+        img = GeneratedImage(image_bytes=b"", media_type="image/png", cost_usd=None, cost_source="unknown")
+        assert (img.generation_id, img.provider_route) == (None, None)
+
+    def test_route_fields_are_kept(self) -> None:
+        img = GeneratedImage(
+            image_bytes=b"",
+            media_type="image/png",
+            cost_usd=None,
+            cost_source="unknown",
+            generation_id="gen-1",
+            provider_route="seed",
+        )
+        assert (img.generation_id, img.provider_route) == ("gen-1", "seed")
+
+
+class TestProbeGeneratedImage:
+    """Header-only checks (#149 row 22): the same refusals, no pixel decoded."""
+
+    @pytest.mark.usefixtures("no_load")
+    @pytest.mark.parametrize(
+        ("fmt", "media_type"),
+        [("PNG", "image/png"), ("JPEG", "image/jpeg"), ("WEBP", "image/webp")],
+    )
+    def test_valid_image_returns_its_size_without_decoding(
+        self, fmt: str, media_type: ImageMediaType
+    ) -> None:
+        assert probe_generated_image(_encoded(fmt, (8, 5)), media_type) == (8, 5)
+
+    @pytest.mark.usefixtures("no_load")
+    def test_bomb_is_refused_without_decoding(self) -> None:
+        with pytest.raises(ImagePayloadError):
+            probe_generated_image(_png_with_ihdr(20000, 20000), "image/png")
+
+    @pytest.mark.usefixtures("no_load")
+    def test_type_mismatch_is_refused(self) -> None:
+        with pytest.raises(ImagePayloadError, match="image/jpeg"):
+            probe_generated_image(_encoded("PNG"), "image/jpeg")
+
+    def test_animation_is_refused(self) -> None:
+        with pytest.raises(ImagePayloadError, match="frames"):
+            probe_generated_image(_animated("PNG"), "image/png")
+
+    def test_non_image_is_refused(self) -> None:
+        with pytest.raises(ImagePayloadError, match="not a PNG"):
+            probe_generated_image(b"<svg/>", "image/png")
 
 
 class TestDecodeB64Image:

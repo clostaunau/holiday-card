@@ -1,0 +1,19 @@
+{
+ "status": 403,
+ "headers": {
+  "content-type": "application/json"
+ },
+ "body": {
+  "error": {
+   "code": 403,
+   "message": "The image request was blocked by the provider's safety system.",
+   "metadata": {
+    "error_type": "content_policy_violation",
+    "provider_code": "SAFETY",
+    "reasons": [
+     "The prompt may depict a real person."
+    ]
+   }
+  }
+ }
+}

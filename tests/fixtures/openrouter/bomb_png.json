@@ -1,0 +1,21 @@
+{
+ "status": 200,
+ "headers": {
+  "content-type": "application/json"
+ },
+ "body": {
+  "created": 1790000000,
+  "data": [
+   {
+    "b64_json": "iVBORw0KGgoAAAANSUhEUgAATiAAAE4gCAIAAABsEtFuAAAACElEQVR4nAMAAAAAAUgGidIAAAAASUVORK5CYII=",
+    "media_type": "image/png"
+   }
+  ],
+  "usage": {
+   "prompt_tokens": 12,
+   "completion_tokens": 1120,
+   "total_tokens": 1132,
+   "cost": 0.04
+  }
+ }
+}

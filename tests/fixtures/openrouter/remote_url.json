@@ -1,0 +1,14 @@
+{
+ "status": 200,
+ "headers": {
+  "content-type": "application/json"
+ },
+ "body": {
+  "created": 1790000000,
+  "data": [
+   {
+    "url": "https://example.invalid/x.png"
+   }
+  ]
+ }
+}

@@ -31,6 +31,8 @@ import io
 import itertools
 import math
 import warnings
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, assert_never
@@ -73,6 +75,7 @@ __all__ = [
     "RailRefusedError",
     "decode_b64_image",
     "open_generated_image",
+    "probe_generated_image",
     "RESOLUTION_LONG_EDGE_PX",
     "aspect_ratio_value",
     "choose_aspect_shape",
@@ -325,6 +328,8 @@ class GeneratedImage:
 
     ``cost_usd`` is what the provider reported (``cost_source="reported"``)
     or ``None`` (``"unknown"``); a cost is never estimated.
+    ``generation_id`` / ``provider_route`` are what a routing provider
+    (OpenRouter) reports; direct providers leave them ``None``.
     """
 
     image_bytes: bytes
@@ -332,6 +337,8 @@ class GeneratedImage:
     cost_usd: float | None
     cost_source: CostSource
     model_version: str | None = None
+    generation_id: str | None = None
+    provider_route: str | None = None
 
     def __post_init__(self) -> None:
         if (self.cost_source == "reported") != (self.cost_usd is not None):
@@ -403,16 +410,11 @@ def decode_b64_image(b64: str, *, max_bytes: int = MAX_IMAGE_BYTES) -> bytes:
         raise ImagePayloadError("the image is not valid base64") from e
 
 
-def open_generated_image(image_bytes: bytes, media_type: ImageMediaType) -> Image.Image:
-    """Decode model output as untrusted input and return a loaded RGB copy.
+@contextmanager
+def _checked_image(image_bytes: bytes, media_type: ImageMediaType) -> Iterator[Image.Image]:
+    """Open ``image_bytes`` header-only and apply every refusal; no pixel is decoded.
 
-    Only PNG, JPEG and WebP decoders are consulted (never EPS / Ghostscript),
-    the bytes must be the declared ``media_type``, a single frame, and at
-    most ``MAX_IMAGE_PIXELS`` (checked before any pixel is decoded).
-
-    Raises:
-        ImagePayloadError: For every refusal; the message names the reason,
-            never the bytes.
+    Exceptions raised inside the ``with`` body are mapped the same way.
     """
     try:
         with warnings.catch_warnings():
@@ -434,8 +436,7 @@ def open_generated_image(image_bytes: bytes, media_type: ImageMediaType) -> Imag
                 frames = getattr(img, "n_frames", 1)
                 if frames > 1:
                     raise ImagePayloadError(f"the image has {frames} frames; only one is accepted")
-                img.load()
-                return img.convert("RGB")
+                yield img
     except ImagePayloadError:
         raise
     except Image.UnidentifiedImageError as e:
@@ -449,6 +450,33 @@ def open_generated_image(image_bytes: bytes, media_type: ImageMediaType) -> Imag
         Image.DecompressionBombWarning,
     ) as e:
         raise ImagePayloadError(f"the image could not be decoded ({type(e).__name__})") from e
+
+
+def probe_generated_image(image_bytes: bytes, media_type: ImageMediaType) -> tuple[int, int]:
+    """Header-only check of model output: the refusals of :func:`open_generated_image`
+    without decoding a pixel. Returns ``(width, height)``.
+
+    Raises:
+        ImagePayloadError: For every refusal.
+    """
+    with _checked_image(image_bytes, media_type) as img:
+        return img.size
+
+
+def open_generated_image(image_bytes: bytes, media_type: ImageMediaType) -> Image.Image:
+    """Decode model output as untrusted input and return a loaded RGB copy.
+
+    Only PNG, JPEG and WebP decoders are consulted (never EPS / Ghostscript),
+    the bytes must be the declared ``media_type``, a single frame, and at
+    most ``MAX_IMAGE_PIXELS`` (checked before any pixel is decoded).
+
+    Raises:
+        ImagePayloadError: For every refusal; the message names the reason,
+            never the bytes.
+    """
+    with _checked_image(image_bytes, media_type) as img:
+        img.load()
+        return img.convert("RGB")
 
 
 def choose_request_shape(

@@ -1,0 +1,15 @@
+{
+ "status": 403,
+ "headers": {
+  "content-type": "application/json"
+ },
+ "body": {
+  "error": {
+   "code": 403,
+   "message": "The model declined to generate this image.",
+   "metadata": {
+    "error_type": "refusal"
+   }
+  }
+ }
+}

@@ -1,0 +1,12 @@
+{
+ "status": 524,
+ "headers": {
+  "content-type": "application/json"
+ },
+ "body": {
+  "error": {
+   "code": 524,
+   "message": "Request timed out. Please try again later."
+  }
+ }
+}
