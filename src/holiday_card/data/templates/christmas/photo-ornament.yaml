@@ -158,7 +158,7 @@ panels:
     text_elements:
       - id: message
         content: "Treasured moments from our family to yours"
-        x: 0.5
+        x: 2.125                         # centre-aligned: x is the panel centre
         y: 4.8
         width: 3.25
         font_size: 11
