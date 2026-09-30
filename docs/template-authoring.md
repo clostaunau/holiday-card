@@ -256,6 +256,17 @@ fill:
   rotation: 45               # alias: angle
 ```
 
+A pattern is `colors[0]` as the background with `colors[1]` drawn on it
+(any further colours are unused; a single colour fills solid). One
+period is `spacing × scale`: stripes are bands half a period tall, dots
+have a quarter-period radius, grid draws one 1 pt line each way per
+period, and checkerboard squares are half a period. Tiles start at the
+shape's top-left corner, and `rotation` turns the pattern
+counter-clockwise about the shape's centre. A period under 2 pt
+(`spacing × scale` < ~0.028") or a pattern that would need more than
+20 000 tiles is refused. The compiler turns every pattern into a clip
+plus plain shapes, so PDF, SVG and PNG all draw it the same way.
+
 **Translucency on print targets.** `opacity` or colour alpha below 1 is
 flattened for `--export-for moo-a6` only when the element sits entirely
 over an opaque solid rectangle, circle or ellipse, or over bare paper.

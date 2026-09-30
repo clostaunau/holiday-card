@@ -56,6 +56,7 @@ from holiday_card.core.models import (
     ImageElement,
     Line,
     Panel,
+    PatternFill,
     Rectangle,
     RectangleClipMask,
     Star,
@@ -85,7 +86,6 @@ from holiday_card.core.render_ir import (
     PaintU,
     PathGeom,
     PathOp,
-    PatternPaint,
     Point,
     PolygonGeom,
     PolylineGeom,
@@ -627,13 +627,13 @@ def _flatten_and_sort(
 
 def _compile_shape(shape: object, panel: Panel) -> list[RenderCommand]:
     if isinstance(shape, Rectangle):
-        return [_compile_rectangle(shape, panel)]
+        return _compile_rectangle(shape, panel)
     if isinstance(shape, Circle):
-        return [_compile_circle(shape, panel)]
+        return _compile_circle(shape, panel)
     if isinstance(shape, Triangle):
-        return [_compile_triangle(shape, panel)]
+        return _compile_triangle(shape, panel)
     if isinstance(shape, Star):
-        return [_compile_star(shape, panel)]
+        return _compile_star(shape, panel)
     if isinstance(shape, Line):
         return [_compile_line(shape, panel)]
     if isinstance(shape, SVGPath):
@@ -643,54 +643,57 @@ def _compile_shape(shape: object, panel: Panel) -> list[RenderCommand]:
     )
 
 
-def _compile_rectangle(shape: Rectangle, panel: Panel) -> RenderCommand:
-    fill, stroke = _resolve_paint_and_stroke(shape, _shape_bbox_pts(shape, panel), panel=panel)
-    return DrawShape(
-        geometry=RectGeom(
-            x=inches_to_points(panel.x + shape.x),
-            y=inches_to_points(panel.y + shape.y),
-            width=inches_to_points(shape.width),
-            height=inches_to_points(shape.height),
-        ),
-        fill=fill,
-        stroke=stroke,
-        opacity=shape.opacity,
+def _draw_filled(
+    shape: object,
+    geometry: GeomU,
+    bbox_pts: tuple[float, float, float, float],
+    panel: Panel | None,
+) -> list[RenderCommand]:
+    """One ``DrawShape`` for ``geometry``, or the lowered commands of a pattern fill."""
+    opacity = getattr(shape, "opacity", 1.0)
+    fill_attr = getattr(shape, "fill", None)
+    if isinstance(fill_attr, PatternFill):
+        where = f"{type(shape).__name__} id {getattr(shape, 'id', '?')!r}"
+        return _lower_pattern_fill(
+            fill_attr, geometry, bbox_pts, _resolve_stroke(shape), opacity, where=where,
+        )
+    fill, stroke = _resolve_paint_and_stroke(shape, bbox_pts, panel=panel)
+    return [DrawShape(geometry=geometry, fill=fill, stroke=stroke, opacity=opacity)]
+
+
+def _compile_rectangle(shape: Rectangle, panel: Panel) -> list[RenderCommand]:
+    geometry = RectGeom(
+        x=inches_to_points(panel.x + shape.x),
+        y=inches_to_points(panel.y + shape.y),
+        width=inches_to_points(shape.width),
+        height=inches_to_points(shape.height),
     )
+    return _draw_filled(shape, geometry, _shape_bbox_pts(shape, panel), panel)
 
 
-def _compile_circle(shape: Circle, panel: Panel) -> RenderCommand:
-    fill, stroke = _resolve_paint_and_stroke(shape, _shape_bbox_pts(shape, panel), panel=panel)
-    return DrawShape(
-        geometry=CircleGeom(
-            center=Point(
-                x=inches_to_points(panel.x + shape.center_x),
-                y=inches_to_points(panel.y + shape.center_y),
-            ),
-            radius=inches_to_points(shape.radius),
+def _compile_circle(shape: Circle, panel: Panel) -> list[RenderCommand]:
+    geometry = CircleGeom(
+        center=Point(
+            x=inches_to_points(panel.x + shape.center_x),
+            y=inches_to_points(panel.y + shape.center_y),
         ),
-        fill=fill,
-        stroke=stroke,
-        opacity=shape.opacity,
+        radius=inches_to_points(shape.radius),
     )
+    return _draw_filled(shape, geometry, _shape_bbox_pts(shape, panel), panel)
 
 
-def _compile_triangle(shape: Triangle, panel: Panel) -> RenderCommand:
-    fill, stroke = _resolve_paint_and_stroke(shape, _shape_bbox_pts(shape, panel), panel=panel)
-    return DrawShape(
-        geometry=PolygonGeom(
-            points=(
-                Point(x=inches_to_points(panel.x + shape.x1), y=inches_to_points(panel.y + shape.y1)),
-                Point(x=inches_to_points(panel.x + shape.x2), y=inches_to_points(panel.y + shape.y2)),
-                Point(x=inches_to_points(panel.x + shape.x3), y=inches_to_points(panel.y + shape.y3)),
-            ),
+def _compile_triangle(shape: Triangle, panel: Panel) -> list[RenderCommand]:
+    geometry = PolygonGeom(
+        points=(
+            Point(x=inches_to_points(panel.x + shape.x1), y=inches_to_points(panel.y + shape.y1)),
+            Point(x=inches_to_points(panel.x + shape.x2), y=inches_to_points(panel.y + shape.y2)),
+            Point(x=inches_to_points(panel.x + shape.x3), y=inches_to_points(panel.y + shape.y3)),
         ),
-        fill=fill,
-        stroke=stroke,
-        opacity=shape.opacity,
     )
+    return _draw_filled(shape, geometry, _shape_bbox_pts(shape, panel), panel)
 
 
-def _compile_star(shape: Star, panel: Panel) -> RenderCommand:
+def _compile_star(shape: Star, panel: Panel) -> list[RenderCommand]:
     """Compute star vertices once, in the compiler.
 
     Mirrors the math in shape_renderer.py's render_star but emits a
@@ -711,17 +714,13 @@ def _compile_star(shape: Star, panel: Panel) -> RenderCommand:
         radius = outer_pt if i % 2 == 0 else inner_pt
         points.append(Point(x=cx_pt + radius * math.cos(angle), y=cy_pt + radius * math.sin(angle)))
 
-    fill, stroke = _resolve_paint_and_stroke(shape, _shape_bbox_pts(shape, panel), panel=panel)
-    return DrawShape(
-        geometry=PolygonGeom(points=tuple(points)),
-        fill=fill,
-        stroke=stroke,
-        opacity=shape.opacity,
+    return _draw_filled(
+        shape, PolygonGeom(points=tuple(points)), _shape_bbox_pts(shape, panel), panel,
     )
 
 
 def _compile_line(shape: Line, panel: Panel) -> RenderCommand:
-    _, stroke = _resolve_paint_and_stroke(shape)
+    stroke = _resolve_stroke(shape)
     if stroke is None:
         # A line with no stroke is invisible; skip silently isn't an option,
         # so synthesize a 1-pt black stroke (matches the legacy default).
@@ -788,13 +787,10 @@ def _compile_svg_path(shape: SVGPath, panel: Panel) -> list[RenderCommand]:
         new_points = tuple(transform(p.x, p.y) for p in op.points)
         transformed_ops.append(PathOp(op=op.op, points=new_points))
 
-    fill, stroke = _resolve_paint_and_stroke(shape)
-    draw = DrawShape(
-        geometry=PathGeom(ops=tuple(transformed_ops)),
-        fill=fill,
-        stroke=stroke,
-        opacity=shape.opacity,
-    )
+    xs = [p.x for op in transformed_ops for p in op.points]
+    ys = [p.y for op in transformed_ops for p in op.points]
+    path_bbox = (min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+    draw = _draw_filled(shape, PathGeom(ops=tuple(transformed_ops)), path_bbox, None)
 
     if shape.rotation != 0:
         # Pivot at the bbox center, in absolute page-points.
@@ -806,10 +802,10 @@ def _compile_svg_path(shape: SVGPath, panel: Panel) -> list[RenderCommand]:
             pivot_y=inches_to_points(cy_in),
             rotate_deg=shape.rotation,
         )
-        return [BeginGroup(transform=transform_ir), draw, EndGroup()]
+        return [BeginGroup(transform=transform_ir), *draw, EndGroup()]
     # Silence unused import if SVGCommand isn't referenced elsewhere.
     _ = SVGCommand
-    return [draw]
+    return draw
 
 
 def _path_commands_to_ops(
@@ -1004,23 +1000,21 @@ def _resolve_paint_and_stroke(
     """Convert ``shape.fill`` / ``shape.fill_color`` / ``shape.stroke_*`` into
     IR paint (``PaintU``) + ``Stroke`` (or ``None`` for no fill/stroke).
 
-    Solid, linear-gradient, radial-gradient, and pattern fills all
-    convert to their corresponding ``PaintU`` member. Gradients need
-    the shape's bounding box (in points, page-absolute) to resolve
-    relative gradient coordinates into absolute ones — callers that
-    intend to use a gradient/pattern fill must pass ``bbox_pts``.
+    Solid, linear-gradient and radial-gradient fills convert to their
+    ``PaintU`` member; pattern fills never reach here, because
+    :func:`_draw_filled` lowers them (:func:`_lower_pattern_fill`).
+    Gradients need the shape's bounding box (in points, page-absolute)
+    to resolve relative gradient coordinates into absolute ones —
+    callers that intend to use a gradient fill must pass ``bbox_pts``.
     Solid-only shapes (lines, things without a fill) can omit it.
     """
     fill_attr = getattr(shape, "fill", None)
     fill_color_attr = getattr(shape, "fill_color", None)
-    stroke_color_attr = getattr(shape, "stroke_color", None)
-    stroke_width_attr = getattr(shape, "stroke_width", 0.0)
 
     fill: PaintU | None
     if fill_attr is not None:
         from holiday_card.core.models import (  # local: keep top-of-file tidy
             LinearGradientFill,
-            PatternFill,
             RadialGradientFill,
             SolidFill,
         )
@@ -1041,8 +1035,6 @@ def _resolve_paint_and_stroke(
                     f"(shape {type(shape).__name__})"
                 )
             fill = _radial_gradient_to_paint(fill_attr, panel)
-        elif isinstance(fill_attr, PatternFill):
-            fill = _pattern_to_paint(fill_attr)
         else:
             raise UnsupportedFeatureError(
                 f"Fill style {type(fill_attr).__name__} is not yet supported by the compiler."
@@ -1052,13 +1044,15 @@ def _resolve_paint_and_stroke(
     else:
         fill = None
 
-    stroke: Stroke | None
-    if stroke_color_attr and stroke_width_attr > 0:
-        stroke = Stroke(color=_hex_to_rgba(stroke_color_attr), width=stroke_width_attr)
-    else:
-        stroke = None
+    return (fill, _resolve_stroke(shape))
 
-    return (fill, stroke)
+
+def _resolve_stroke(shape: object) -> Stroke | None:
+    stroke_color_attr = getattr(shape, "stroke_color", None)
+    stroke_width_attr = getattr(shape, "stroke_width", 0.0)
+    if stroke_color_attr and stroke_width_attr > 0:
+        return Stroke(color=_hex_to_rgba(stroke_color_attr), width=stroke_width_attr)
+    return None
 
 
 def _linear_gradient_to_paint(
@@ -1125,18 +1119,135 @@ def _radial_gradient_to_paint(
     )
 
 
-def _pattern_to_paint(fill: object) -> PatternPaint:
-    """Convert a ``PatternFill`` (model, spacing in inches) to ``PatternPaint``
-    (IR, spacing in points)."""
-    from holiday_card.core.models import PatternFill
-    assert isinstance(fill, PatternFill)
-    return PatternPaint(
-        pattern=fill.pattern_type.value,
-        colors=tuple(_hex_to_rgba(c) for c in fill.colors),
-        spacing=inches_to_points(fill.spacing),
-        scale=fill.scale,
-        rotation_deg=fill.rotation,
-    )
+# Pattern lowering (#74, D13): no backend tiles a pattern itself.
+_MIN_PATTERN_PERIOD_PT = 2.0
+_MAX_PATTERN_PRIMITIVES = 20_000
+_GRID_LINE_PT = 1.0
+
+
+def _lower_pattern_fill(
+    fill: PatternFill,
+    geometry: GeomU,
+    bbox_pts: tuple[float, float, float, float],
+    stroke: Stroke | None,
+    opacity: float,
+    *,
+    where: str = "pattern fill",
+) -> list[RenderCommand]:
+    """Lower a ``PatternFill`` to a clip plus solid primitives.
+
+    Emits ``BeginClip(geometry)`` → ``BeginGroup`` (rotation about the
+    bbox centre, the shape's ``opacity``) → a background rect in
+    ``colors[0]`` → primitives in ``colors[1]`` (none when there is only
+    one colour: they would be invisible) → ``EndGroup`` → ``EndClip`` →
+    the stroke, if any, drawn over the clip boundary. The group is always
+    emitted: it isolates the primitives, so opacity composites once and a
+    raster backend draws them onto one layer.
+
+    Semantics (``period = spacing × scale``, in points; ``bbox_pts`` is
+    ``(x, y, width, height)``). Tiles are anchored at the bbox top-left
+    corner and laid out downwards, so the first stripe hangs from the top:
+
+    - **stripes:** a horizontal band ``period/2`` tall at the top of each tile.
+    - **dots:** a circle of radius ``period/4`` at each tile centre.
+    - **grid:** one vertical and one horizontal 1 pt line per tile, on its
+      left and top edges.
+    - **checkerboard:** squares of side ``period/2`` at the tile's top-left
+      and bottom-right.
+    - **rotation:** about the bbox centre. A rotated pattern covers the
+      bbox's circumscribed square, so no corner is lost.
+
+    Raises ``UnsupportedFeatureError`` (D4) when the period is below 2 pt
+    or the lowering would emit more than 20 000 primitives.
+    """
+    import math
+
+    x, y, w, h = bbox_pts
+    period = inches_to_points(fill.spacing * fill.scale)
+    if period < _MIN_PATTERN_PERIOD_PT:
+        raise UnsupportedFeatureError(
+            f"{where}: pattern period {period:.2f} pt (spacing {fill.spacing}\" × "
+            f"scale {fill.scale}) is below the {_MIN_PATTERN_PERIOD_PT:g} pt minimum"
+        )
+    cx, cy = x + w / 2, y + h / 2
+    if fill.rotation:
+        half = math.hypot(w, h) / 2
+        cover = RectGeom(x=cx - half, y=cy - half, width=2 * half, height=2 * half)
+        transform = Transform(pivot_x=cx, pivot_y=cy, rotate_deg=fill.rotation)
+    else:
+        cover = RectGeom(x=x, y=y, width=w, height=h)
+        transform = Transform()
+
+    colors = [_hex_to_rgba(c) for c in fill.colors]
+    background, foreground = colors[0], colors[1] if len(colors) > 1 else colors[0]
+    shapes: list[GeomU] = []
+    if foreground != background:
+        shapes = _pattern_primitives(
+            fill.pattern_type.value, period, left=x, top=y + h, cover=cover, where=where,
+        )
+
+    out: list[RenderCommand] = [
+        BeginClip(geometry=geometry),
+        BeginGroup(transform=transform, opacity=opacity),
+        DrawShape(geometry=cover, fill=SolidPaint(color=background)),
+    ]
+    out.extend(DrawShape(geometry=g, fill=SolidPaint(color=foreground)) for g in shapes)
+    out.extend([EndGroup(), EndClip()])
+    if stroke is not None:
+        out.append(DrawShape(geometry=geometry, stroke=stroke, opacity=opacity))
+    return out
+
+
+def _pattern_primitives(
+    kind: str, period: float, *, left: float, top: float, cover: RectGeom, where: str,
+) -> list[GeomU]:
+    """The foreground primitives of one pattern over ``cover`` (see
+    :func:`_lower_pattern_fill`). Tile ``(i, j)`` spans
+    ``[left + i·p, left + (i+1)·p] × [top − (j+1)·p, top − j·p]``."""
+    import math
+
+    eps = 1e-9
+    x0, y0 = cover.x, cover.y
+    x1, y1 = x0 + cover.width, y0 + cover.height
+    cols = range(math.floor((x0 - left) / period + eps), math.ceil((x1 - left) / period - eps))
+    rows = range(math.floor((top - y1) / period + eps), math.ceil((top - y0) / period - eps))
+    count = {
+        "stripes": len(rows),
+        "dots": len(cols) * len(rows),
+        "grid": len(cols) + len(rows),
+        "checkerboard": 2 * len(cols) * len(rows),
+    }[kind]
+    if count > _MAX_PATTERN_PRIMITIVES:
+        raise UnsupportedFeatureError(
+            f"{where}: {kind} pattern with a {period:.2f} pt period would emit "
+            f"{count} primitives over {cover.width:.1f}×{cover.height:.1f} pt "
+            f"(limit {_MAX_PATTERN_PRIMITIVES})"
+        )
+
+    half = period / 2
+    out: list[GeomU] = []
+    if kind == "stripes":
+        for j in rows:
+            out.append(RectGeom(x=x0, y=top - j * period - half, width=x1 - x0, height=half))
+    elif kind == "dots":
+        for j in rows:
+            for i in cols:
+                centre = Point(x=left + i * period + half, y=top - j * period - half)
+                out.append(CircleGeom(center=centre, radius=period / 4))
+    elif kind == "grid":
+        for i in cols:
+            out.append(RectGeom(x=left + i * period, y=y0, width=_GRID_LINE_PT, height=y1 - y0))
+        for j in rows:
+            out.append(RectGeom(
+                x=x0, y=top - j * period - _GRID_LINE_PT, width=x1 - x0, height=_GRID_LINE_PT,
+            ))
+    else:  # checkerboard
+        for j in rows:
+            for i in cols:
+                tx, ty = left + i * period, top - j * period
+                out.append(RectGeom(x=tx, y=ty - half, width=half, height=half))
+                out.append(RectGeom(x=tx + half, y=ty - period, width=half, height=half))
+    return out
 
 
 def _shape_bbox_pts(

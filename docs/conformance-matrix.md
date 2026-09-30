@@ -26,10 +26,18 @@ compared against the SVG backend (the oracle, D12) at 144 DPI.
 | `stroke_dash_line_4` | match | match |
 | `linear_gradient` | match | match |
 | `radial_gradient` | match | match |
-| `pattern_stripes` | known_diff (#74) | match |
-| `pattern_dots` | match | match |
-| `pattern_grid` | known_diff (#74) | known_diff (#74) |
-| `pattern_checkerboard` | known_diff (#74) | known_diff (#74) |
+| `pattern_stripes_0` | match | match |
+| `pattern_stripes_45` | match | match |
+| `pattern_stripes_90` | match | match |
+| `pattern_dots_0` | match | match |
+| `pattern_dots_45` | match | match |
+| `pattern_dots_90` | match | match |
+| `pattern_grid_0` | match | match |
+| `pattern_grid_45` | match | match |
+| `pattern_grid_90` | match | match |
+| `pattern_checkerboard_0` | match | match |
+| `pattern_checkerboard_45` | match | match |
+| `pattern_checkerboard_90` | match | match |
 | `clip_circle_over_rect` | match | match |
 | `clip_nested` | match | match |
 | `group_rotate_pivot` | match | match |

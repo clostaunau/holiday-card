@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 2234 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 2286 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -59,7 +59,10 @@ types: `BeginPage`, `EndPage`, `SetMetadata`, `BeginGroup`, `EndGroup`,
 `BeginClip`, `EndClip`, `DrawShape`, `DrawText`, `DrawImage`,
 `DrawFoldLine`. Coordinate space is **points (1/72 inch) with origin at
 page bottom-left** (matches PDF). Every backend converts to its own
-coord system per element.
+coord system per element. The paint union `PaintU` is `SolidPaint`,
+`LinearGradientPaint`, `RadialGradientPaint`; there is no pattern paint,
+because the compiler lowers pattern fills to a clip plus solid
+primitives (#74, D13).
 
 ## Active technologies
 
@@ -149,6 +152,7 @@ tests/
                         # Loader: test_templates_loading (extra="forbid", fail-loud keys)
                         # CLI seam: test_card_request (precedence rules 1-18, #78)
                         # PDF/X flattening: test_compiler_flatten (backdrop rule, refusals, IR alpha)
+                        # Patterns: test_compiler_patterns (lowering to clip + primitives, #74)
                         # Imposition: test_imposition (slot table, paper-fold oracle,
                         #   panel_placements, stale-coordinate loader check, #58)
     __snapshots__/      # JSON snapshots of compile_card() output per template (16 files)
@@ -192,7 +196,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 2234 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 2286 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
 
@@ -248,7 +252,7 @@ holiday-card create christmas-classic --debug-emit-ir   # print compiled IR as J
 The compiler supports backgrounds, borders, basic shapes (Rectangle,
 Circle, Triangle, Star, Line, **SVGPath**) with **solid fills, linear
 gradients, radial gradients, and patterns (stripes / dots / grid /
-checkerboard)**, text with left/center/right alignment + Markdown
+checkerboard, lowered by the compiler to clip + solid primitives)**, text with left/center/right alignment + Markdown
 rich text (paragraphs + **bold** + *italic* + ***bold-italic***)
 + structured letter parts
 (salutation / signoff / signature / P.S.), text **`font_style`**
@@ -349,6 +353,63 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — Pattern fills are lowered by the compiler; the three
+  backend tilers are deleted (expert-panel §P13 / D13, issue #74)**: PDF,
+  SVG and PNG each tiled `PatternPaint` differently. On festive-stripes
+  the 90° ribbon was mostly missing in PNG and mostly solid in PDF, 45°
+  stripes lost their corners, and SVG grid / checker used half the PDF
+  spacing. New `compiler._lower_pattern_fill(fill, geometry, bbox_pts,
+  stroke, opacity, *, where=)` emits `BeginClip(shape)` →
+  `BeginGroup(Transform(pivot = bbox centre, rotate_deg), opacity =
+  shape opacity)` → a `colors[0]` background → `colors[1]` primitives →
+  `EndGroup` → `EndClip` → the stroke (fill `None`), if any. The group is
+  always emitted, so opacity composites once. Semantics (docstring):
+  `period = spacing × scale` in pt; tiles hang from the bbox top-left;
+  stripes are one full-width band `period/2` tall per row, dots a circle
+  of radius `period/4` at each tile centre, grid one 1 pt vertical and
+  one horizontal line per tile, checkerboard `period/2` squares at the
+  tile's top-left and bottom-right; a rotated pattern covers the bbox's
+  circumscribed square. A single-colour pattern is just the background.
+  Period < 2 pt, or > 20 000 primitives, raises `UnsupportedFeatureError`
+  naming the shape (`Rectangle id 'ribbon'`) and the numbers. Rectangle,
+  circle, triangle, star and SVG-path shapes route through `_draw_filled`
+  (the SVG path's bbox is its transformed control-point hull); lines take
+  `_resolve_stroke` only. Deleted (D17): `PatternPaint` (class, `PaintU`
+  member, `__all__`), `_pattern_to_paint`, the PDF `_draw_pattern_tile`,
+  the SVG `_register_pattern`, the PNG `_render_pattern_into` and their
+  dispatch branches, and the flattener's pattern blending. Consequences:
+  CMYK needs no pattern code (primitives are `SolidPaint`); a
+  translucent pattern on a PDF/X target is refused by the flattener (its
+  background and primitives overlap inside a translucent group), and
+  `BeginGroup.opacity < 1` still raises in PDF / PNG. The flattener drops
+  rotated bands its clip box culls entirely. **PNG changes found on the
+  way:** (1) an identity `BeginGroup` opened under a clip now gets its own
+  overlay, so a pattern's primitives draw directly and are clipped once
+  (festive-stripes went 0.11 s → 2.0 s with one canvas-sized layer per
+  clipped primitive; now 0.24 s); (2) Pillow's box end is inclusive, so a
+  fill-only rect drew one pixel too wide (a 2 px grid line was 3 px):
+  unstroked rects now fill the pixels whose centres are inside
+  (`_pixel_span`; abutting checker cells get exactly one owner per
+  pixel), and fill-only circles / ellipses inset their box by 0.5 px.
+  Measured against the SVG oracle, PNG moved closer on every template it
+  changed. Both are interim until #77's coverage masks. Conformance: the
+  4 `pattern_*` cases became 12 (`pattern_{kind}_{0,45,90}`, built with
+  `_lower_pattern_fill`), all `match` on PDF and PNG;
+  `docs/conformance-matrix.md` regenerated. Regenerated on purpose: the
+  festive-stripes compile snapshot, the festive-stripes and
+  holiday-masterpiece entries of both PDF goldens, and the visual
+  baselines for festive-stripes and holiday-masterpiece (PNG + PDF) plus
+  10 other PNG sheets whose rect / disc edges moved by a pixel
+  (0.005–0.56% of a panel; menorah, balloons and artist were over the
+  gate), generated by the `visual-baselines` workflow and eyeballed. Guarded by
+  `tests/unit/test_compiler_patterns.py`, `test_pattern_is_not_an_ir_paint`
+  in `test_render_ir.py`, `TestFestiveStripesRibbon` /
+  `test_png_draws_pattern_primitives_on_one_layer` in
+  `test_gradients_patterns.py`,
+  `test_png_fill_only_rect_covers_exactly_its_pixels` in
+  `test_png_backend.py`, `test_translucent_pattern_is_refused` in
+  `test_compiler_flatten.py` and the pattern conformance cases.
 
 - **2026-09-29 — `validate` checks fonts, bounds, theme and compiles;
   `holiday-card schema`; template-authoring guide (expert-panel §P3 / D3 /
