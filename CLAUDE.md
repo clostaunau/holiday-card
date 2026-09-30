@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 2887 tests, mypy-clean, ruff-clean, coverage ≥ 92%
+uv run pytest                       # all 2964 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -107,6 +107,7 @@ src/holiday_card/
     flatten.py          # PDF/X transparency flattening against a known solid backdrop (D10, #71)
     color_management.py # CMYKConverter (ICC sRGB→GRACoL2013, 300% ink cap, black rules) + ICC path resolution
     data_paths.py       # data_path(kind): the ONE resolver for bundled data (+ env overrides)
+    ai_errors.py        # ProviderError (refused/environment/usage/transient) + redact / sanitize (stdlib only, #142)
     ai_rails.py         # L3 hard category rails (occasion + prompt blocklists)
     ai_provenance.py    # L3 LicenseRecord sidecar + first-use consent gate
     ai_assets.py        # L3 POD-aware sizing, DEFAULT_AI_MODEL + MODEL_SIZE_POLICIES (#87), generate orchestration
@@ -224,7 +225,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 2887 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 2964 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
@@ -414,6 +415,44 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-30 — `ai-asset` provider errors exit cleanly with redacted
+  messages; exit codes 6 / 7 (issue #142)**: an OpenAI `AuthenticationError`,
+  `RateLimitError`, timeout or moderation 400 escaped `ai-asset generate`
+  as a raw traceback (exit 1) whose text could echo a masked key, the SDK
+  honoured `OPENAI_BASE_URL`, retried the billed call twice and waited up
+  to 600 s. New stdlib-only `core/ai_errors.py`: `ProviderError(message, *,
+  kind, status, retry_after_s, secrets)` whose constructor keeps only
+  `sanitize_provider_text(message)` (strip ANSI / OSC / C0 / C1 controls
+  except `\n\t`, **then** `redact` every literal secret ≥ 8 chars and the
+  `sk-or-v1-…` / `sk-…` patterns, **then** truncate to
+  `MAX_PROVIDER_TEXT = 500` + `…`; stripping first so a key split by an
+  escape is glued back before redaction), `parse_retry_after`
+  (delta-seconds only). `OpenAIImageClient(..., *, api_key: SecretStr)`
+  (the redaction secret) wraps the SDK call; `_map_openai_error` (a
+  function-local `import openai`; `ImportError` or a non-SDK exception →
+  `None`, re-raised unchanged) maps connection / timeout → `transient`,
+  400 + `moderation_blocked` / `content_policy_violation` → `refused`,
+  401 / 403 → `environment`, 429 `insufficient_quota` → `environment`,
+  other 429, 408, 409, ≥ 500 and a bare `APIError` → `transient`, any
+  other 4xx → `usage`, and raises `from None` **after** the handler, so the
+  SDK error is neither `__cause__` nor `__context__`. An empty `data` or
+  no `b64_json` → `refused` (was `IndexError`). `make_image_client` pins
+  `base_url="https://api.openai.com/v1"`, `max_retries=0`,
+  `timeout=OPENAI_TIMEOUT_S` (300). `ExitCode` gains `PROVIDER_REFUSED = 6`
+  and `PROVIDER_ERROR = 7` (help epilog + README table). The CLI prints
+  `Error: <what> (HTTP <status>): <text>` (+ `Retry after N s.`) and exits
+  by kind even under `--debug`; anything else in the call goes through
+  `_unexpected_error` (exit 1). Both Typer apps set
+  `pretty_exceptions_show_locals=False`. #141 was not on `main`, so its
+  `ImagePayloadError` → 7 mapping is left to #141. Tests use
+  `tests/openai_sdk_stub.py` (the SDK exception hierarchy, installed as
+  `sys.modules["openai"]`); `tests/unit/test_ai_openai_sdk_contract.py`
+  checks it against the real SDK (skips without the `ai` extra; run
+  `uv sync --extra dev --extra ai`). Guarded by `tests/unit/test_ai_errors.py`,
+  the #142 block in `test_ai_openai.py`, `TestProviderErrors` /
+  `TestSecretSentinel` in `test_ai_asset_cli.py` and `TestExitCodes`.
+  Tests 2887 → 2964.
 
 - **2026-09-30 — christmas-photo-ornament's inside-left caption is on its
   panel; no shipped text leaves its panel (issue #134)**: the
@@ -1797,7 +1836,9 @@ template editing; a JSON "render plan" backend for downstream tooling.
   (override that prints every rail reason first), and `--accept-ai-terms`
   (non-interactive consent). Refusals: rail-blocked → exit 5, consent
   missing → exit 3, missing key/extra → exit 4 (clean error, no
-  traceback). New `[ai]` extra (`openai>=1.0`); project stays fully
+  traceback); since #142 a provider refusal → exit 6 and a
+  provider / network error → exit 7 (a bad key / quota / region → 4,
+  an invalid request → 2). New `[ai]` extra (`openai>=1.0`); project stays fully
   functional without it. README carries the panel's verbatim
   personal-use positioning paragraph. **What it deliberately does NOT
   do** (all out-of-scope per the consensus): render-time API calls,

@@ -258,6 +258,8 @@ Scripts can branch on these; `holiday-card --help` lists them too.
 | 3 | `ai-asset`: first-use consent missing (`--accept-ai-terms`) |
 | 4 | Environment: missing optional extra or API key, or output path not writable |
 | 5 | `ai-asset`: refused by the hard category rails |
+| 6 | `ai-asset`: the AI provider refused the request (content policy) |
+| 7 | `ai-asset`: provider or network error, timeout or invalid response (retryable) |
 
 `-o` always means `--output`. `templates` and `themes` take `--occasion`
 with no short flag, and their first column is the ID that `create`,
