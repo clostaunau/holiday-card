@@ -551,6 +551,34 @@ def test_open_generated_image_returns_or_refuses(
     assert img.mode == "RGB"
 
 
+_SEEDS: dict[ImageMediaType, bytes] = {
+    "image/png": _encoded("PNG", (24, 24)),
+    "image/jpeg": _encoded("JPEG", (24, 24)),
+    "image/webp": _encoded("WEBP", (24, 24)),
+}
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    media_type=st.sampled_from(sorted(_SEEDS)),
+    edits=st.lists(st.tuples(st.integers(min_value=0), st.integers(0, 255)), max_size=8),
+    keep=st.floats(min_value=0.0, max_value=1.0),
+)
+def test_mutated_real_image_returns_or_refuses(
+    media_type: ImageMediaType, edits: list[tuple[int, int]], keep: float
+) -> None:
+    # Byte flips and truncation of a valid image reach the decoders' inner paths.
+    data = bytearray(_SEEDS[media_type])
+    for index, value in edits:
+        data[index % len(data)] = value
+    data = data[: max(1, round(len(data) * keep))]
+    try:
+        img = open_generated_image(bytes(data), media_type)
+    except ImagePayloadError:
+        return
+    assert img.mode == "RGB"
+
+
 class TestBakePayload:
     def _run(self, tmp_path: Path, client: FakeImageClient, out: Path | None = None) -> Path:
         out = out or tmp_path / "bake.png"

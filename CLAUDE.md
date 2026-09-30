@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 3006 tests, mypy-clean, ruff-clean, coverage ≥ 92%
+uv run pytest                       # all 3007 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -226,7 +226,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 3006 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 3007 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
@@ -455,11 +455,11 @@ template editing; a JSON "render plan" backend for downstream tooling.
   animated WebP, a hand-built 20000² and 8000×7000 IHDR with
   `ImageFile.load` patched to fail, truncation) /
   `test_open_generated_image_returns_or_refuses` (Hypothesis, 200
-  examples over PNG / JPEG / WebP magic + random bytes) / `TestBakePayload`
+  examples each: PNG / JPEG / WebP magic + random bytes, and byte-flipped / truncated real images) / `TestBakePayload`
   in `tests/unit/test_ai_assets.py`, the #141 block in `test_ai_openai.py`,
   the v1.3.0 sidecar case in `test_ai_provenance.py` and
   `TestUntrustedPayload` / `TestReferenceIsProbed` in
-  `test_ai_asset_cli.py`. Tests 2968 → 3006.
+  `test_ai_asset_cli.py`. Tests 2968 → 3007.
 
 - **2026-09-30 — `ai-asset` provider errors exit cleanly with redacted
   messages; exit codes 6 / 7 (issue #142)**: an OpenAI `AuthenticationError`,
