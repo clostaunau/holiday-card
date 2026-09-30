@@ -39,7 +39,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out PR (full history for diff)
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # We need the merge-base with main to compute the changed
           # files, so fetch enough history. fetch-depth: 0 grabs
@@ -51,7 +51,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           python-version: "3.12"
           enable-cache: true
@@ -93,7 +93,7 @@ jobs:
       - name: Upload PNG previews as artifact
         if: steps.render.outputs.count != '0'
         id: upload
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: card-previews-${{ github.run_number }}
           path: card-previews/
@@ -138,7 +138,7 @@ jobs:
       - name: Find existing sticky comment (if any)
         if: steps.render.outputs.count != '0' && github.event.pull_request.head.repo.full_name == github.repository
         id: find-comment
-        uses: peter-evans/find-comment@3eae4d37986fb5a8592848f6a574fdf654e61f9e # v3.1.0
+        uses: peter-evans/find-comment@b30e6a3c0ed37e7c023ccd3f1db5c6c0b0c23aad # v4.0.0
         with:
           issue-number: ${{ github.event.pull_request.number }}
           # ``body-includes`` filters for comments containing this
@@ -149,7 +149,7 @@ jobs:
 
       - name: Post (or update) sticky PR comment
         if: steps.render.outputs.count != '0' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: peter-evans/create-or-update-comment@71345be0265236311c031f5c7866368bd1eff043 # v4.0.0
+        uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
         with:
           # If find-comment returned an id, edit that comment in place.
           # If it didn't, comment-id is empty and the action creates a
