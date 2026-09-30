@@ -191,3 +191,9 @@ def test_large_file_hook_exempts_only_bundled_fonts_and_icc() -> None:
     assert exclude.search("src/holiday_card/data/fonts/curated/CormorantGaramond-Regular.ttf")
     assert not exclude.search("src/holiday_card/data/templates/christmas/classic.yaml")
     assert not exclude.search("tests/visual/fixtures/reference_cards/png/big.png")
+
+
+@pytest.mark.parametrize("path", WORKFLOW_FILES, ids=lambda p: p.name)
+def test_no_workflow_refreshes_the_openrouter_allowlist(path: Path) -> None:
+    # The refresh script hits the live catalogue; it is dev-only (#148).
+    assert "refresh_openrouter_models" not in path.read_text()

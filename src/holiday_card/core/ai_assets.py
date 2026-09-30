@@ -33,10 +33,14 @@ import math
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Protocol, assert_never
+from typing import TYPE_CHECKING, Literal, Protocol, assert_never
 
 from PIL import Image, ImageCms
 
+from holiday_card.core.ai_openrouter_models import (
+    RESOLUTION_LONG_EDGE_PX,
+    aspect_ratio_value,
+)
 from holiday_card.core.ai_provenance import (
     LicenseRecord,
     has_consented,
@@ -47,6 +51,9 @@ from holiday_card.core.ai_rails import RailViolation, evaluate_rails
 from holiday_card.core.images import MAX_IMAGE_PIXELS
 from holiday_card.core.models import OccasionType
 from holiday_card.utils.measurements import DEFAULT_BLEED
+
+if TYPE_CHECKING:
+    from holiday_card.core.ai_openrouter_models import OpenRouterModel
 
 __all__ = [
     "MODEL_SIZE_POLICIES",
@@ -66,6 +73,9 @@ __all__ = [
     "RailRefusedError",
     "decode_b64_image",
     "open_generated_image",
+    "RESOLUTION_LONG_EDGE_PX",
+    "aspect_ratio_value",
+    "choose_aspect_shape",
     "choose_request_shape",
     "choose_request_size",
     "size_is_allowed",
@@ -207,6 +217,30 @@ def choose_request_size(model: str, target_w: int, target_h: int) -> tuple[int, 
         candidates,
         key=lambda c: ((c[0] < w) + (c[1] < h), abs(c[0] - w) + abs(c[1] - h)),
     )
+
+
+def choose_aspect_shape(entry: OpenRouterModel, target_w: int, target_h: int) -> AspectSize:
+    """The aspect ratio and resolution tier to request from ``entry`` (spec §5.3).
+
+    The aspect is the one nearest the target's in log space (equal log
+    distance = equal cover-crop); a tie goes to the narrower ratio, then the
+    smaller string, so the result never depends on catalogue order. The
+    tier is the smallest whose long edge covers the target's, else the
+    largest offered; ``None`` when the endpoint advertises none.
+    """
+    t = math.log(target_w / target_h)
+
+    def key(r: str) -> tuple[float, float, str]:
+        v = aspect_ratio_value(r)
+        return (round(abs(math.log(v) - t), 9), v, r)
+
+    aspect = min(entry.aspect_ratios, key=key)
+    if not entry.resolutions:
+        return AspectSize(aspect, None)
+    tiers = sorted(entry.resolutions, key=RESOLUTION_LONG_EDGE_PX.__getitem__)
+    long_edge = max(target_w, target_h)
+    covering = [r for r in tiers if RESOLUTION_LONG_EDGE_PX[r] >= long_edge]
+    return AspectSize(aspect, covering[0] if covering else tiers[-1])
 
 
 class ConsentRequiredError(RuntimeError):
