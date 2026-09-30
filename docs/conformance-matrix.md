@@ -52,7 +52,13 @@ compared against the SVG backend (the oracle, D12) at 144 DPI.
 | `text_lato_left` | match | match |
 | `text_lato_center` | match | match |
 | `text_lato_right` | match | match |
-| `text_curated_family` | known_diff (#76) | known_diff (#76) |
+| `text_family_cormorant` | match | match |
+| `text_family_cormorant_italic` | match | match |
+| `text_family_playfairdisplay` | match | match |
+| `text_family_inter` | match | match |
+| `text_family_caveat` | match | match |
+| `text_family_comfortaa` | match | match |
+| `text_family_helvetica` | match | match |
 | `text_opacity` | match | match |
 | `image_jpeg` | match | match |
 | `image_clipped_circle` | match | match |

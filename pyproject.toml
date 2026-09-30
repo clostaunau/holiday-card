@@ -32,6 +32,7 @@ dependencies = [
     "PyYAML>=6.0",
     "pydantic>=2.0",
     "pikepdf>=8.0",
+    "fonttools>=4.47",  # SVG backend embeds glyph subsets (fontTools.subset, #76)
 ]
 
 [project.optional-dependencies]
@@ -139,6 +140,7 @@ module = [
     "PIL.*",
     "pikepdf.*",
     "openai.*",
+    "fontTools.*",
 ]
 ignore_missing_imports = true
 

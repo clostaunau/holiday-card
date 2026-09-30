@@ -13,15 +13,21 @@ content.
 from __future__ import annotations
 
 import base64
+import io
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
+from fontTools.ttLib import TTFont
+from reportlab.pdfbase import pdfmetrics
 
 from holiday_card.core.compiler import CompileContext, compile_card
 from holiday_card.core.generators import CardGenerator
 from holiday_card.core.images import ImageSourceError
 from holiday_card.core.models import ImageElement
+from holiday_card.core.render_ir import RGBA, BeginPage, DrawText, EndPage, Point, TextRun
+from holiday_card.renderers.font_registry import ensure_default_fonts_registered, resolve_font_id
 from holiday_card.renderers.svg_backend import SVGRenderer
 from holiday_card.utils.measurements import PageGeometry
 
@@ -219,3 +225,102 @@ def test_svg_refuses_non_image_source(tmp_path: Path) -> None:
     for produced in out_dir.iterdir():
         data = produced.read_bytes()
         assert secret_bytes not in data and encoded[:16] not in data
+
+
+# ---------------------------------------------------------------------------
+# Embedded font subsets (#76)
+# ---------------------------------------------------------------------------
+
+_FONT_FACE = re.compile(
+    r'@font-face \{ font-family: "(hc-[^"]+)"; '
+    r'src: url\(data:font/ttf;base64,([A-Za-z0-9+/=]+)\) format\("truetype"\); \}'
+)
+_GENERICS = ("serif", "sans-serif", "monospace", "cursive")
+
+
+def _texts(root: ET.Element) -> list[ET.Element]:
+    return root.findall(f".//{{{_SVG_NS}}}text")
+
+
+def _embedded_faces(root: ET.Element) -> list[tuple[str, bytes]]:
+    style = root.find(f"./{{{_SVG_NS}}}defs/{{{_SVG_NS}}}style")
+    assert style is not None and style.text, "expected <defs><style> with @font-face"
+    return [(family, base64.b64decode(data)) for family, data in _FONT_FACE.findall(style.text)]
+
+
+def _text_family(elem: ET.Element) -> str:
+    match = re.fullmatch(r"'(hc-[^']+)', ([a-z-]+)", elem.get("font-family", ""))
+    assert match, f"font-family {elem.get('font-family')!r} is not \"'hc-<id>', <generic>\""
+    assert match.group(2) in _GENERICS
+    return match.group(1)
+
+
+@pytest.mark.parametrize("template_id", SVG_TEMPLATES)
+def test_svg_text_names_an_embedded_face_then_a_generic(
+    template_id: str, tmp_path: Path
+) -> None:
+    out = tmp_path / f"{template_id}.svg"
+    _render_svg(template_id, out)
+    root = ET.parse(out).getroot()
+    texts = _texts(root)
+    if not texts:
+        pytest.skip(f"{template_id} draws no text")
+    faces = _embedded_faces(root)
+    families = [family for family, _ in faces]
+    used = {_text_family(t) for t in texts}
+    assert sorted(families) == sorted(used), "exactly one @font-face per used family"
+    assert len(families) == len(set(families))
+
+    chars: dict[str, set[str]] = {}
+    for t in texts:
+        chars.setdefault(_text_family(t), set()).update(t.text or "")
+    for family, data in faces:
+        cmap = TTFont(io.BytesIO(data)).getBestCmap()
+        missing = {c for c in chars[family] if ord(c) not in cmap}
+        assert not missing, f"{family} subset lacks {sorted(missing)}"
+
+
+def test_svg_names_embedded_font_licenses(tmp_path: Path) -> None:
+    out = tmp_path / "artist.svg"
+    _render_svg("christmas-artist", out)
+    text = out.read_text(encoding="utf-8")
+    comment = re.search(r"<!--(.*?)-->", text, re.S)
+    assert comment and "hc-Caveat" in comment.group(1)
+    assert "SIL Open Font License 1.1" in comment.group(1)
+
+
+def test_svg_is_byte_identical_across_runs(tmp_path: Path) -> None:
+    a, b = tmp_path / "a.svg", tmp_path / "b.svg"
+    _render_svg("christmas-classic", a)
+    _render_svg("christmas-classic", b)
+    assert a.read_bytes() == b.read_bytes()
+
+
+def test_svg_refuses_a_font_it_cannot_embed(tmp_path: Path) -> None:
+    commands = [
+        BeginPage(width=144, height=144),
+        DrawText(run=TextRun(text="Hi", origin=Point(x=10, y=10), font_id="NoSuchFont",
+                             size_pt=12, color=RGBA(r=0, g=0, b=0))),
+        EndPage(),
+    ]
+    with pytest.raises(NotImplementedError, match="cannot embed font 'NoSuchFont'"):
+        SVGRenderer().render(commands, tmp_path / "x.svg")
+
+
+def test_embedded_advances_match_reportlab_measurement(tmp_path: Path) -> None:
+    """D12: the SVG draws with exactly the metrics the compiler wrapped with."""
+    card = CardGenerator().create_card(template_id="christmas-classic")
+    commands = compile_card(card)
+    out = tmp_path / "classic.svg"
+    SVGRenderer().render(commands, out)
+    faces = {family: TTFont(io.BytesIO(data)) for family, data in _embedded_faces(ET.parse(out).getroot())}
+    ensure_default_fonts_registered()
+    runs = [c.run for c in commands if isinstance(c, DrawText)]
+    assert runs
+    for run in runs:
+        font = faces[f"hc-{run.font_id}"]
+        cmap, hmtx = font.getBestCmap(), font["hmtx"]
+        upem = font["head"].unitsPerEm
+        width = sum(hmtx[cmap[ord(c)]][0] for c in run.text) * run.size_pt / upem
+        expected = pdfmetrics.stringWidth(run.text, resolve_font_id(run.font_id), run.size_pt)
+        assert width == pytest.approx(expected, rel=0.005), run.text

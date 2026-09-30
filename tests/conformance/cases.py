@@ -284,7 +284,15 @@ CASES: tuple[Case, ...] = (
     _text("text_lato_left", "left"),
     _text("text_lato_center", "center"),
     _text("text_lato_right", "right"),
-    _text("text_curated_family", "center", font_id="Cormorant"),
+    # One per curated family plus a Liberation face (#76): the SVG oracle
+    # draws only with the subsets embedded in the SVG itself.
+    *(
+        _text(f"text_family_{font_id.lower().replace('-', '_')}", "center", font_id=font_id)
+        for font_id in (
+            "Cormorant", "Cormorant-Italic", "PlayfairDisplay", "Inter",
+            "Caveat", "Comfortaa", "Helvetica",
+        )
+    ),
     _text("text_opacity", "center", opacity=0.5),
     _case("image_jpeg", _photo()),
     _case("image_clipped_circle", _CIRCLE_CLIP, _photo(), EndClip()),

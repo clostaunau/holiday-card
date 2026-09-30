@@ -311,7 +311,7 @@ class TestApplyInsideRichContentTargeting:
         )
         assert result.exit_code == 0, result.stdout + result.output
         svg = out.read_text()
-        fonts = set(re.findall(r'font-family="([^"]+)"', svg))
+        fonts = set(re.findall(r'font-family="\'hc-([^\']+)\', [a-z-]+"', svg))
         # Sanity: Cormorant must be present (the inside body).
         assert "Cormorant" in fonts, (
             f"expected Cormorant in rendered SVG; got fonts {fonts}"
