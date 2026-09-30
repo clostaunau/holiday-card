@@ -83,15 +83,12 @@ class TestMakeImageClient:
     def test_missing_key_names_the_variable(
         self, monkeypatch: pytest.MonkeyPatch, value: str | None
     ) -> None:
-        if value is None:
-            monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        else:
+        if value is not None:  # unset: the conftest guard already scrubs the key (#143)
             monkeypatch.setenv("OPENAI_API_KEY", value)
         with pytest.raises(AIDependencyError, match="OPENAI_API_KEY"):
             make_image_client(AIProvider.OPENAI)
 
-    def test_unknown_model_is_checked_before_the_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    def test_unknown_model_is_checked_before_the_key(self) -> None:
         with pytest.raises(UnknownModelError, match="dall-e-9"):
             make_image_client(AIProvider.OPENAI, "dall-e-9")
 

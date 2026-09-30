@@ -16,33 +16,12 @@ from pathlib import Path
 
 import pytest
 
+from ast_imports import imports
+
 CORE_DIR = Path(__file__).resolve().parents[2] / "src" / "holiday_card" / "core"
 CORE_MODULES = sorted(CORE_DIR.glob("*.py"))
 # The composition root: may import renderers inside a function body only.
 _COMPOSITION_ROOT = "generators.py"
-
-
-def _imports(tree: ast.AST) -> list[tuple[ast.AST, str, bool]]:
-    """Every (node, module, is_function_local) import in ``tree``."""
-    found: list[tuple[ast.AST, str, bool]] = []
-
-    def visit(node: ast.AST, in_function: bool) -> None:
-        for child in ast.iter_child_nodes(node):
-            local = in_function or isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
-            if isinstance(child, ast.Import):
-                found.extend((child, alias.name, in_function) for alias in child.names)
-            elif isinstance(child, ast.ImportFrom) and child.module and child.level == 0:
-                found.append((child, child.module, in_function))
-                # `from holiday_card import renderers` spells the package as a name.
-                if child.module == "holiday_card":
-                    found.extend(
-                        (child, f"holiday_card.{alias.name}", in_function)
-                        for alias in child.names
-                    )
-            visit(child, local)
-
-    visit(tree, False)
-    return found
 
 
 def test_core_modules_are_found() -> None:
@@ -55,7 +34,7 @@ def test_core_module_does_not_import_reportlab(path: Path) -> None:
     tree = ast.parse(path.read_text(encoding="utf-8"))
     bad = [
         f"{path.name}:{node.lineno} imports {module}"  # type: ignore[attr-defined]
-        for node, module, _local in _imports(tree)
+        for node, module, _local in imports(tree)
         if module == "reportlab" or module.startswith("reportlab.")
     ]
     assert bad == []
@@ -66,7 +45,7 @@ def test_core_module_does_not_import_renderers(path: Path) -> None:
     tree = ast.parse(path.read_text(encoding="utf-8"))
     bad = [
         f"{path.name}:{node.lineno} imports {module}"  # type: ignore[attr-defined]
-        for node, module, local in _imports(tree)
+        for node, module, local in imports(tree)
         if (module == "holiday_card.renderers" or module.startswith("holiday_card.renderers."))
         and not (path.name == _COMPOSITION_ROOT and local)
     ]
@@ -81,7 +60,7 @@ def test_ast_scan_sees_function_local_imports() -> None:
         "        from reportlab.pdfgen import canvas\n"
         "        from holiday_card import renderers\n"
     )
-    modules = {(m, local) for _n, m, local in _imports(tree)}
+    modules = {(m, local) for _n, m, local in imports(tree)}
     assert ("reportlab.pdfgen", True) in modules
     assert ("holiday_card.renderers", True) in modules
 

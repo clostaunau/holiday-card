@@ -1,8 +1,10 @@
 """Shared pytest fixtures for holiday card tests."""
 
+import ipaddress
 import os
+import socket
 import tempfile
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from pathlib import Path
 
 import pytest
@@ -16,6 +18,51 @@ def pytest_configure(config: pytest.Config) -> None:  # noqa: ARG001 (hook signa
     Set before collection, since some modules discover templates at import.
     """
     os.environ["XDG_DATA_HOME"] = tempfile.mkdtemp(prefix="holiday-card-xdg-")
+
+
+_AI_KEYS = ("OPENAI_API_KEY", "OPENROUTER_API_KEY")
+
+
+def _is_loopback(family: int, address: object) -> bool:
+    if family == getattr(socket, "AF_UNIX", None):
+        return True
+    host = address[0] if isinstance(address, tuple) and address else address
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(str(host)).is_loopback
+    except ValueError:  # a hostname: resolving it would already be off-box
+        return False
+
+
+def _loopback_only(original: Callable[..., object]) -> Callable[..., object]:
+    """Wrap a ``socket.socket`` connect method; in-process only (subprocesses aren't guarded)."""
+
+    def guarded(self: socket.socket, address: object) -> object:
+        if not _is_loopback(self.family, address):
+            raise RuntimeError(
+                f"network access is blocked in tests: connect to {address!r}; "
+                "mark the test live_ai to allow it"
+            )
+        return original(self, address)
+
+    return guarded
+
+
+@pytest.fixture(autouse=True)
+def _ai_test_isolation(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No AI keys and no non-loopback sockets unless the test is marked ``live_ai`` (#143).
+
+    ``monkeypatch.delenv`` edits ``os.environ``, so subprocesses inherit the
+    scrubbed environment. A ``RuntimeError`` (not ``OSError``) so code that
+    handles network errors cannot swallow it.
+    """
+    if request.node.get_closest_marker("live_ai"):
+        return
+    for key in _AI_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(socket.socket, "connect", _loopback_only(socket.socket.connect))
+    monkeypatch.setattr(socket.socket, "connect_ex", _loopback_only(socket.socket.connect_ex))
 
 
 @pytest.fixture

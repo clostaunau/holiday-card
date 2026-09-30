@@ -197,3 +197,41 @@ def test_large_file_hook_exempts_only_bundled_fonts_and_icc() -> None:
 def test_no_workflow_refreshes_the_openrouter_allowlist(path: Path) -> None:
     # The refresh script hits the live catalogue; it is dev-only (#148).
     assert "refresh_openrouter_models" not in path.read_text()
+
+
+# --- AI provider calls never run in CI (#143, OpenRouter spec §6.9) -------------
+
+_AI_SECRET = re.compile(r"secrets\.[A-Z0-9_]*(OPENROUTER|OPENAI)")
+
+
+def live_ai_violations(name: str, text: str) -> list[str]:
+    """Lines of ``text`` that switch on a live (paid) AI call."""
+    return [
+        f"{name}:{n}" for n, line in enumerate(text.splitlines(), 1) if "HOLIDAY_CARD_LIVE_" in line
+    ]
+
+
+def ai_secret_violations(name: str, text: str) -> list[str]:
+    """Lines of ``text`` that hand an AI provider secret to a job."""
+    return [f"{name}:{n}" for n, line in enumerate(text.splitlines(), 1) if _AI_SECRET.search(line)]
+
+
+@pytest.mark.parametrize("path", WORKFLOW_FILES, ids=lambda p: p.name)
+def test_no_workflow_enables_live_ai_calls(path: Path) -> None:
+    assert live_ai_violations(path.name, path.read_text(encoding="utf-8")) == []
+
+
+@pytest.mark.parametrize("path", WORKFLOW_FILES, ids=lambda p: p.name)
+def test_no_workflow_references_an_ai_provider_secret(path: Path) -> None:
+    assert ai_secret_violations(path.name, path.read_text(encoding="utf-8")) == []
+
+
+def test_ai_guards_catch_an_injected_workflow_line() -> None:
+    text = (WORKFLOWS_DIR / "ci.yml").read_text(encoding="utf-8").rstrip("\n")
+    live = f'{text}\nenv:\n  HOLIDAY_CARD_LIVE_OPENROUTER: "1"\n'
+    secret = f"{text}\nenv:\n  KEY: ${{{{ secrets.OPENROUTER_API_KEY }}}}\n"
+    openai = f"{text}\n        run: echo ${{{{ secrets.MY_OPENAI_TOKEN }}}}\n"
+    end = len(text.splitlines())
+    assert live_ai_violations("ci.yml", live) == [f"ci.yml:{end + 2}"]
+    assert ai_secret_violations("ci.yml", secret) == [f"ci.yml:{end + 2}"]
+    assert ai_secret_violations("ci.yml", openai) == [f"ci.yml:{end + 1}"]

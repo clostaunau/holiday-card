@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 3199 tests, mypy-clean, ruff-clean, coverage ≥ 92%
+uv run pytest                       # all 3487 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -165,6 +165,9 @@ tests/
                         # L3 AI imagery: test_ai_rails, test_ai_provenance, test_ai_assets,
                         #   test_ai_openai (fake openai client, no network, #87)
                         #   test_ai_providers (registry, factory order, import-light, #146)
+                        # AI test isolation (#143): test_ai_import_confinement (openai only
+                        #   function-locally in core/ai_openai.py; AST + sys.meta_path),
+                        #   test_test_isolation (the conftest key scrub + socket guard)
                         # SVG font subsets: test_svg_fonts (#76)
                         # Loader: test_templates_loading (extra="forbid", fail-loud keys)
                         # CLI preview / init end to end: test_cli_preview_init (#84)
@@ -193,6 +196,7 @@ tests/
                         #   by the visual-baselines workflow
                         #   (scripts/regenerate_visual_baselines.py); eyeball before commit.
   rasterize.py          # Shared pypdfium2 PDF rasterizer (conformance + visual gate)
+  ast_imports.py        # The one AST import walker (core purity + AI import confinement)
   conformance/          # Cross-backend conformance (#67, D12): cases.py (53 one-feature
                         #   IR pages), capabilities.py (the pdf/png status matrix),
                         #   conftest.py (resvg-py / pypdfium2 rasterizers + tolerances),
@@ -234,7 +238,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 3199 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 3487 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
@@ -409,6 +413,9 @@ template editing; a JSON "render plan" backend for downstream tooling.
   the compiler
 - Imports organized by ruff (`I` rule); enforced in CI
 - Exception chaining: `raise X from e` everywhere (`B904` is enforced)
+- Tests never see `OPENAI_API_KEY` / `OPENROUTER_API_KEY` and cannot open
+  non-loopback sockets unless marked `live_ai` (autouse guard in
+  `tests/conftest.py`, #143)
 
 ## Known issues (good first tasks for a fresh session)
 
@@ -424,6 +431,36 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-30 — Tests enforce AI import confinement, scrub API keys and
+  block the network (issue #143, OpenRouter program)**: three safety
+  properties of the AI feature were held by convention only. New
+  `tests/ast_imports.py` holds the one AST import walker (moved out of
+  `test_core_purity.py`, D17), now also seeing `importlib.import_module("x")`
+  / `__import__("x")` with a constant name. New
+  `tests/unit/test_ai_import_confinement.py`: `openai_violations(rel_path,
+  source)` over every `src/holiday_card/**/*.py` and `scripts/*.py` allows
+  `openai` only function-locally in `core/ai_openai.py` and reports `path:line
+  imports openai`; a subprocess puts a recording finder at `sys.meta_path[0]`
+  and asserts `import holiday_card.cli.commands` never looks up `openai`
+  (holds whether or not the extra is installed). New autouse
+  `_ai_test_isolation` in `tests/conftest.py`: unless a test is marked
+  `live_ai`, it `delenv`s both keys (subprocesses inherit the scrubbed
+  environment) and wraps `socket.socket.connect` / `connect_ex` so anything but
+  `AF_UNIX`, `127.0.0.0/8`, `::1` or `"localhost"` raises
+  `RuntimeError("network access is blocked in tests: …; mark the test live_ai
+  to allow it")` (a `RuntimeError` so error handling under test cannot swallow
+  it; in-process only, DNS and subprocesses are not guarded). The `live_ai`
+  marker is registered (no test uses it until #150).
+  `tests/unit/test_test_isolation.py` checks the guard: TEST-NET-3 connects
+  raise at once, a loopback HTTP server works, and nested pytest runs with
+  sentinel keys exported prove non-`live_ai` tests see no key while `live_ai`
+  ones keep the keys and the original `connect`. `test_workflow_policy.py`
+  gains `test_no_workflow_enables_live_ai_calls` (no `HOLIDAY_CARD_LIVE_`) and
+  `test_no_workflow_references_an_ai_provider_secret` (no
+  `secrets.*OPENROUTER|OPENAI*`), each proven on injected text. The redundant
+  per-test `delenv("OPENAI_API_KEY")` calls in `test_ai_providers.py` are gone.
+  No existing test needed the network. Tests 3398 → 3487 (collected).
 
 - **2026-09-30 — Curated OpenRouter image allowlist, the aspect / tier
   chooser and a dev-only refresh script (issue #148, OpenRouter program)**:
