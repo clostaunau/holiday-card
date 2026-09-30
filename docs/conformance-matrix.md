@@ -6,7 +6,9 @@
 Each case in `tests/conformance/cases.py` is rendered by every backend and
 compared against the SVG backend (the oracle, D12) at 144 DPI.
 
-- `match`: within tolerance of the SVG raster.
+- `match`: within tolerance of the SVG raster. Tolerance: at most 1.0% (PDF), 1.0% (PNG)
+  of pixels differ by more than 48 on any channel, and the mean ink colour
+  agrees within 48 per channel. Text cases compare the ink bbox (±3 px per edge).
 - `raises`: the backend raises `NotImplementedError` (D4).
 - `known_diff (#N)`: differs from SVG; issue #N owns the fix.
 
@@ -20,7 +22,7 @@ compared against the SVG backend (the oracle, D12) at 144 DPI.
 | `polyline_stroke` | match | match |
 | `path_cubic` | match | match |
 | `path_quadratic` | match | match |
-| `stroke_rect_6pt` | match | known_diff (#77) |
+| `stroke_rect_6pt` | match | match |
 | `stroke_dash_line_2` | match | match |
 | `stroke_dash_line_1` | match | match |
 | `stroke_dash_line_4` | match | match |

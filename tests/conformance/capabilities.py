@@ -16,6 +16,13 @@ from typing import Literal
 Backend = Literal["pdf", "png"]  # svg is the oracle, never listed
 Status = Literal["match", "raises", "known_diff"]
 
+# Maximum mismatched-pixel ratio for a ``match`` status. Every backend is
+# anti-aliased like resvg (pdfium for PDF; 4x supersampled coverage masks
+# for PNG since #77, which took PNG from 2.0% to 1.0%), so 1% only leaves
+# room for edge rounding. The worst PNG case is ~0.75% (group scale, whose
+# overlay is resampled bicubically).
+TOLERANCE: dict[Backend, float] = {"pdf": 0.010, "png": 0.010}
+
 
 @dataclass(frozen=True)
 class Cap:
@@ -43,7 +50,7 @@ CAPABILITIES: dict[str, dict[Backend, Cap]] = {
     "path_cubic": _both(_M),
     "path_quadratic": _both(_M),
     # PNG strokes inside the edge instead of centred on it.
-    "stroke_rect_6pt": {"pdf": _M, "png": Cap("known_diff", "#77")},
+    "stroke_rect_6pt": {"pdf": _M, "png": _M},
     "stroke_dash_line_2": _both(_M),
     "stroke_dash_line_1": _both(_M),
     "stroke_dash_line_4": _both(_M),
@@ -101,7 +108,10 @@ def render_markdown(capabilities: dict[str, dict[Backend, Cap]]) -> str:
         "Each case in `tests/conformance/cases.py` is rendered by every backend and",
         "compared against the SVG backend (the oracle, D12) at 144 DPI.",
         "",
-        "- `match`: within tolerance of the SVG raster.",
+        "- `match`: within tolerance of the SVG raster. Tolerance: at most "
+        + ", ".join(f"{t:.1%} ({b.upper()})" for b, t in TOLERANCE.items()),
+        "  of pixels differ by more than 48 on any channel, and the mean ink colour",
+        "  agrees within 48 per channel. Text cases compare the ink bbox (±3 px per edge).",
         "- `raises`: the backend raises `NotImplementedError` (D4).",
         "- `known_diff (#N)`: differs from SVG; issue #N owns the fix.",
         "",

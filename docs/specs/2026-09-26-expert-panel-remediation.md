@@ -94,13 +94,13 @@ Section IDs (§P1 …) are what issues cite.
 - Good existing behavior to preserve: flag-conflict messages (e.g. `--inside-message-md` + letter parts), unknown `--export-for`/`--voice` list valid values; no traceback in ~40 bad-input runs.
 
 ### §P6 PNG backend silently drops features [verified] — REND F1, F2, F8, F10
-- **Status (2026-09-29): clip, dash, text-alpha and font bullets closed by #61.** Clips are canvas masks intersected per group level and applied to shapes, text, images and fold lines (and to a rotated group's overlay when the clip is opened outside it); `PolylineGeom` clips raise at `BeginClip`. `Stroke.dash` is walked along the flattened outline (PDF/SVG semantics). Text alpha = `opacity × color.a`. Fonts resolve only via `ttf_path_for`, else `NotImplementedError`. Translucent gradients/patterns no longer wash toward white. Fixtures in `tests/integration/test_png_ir_fixtures.py`. AA / stroke centring / perf stay with #77.
+- **Status (2026-09-29): clip, dash, text-alpha and font bullets closed by #61.** Clips are canvas masks intersected per group level and applied to shapes, text, images and fold lines (and to a rotated group's overlay when the clip is opened outside it); `PolylineGeom` clips raise at `BeginClip`. `Stroke.dash` is walked along the flattened outline (PDF/SVG semantics). Text alpha = `opacity × color.a`. Fonts resolve only via `ttf_path_for`, else `NotImplementedError`. Translucent gradients/patterns no longer wash toward white. Fixtures in `tests/integration/test_png_ir_fixtures.py`. **AA, stroke centring and perf bullets closed by #77:** per-shape 4× supersampled coverage masks (fills, strokes centred with fractional widths and miter joins, clips) composited on bbox-sized layers; `PNGRenderer(antialias=False)` for exact-pixel tests; gradients via `ImageMath` t-maps + stop LUTs; group overlays transformed over their content box only. winter-sky @300 DPI renders in 0.42 s (was 2.36 s).
 - **[closed by #61]** `BeginClip` only pushes `_clip_stack` (`png_backend.py:259`); only `_draw_image` reads it (`:747-756`). A rect clipped to a circle renders square in PNG.
 - **[closed by #61]** `Stroke.dash` never read → dashed border solid.
 - **[closed by #61]** `_draw_text` passes `fill=rgb` (`:636`), ignoring `cmd.opacity` and `run.color.a`.
 - `src.thumbnail(...)` (`:726`) never upscales → photo at 300 DPI is ~42% of intended size; 144 DPI ~87%. Baselines at 72 DPI can't catch it.
-- No anti-aliasing; Pillow strokes sit inside the edge (PDF/SVG center them); stroke widths rounded to int, min 1 (`:399`).
-- Per-pixel pure-Python gradients (`:972`, `:991`): winter-sky 0.75 s @144 DPI, 2.54 s @300 DPI. Full-canvas RGBA layer per translucent shape (~35 MB @300 DPI).
+- **[closed by #77]** No anti-aliasing; Pillow strokes sit inside the edge (PDF/SVG center them); stroke widths rounded to int, min 1 (`:399`).
+- **[closed by #77]** Per-pixel pure-Python gradients (`:972`, `:991`): winter-sky 0.75 s @144 DPI, 2.54 s @300 DPI. Full-canvas RGBA layer per translucent shape (~35 MB @300 DPI).
 - `preview` (the authoring loop) uses this backend.
 
 ### §P7 PDF backend latent bugs — REND F6, F7, F9

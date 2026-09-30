@@ -339,3 +339,267 @@ def test_png_fill_only_rect_covers_exactly_its_pixels(tmp_path: Path) -> None:
     blue = (0, 0, 255)
     assert [p == blue for p in row] == [False, False, True, True, False, False]
     assert sum(p == blue for p in col) == 40
+
+
+# ---------------------------------------------------------------------------
+# #77: anti-aliasing, centred strokes, bbox-sized layers
+# ---------------------------------------------------------------------------
+
+
+def _render_ir(commands: list, tmp_path: Path, dpi: int, **kwargs: object) -> Image.Image:
+    out = tmp_path / "ir.png"
+    PNGRenderer(dpi=dpi, **kwargs).render(commands, out)  # type: ignore[arg-type]
+    with Image.open(out) as img:
+        return img.convert("RGB")
+
+
+def _stroked_rect(width_pt: float) -> list:
+    from holiday_card.core.render_ir import RGBA, BeginPage, DrawShape, EndPage, RectGeom, Stroke
+
+    rect = DrawShape(
+        geometry=RectGeom(x=100, y=50, width=100, height=100),
+        stroke=Stroke(color=RGBA(r=0, g=0, b=0), width=width_pt),
+    )
+    return [BeginPage(width=300, height=200), rect, EndPage()]
+
+
+def _grey(img: Image.Image, x: int, y: int) -> int:
+    return int(img.getpixel((x, y))[0])
+
+
+def test_png_stroke_is_centred_on_the_geometry_edge(tmp_path: Path) -> None:
+    """A 10 pt stroke on an edge at x=100 pt straddles it (95-105), as PDF/SVG do;
+    Pillow's ``outline=`` painted it inside the box (100-110)."""
+    img = _render_ir(_stroked_rect(10.0), tmp_path, dpi=72)
+    row = 100  # mid-height of the rect, on its left edge
+    assert all(_grey(img, x, row) < 32 for x in range(95, 105)), [
+        _grey(img, x, row) for x in range(92, 112)
+    ]
+    assert _grey(img, 93, row) > 223
+    assert all(_grey(img, x, row) > 223 for x in range(106, 112))
+
+
+def test_png_hairline_stroke_has_partial_coverage(tmp_path: Path) -> None:
+    """A 0.5 pt stroke at 72 DPI covers half a pixel: grey, not a full black column."""
+    img = _render_ir(_stroked_rect(0.5), tmp_path, dpi=72)
+    values = [_grey(img, x, 100) for x in range(96, 104)]
+    assert min(values) > 0, values
+    assert any(0 < v < 255 for v in values), values
+
+
+def _circle_page() -> list:
+    from holiday_card.core.render_ir import (
+        RGBA,
+        BeginPage,
+        CircleGeom,
+        DrawShape,
+        EndPage,
+        Point,
+        SolidPaint,
+    )
+
+    disc = DrawShape(
+        geometry=CircleGeom(center=Point(x=50, y=50), radius=30),
+        fill=SolidPaint(color=RGBA(r=0, g=0, b=0)),
+    )
+    return [BeginPage(width=100, height=100), disc, EndPage()]
+
+
+def test_png_circle_edge_is_anti_aliased(tmp_path: Path) -> None:
+    img = _render_ir(_circle_page(), tmp_path, dpi=144)
+    hist = img.getchannel("R").histogram()
+    levels = [v for v in range(1, 255) if hist[v]]
+    assert len(levels) >= 3, levels
+
+
+def test_png_antialias_false_draws_exactly_two_levels(tmp_path: Path) -> None:
+    img = _render_ir(_circle_page(), tmp_path, dpi=144, antialias=False)
+    hist = img.getchannel("R").histogram()
+    assert [v for v in range(256) if hist[v]] == [0, 255]
+
+
+def test_png_translucent_shapes_use_bbox_sized_layers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """20 translucent 1 in² squares at 300 DPI: only the page canvas is page-sized;
+    every other allocation is within the shape bbox + padding (supersampled
+    masks are that box times the supersample factor)."""
+    from holiday_card.core.render_ir import (
+        RGBA,
+        BeginPage,
+        DrawShape,
+        EndPage,
+        RectGeom,
+        SolidPaint,
+    )
+
+    commands: list = [BeginPage(width=612, height=792)]
+    for i in range(20):
+        commands.append(DrawShape(
+            geometry=RectGeom(x=20 + 25 * i, y=20 + 30 * i, width=72, height=72),
+            fill=SolidPaint(color=RGBA(r=1, g=0, b=0, a=0.5)),
+        ))
+    commands.append(EndPage())
+
+    sizes: list[tuple[int, int]] = []
+    real_new = Image.new
+
+    def spy(mode: str, size: tuple[int, int], *args: object, **kwargs: object) -> Image.Image:
+        sizes.append(tuple(size))  # type: ignore[arg-type]
+        return real_new(mode, size, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Image, "new", spy)
+    PNGRenderer(dpi=300).render(commands, tmp_path / "t.png")
+
+    page = (2550, 3300)
+    shape_px = 300 + 4  # 1 in at 300 DPI, plus padding
+    assert sizes.count(page) <= 2, sizes  # the canvas + the RGB save flatten
+    others = [s for s in sizes if s != page]
+    assert others, "shapes should allocate their own bbox-sized layers"
+    assert all(max(s) <= 4 * shape_px for s in others), others
+
+
+def test_png_polygon_edges_follow_the_pixel_centre_rule(tmp_path: Path) -> None:
+    """A polygon on whole pixels has no partial edge pixels: Pillow's polygon
+    filler floored vertices and filled both ends, one supersample too wide."""
+    from holiday_card.core.render_ir import (
+        RGBA,
+        BeginPage,
+        DrawShape,
+        EndPage,
+        PolygonGeom,
+        SolidPaint,
+    )
+
+    square = DrawShape(
+        geometry=PolygonGeom(points=(_pt(10, 10), _pt(30, 10), _pt(30, 30), _pt(10, 30))),
+        fill=SolidPaint(color=RGBA(r=0, g=0, b=0)),
+    )
+    img = _render_ir([BeginPage(width=40, height=40), square, EndPage()], tmp_path, dpi=72)
+    assert [_grey(img, x, 20) for x in range(8, 32)] == [255] * 2 + [0] * 20 + [255] * 2
+    assert [_grey(img, 20, y) for y in range(8, 32)] == [255] * 2 + [0] * 20 + [255] * 2
+
+
+def test_png_polyline_stroke_straddles_its_centre_line(tmp_path: Path) -> None:
+    """A 4 pt line at y=72 pt, 144 DPI, fills rows 140-147 exactly (resvg does)."""
+    from holiday_card.core.render_ir import (
+        RGBA,
+        BeginPage,
+        DrawShape,
+        EndPage,
+        PolylineGeom,
+        Stroke,
+    )
+
+    line = DrawShape(
+        geometry=PolylineGeom(points=(_pt(12, 72), _pt(132, 72))),
+        stroke=Stroke(color=RGBA(r=0, g=0, b=0), width=4),
+    )
+    img = _render_ir([BeginPage(width=144, height=144), line, EndPage()], tmp_path, dpi=144)
+    assert [_grey(img, 100, y) for y in range(138, 150)] == [255] * 2 + [0] * 8 + [255] * 2
+    # Butt caps: the line ends exactly at x=12 pt and x=132 pt.
+    assert [_grey(img, x, 144) for x in (22, 23, 24, 263, 264, 265)] == [255, 255, 0, 0, 255, 255]
+
+
+def test_png_polyline_joins_are_mitred(tmp_path: Path) -> None:
+    """A right-angle corner is filled out to the miter point, as PDF/SVG draw it."""
+    from holiday_card.core.render_ir import (
+        RGBA,
+        BeginPage,
+        DrawShape,
+        EndPage,
+        PolylineGeom,
+        Stroke,
+    )
+
+    corner = DrawShape(
+        geometry=PolylineGeom(points=(_pt(10, 30), _pt(30, 30), _pt(30, 10))),
+        stroke=Stroke(color=RGBA(r=0, g=0, b=0), width=4),
+    )
+    img = _render_ir([BeginPage(width=40, height=40), corner, EndPage()], tmp_path, dpi=72)
+    # The outer corner of the join is (32, 32) in IR points: pixel (31, 8).
+    assert _grey(img, 31, 8) == 0
+    assert _grey(img, 32, 7) == 255
+
+
+def test_png_refuses_a_line_cap_the_oracle_cannot_draw(tmp_path: Path) -> None:
+    """PDF and SVG draw butt caps only; PNG raises rather than differ (D4, D12)."""
+    from holiday_card.core.render_ir import (
+        RGBA,
+        BeginPage,
+        DrawShape,
+        EndPage,
+        PolylineGeom,
+        Stroke,
+    )
+
+    line = DrawShape(
+        geometry=PolylineGeom(points=(_pt(5, 5), _pt(30, 30))),
+        stroke=Stroke(color=RGBA(r=0, g=0, b=0), width=4, line_cap="round"),
+    )
+    with pytest.raises(NotImplementedError, match="line_cap 'round'"):
+        _render_ir([BeginPage(width=40, height=40), line, EndPage()], tmp_path, dpi=72)
+
+
+def _pt(x: float, y: float) -> object:
+    from holiday_card.core.render_ir import Point
+
+    return Point(x=x, y=y)
+
+
+def test_png_rotated_group_transforms_only_its_content_box(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The group overlay is mapped through the transform over the content's
+    box, not the whole page (a full-page BICUBIC pass per group dominated
+    pattern-heavy previews at 300 DPI)."""
+    from holiday_card.core.render_ir import (
+        RGBA,
+        BeginGroup,
+        BeginPage,
+        DrawShape,
+        EndGroup,
+        EndPage,
+        RectGeom,
+        SolidPaint,
+        Transform,
+    )
+
+    commands = [
+        BeginPage(width=612, height=792),
+        BeginGroup(transform=Transform(pivot_x=100, pivot_y=100, rotate_deg=30)),
+        DrawShape(geometry=RectGeom(x=64, y=64, width=72, height=72),
+                  fill=SolidPaint(color=RGBA(r=1, g=0, b=0))),
+        EndGroup(),
+        EndPage(),
+    ]
+    sizes: list[tuple[int, int]] = []
+    real_transform = Image.Image.transform
+
+    def spy(self: Image.Image, size: tuple[int, int], *args: object, **kwargs: object) -> Image.Image:
+        sizes.append(tuple(size))  # type: ignore[arg-type]
+        return real_transform(self, size, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Image.Image, "transform", spy)
+    img = _render_ir(commands, tmp_path, dpi=300)
+    assert sizes and all(max(s) <= 450 for s in sizes), sizes  # 1 in rotated 30° ≈ 410 px
+    # The rotated square's centre (100, 100) pt is still red.
+    assert img.getpixel((round(100 * 300 / 72), round((792 - 100) * 300 / 72))) == (255, 0, 0)
+
+
+def test_png_flattens_large_curves_into_short_chords() -> None:
+    """A fixed 16 samples per cubic left ~40 px chords on a card-sized curve;
+    sampling scales with the curve so chords stay within 8 px."""
+    import math
+
+    from holiday_card.core.render_ir import BeginPage, PathGeom, PathOp
+
+    geom = PathGeom(ops=(
+        PathOp(op="move", points=(_pt(12, 24),)),
+        PathOp(op="cubic", points=(_pt(40, 140), _pt(104, 140), _pt(132, 24))),
+    ))
+    renderer = PNGRenderer(dpi=144)
+    renderer._begin_page(BeginPage(width=144, height=144))
+    (subpath,) = renderer._flatten_path(geom)
+    chords = [math.dist(a, b) for a, b in zip(subpath, subpath[1:], strict=False)]
+    assert max(chords) <= 8.0, max(chords)
