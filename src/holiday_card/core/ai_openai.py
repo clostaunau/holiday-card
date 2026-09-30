@@ -29,7 +29,7 @@ from holiday_card.core.ai_errors import ProviderError, ProviderErrorKind, parse_
 
 __all__ = ["OpenAIImageClient", "make_image_client", "AIDependencyError", "OPENAI_TIMEOUT_S"]
 
-OPENAI_BASE_URL = "https://api.openai.com/v1"
+_PINNED_BASE_URL = "https://api.openai.com/v1"
 OPENAI_TIMEOUT_S = 300.0
 _REFUSAL_CODES = frozenset({"moderation_blocked", "content_policy_violation"})
 
@@ -173,5 +173,5 @@ def make_image_client(model: str = DEFAULT_AI_MODEL) -> OpenAIImageClient:
         ) from e
     # A pinned host (the env's OPENAI_BASE_URL is ignored) and no retries:
     # an image generation is billed and not idempotent.
-    sdk_client = OpenAI(api_key=api_key, base_url=OPENAI_BASE_URL, max_retries=0, timeout=OPENAI_TIMEOUT_S)
+    sdk_client = OpenAI(api_key=api_key, base_url=_PINNED_BASE_URL, max_retries=0, timeout=OPENAI_TIMEOUT_S)
     return OpenAIImageClient(sdk_client, model=model, api_key=SecretStr(api_key))
