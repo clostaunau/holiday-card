@@ -171,10 +171,7 @@ def make_image_client(model: str = DEFAULT_AI_MODEL) -> OpenAIImageClient:
         raise AIDependencyError(
             "the AI extra is not installed. Run `pip install holiday-card[ai]`."
         ) from e
-    sdk_client = OpenAI(
-        api_key=api_key,
-        base_url=OPENAI_BASE_URL,  # never OPENAI_BASE_URL from the env
-        max_retries=0,  # an image generation is billed and not idempotent
-        timeout=OPENAI_TIMEOUT_S,
-    )
+    # A pinned host (the env's OPENAI_BASE_URL is ignored) and no retries:
+    # an image generation is billed and not idempotent.
+    sdk_client = OpenAI(api_key=api_key, base_url=OPENAI_BASE_URL, max_retries=0, timeout=OPENAI_TIMEOUT_S)
     return OpenAIImageClient(sdk_client, model=model, api_key=SecretStr(api_key))
