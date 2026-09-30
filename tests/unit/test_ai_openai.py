@@ -19,14 +19,16 @@ from pydantic import SecretStr
 
 import openai_sdk_stub as sdk
 from holiday_card.core.ai_assets import (
-    DEFAULT_AI_MODEL,
     MODEL_SIZE_POLICIES,
+    AspectSize,
     ImagePayloadError,
+    PixelSize,
     build_ai_request,
     size_is_allowed,
 )
 from holiday_card.core.ai_errors import ProviderError
-from holiday_card.core.ai_openai import AIDependencyError, OpenAIImageClient, make_image_client
+from holiday_card.core.ai_openai import OpenAIImageClient, make_openai_client
+from holiday_card.core.ai_providers import AIProvider
 
 
 def _png_b64() -> str:
@@ -67,8 +69,13 @@ def reference(tmp_path: Path) -> Path:
     return path
 
 
-def test_default_model_is_the_single_source_of_truth() -> None:
-    assert OpenAIImageClient(_fake_openai()).model == DEFAULT_AI_MODEL
+def test_model_is_required() -> None:
+    with pytest.raises(TypeError):
+        OpenAIImageClient(_fake_openai())  # type: ignore[call-arg]
+
+
+def test_provider_is_openai() -> None:
+    assert OpenAIImageClient(_fake_openai(), model="gpt-image-2").provider is AIProvider.OPENAI
 
 
 @pytest.mark.parametrize("model", sorted(MODEL_SIZE_POLICIES))
@@ -84,19 +91,16 @@ def test_moo_a6_size_sent_is_allowed_for_the_model(
         trim_height_in=5.83,
         bleed_in=0.125,
         reference_path=str(reference) if use_reference else None,
+        provider=client.provider,
         model=client.model,
     )
     client.generate(
-        prompt=req.prompt,
-        reference_path=req.reference_path,
-        width_px=req.request_width_px,
-        height_px=req.request_height_px,
-        moderation=req.moderation,
-        seed=None,
+        prompt=req.prompt, reference_path=req.reference_path, shape=req.shape, seed=None
     )
     method, kwargs = fake.images.calls[0]
     assert method == ("edit" if use_reference else "generate")
     assert kwargs["model"] == model
+    assert kwargs["moderation"] == "auto"
     assert size_is_allowed(model, *_size_kwarg(fake))
 
 
@@ -104,26 +108,29 @@ def test_refuses_an_unsupported_size_before_calling_the_api() -> None:
     fake = _fake_openai()
     client = OpenAIImageClient(fake, model="gpt-image-1")
     with pytest.raises(ValueError, match="1312x1824"):
-        client.generate(
-            prompt="x",
-            reference_path=None,
-            width_px=1312,
-            height_px=1824,
-            moderation="auto",
-            seed=None,
-        )
+        client.generate(prompt="x", reference_path=None, shape=PixelSize(1312, 1824), seed=None)
+    assert fake.images.calls == []
+
+
+def test_refuses_an_aspect_shape_before_calling_the_api() -> None:
+    fake = _fake_openai()
+    client = OpenAIImageClient(fake, model="gpt-image-2")
+    with pytest.raises(ValueError, match="openai takes a pixel size, got AspectSize"):
+        client.generate(prompt="x", reference_path=None, shape=AspectSize("3:4", "2K"), seed=None)
+    assert fake.images.calls == []
+
+
+def test_refuses_a_seed_before_calling_the_api() -> None:
+    fake = _fake_openai()
+    client = OpenAIImageClient(fake, model="gpt-image-2")
+    with pytest.raises(ValueError, match="gpt-image-2"):
+        client.generate(prompt="x", reference_path=None, shape=PixelSize(1024, 1024), seed=7)
     assert fake.images.calls == []
 
 
 def test_unknown_model_is_refused_at_construction() -> None:
     with pytest.raises(ValueError, match="dall-e-9"):
         OpenAIImageClient(_fake_openai(), model="dall-e-9")
-
-
-def test_make_image_client_without_key_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    with pytest.raises(AIDependencyError):
-        make_image_client()
 
 
 # ---------------------------------------------------------------------------
@@ -151,17 +158,14 @@ class _RaisingImages:
 
 def _generate(client: OpenAIImageClient) -> Any:
     return client.generate(
-        prompt="pine bough",
-        reference_path=None,
-        width_px=1024,
-        height_px=1024,
-        moderation="auto",
-        seed=None,
+        prompt="pine bough", reference_path=None, shape=PixelSize(1024, 1024), seed=None
     )
 
 
 def _raising_client(exc: BaseException, **kwargs: Any) -> OpenAIImageClient:
-    return OpenAIImageClient(SimpleNamespace(images=_RaisingImages(exc)), **kwargs)
+    return OpenAIImageClient(
+        SimpleNamespace(images=_RaisingImages(exc)), **{"model": "gpt-image-2", **kwargs}
+    )
 
 
 _MAPPING_ROWS = [
@@ -265,7 +269,7 @@ def test_api_key_is_redacted_from_the_mapped_message() -> None:
 )
 def test_no_image_in_the_response_is_a_refusal(data: list[Any]) -> None:
     images = SimpleNamespace(generate=lambda **_kw: SimpleNamespace(data=data))
-    client = OpenAIImageClient(SimpleNamespace(images=images))
+    client = OpenAIImageClient(SimpleNamespace(images=images), model="gpt-image-2")
     with pytest.raises(ProviderError, match="no image") as info:
         _generate(client)
     assert info.value.kind == "refused"
@@ -279,14 +283,14 @@ class _RecordingOpenAI:
         self.images = _FakeImages()
 
 
-def test_make_image_client_pins_host_retries_and_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_make_openai_client_pins_host_retries_and_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     from holiday_card.core import ai_openai
 
     _RecordingOpenAI.instances = []
     monkeypatch.setitem(sys.modules, "openai", sdk.make_module(OpenAI=_RecordingOpenAI))
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-proj-" + "k" * 40)
     monkeypatch.setenv("OPENAI_BASE_URL", "https://evil.example")
-    make_image_client()
+    client = make_openai_client(api_key="sk-proj-" + "k" * 40, model="gpt-image-1")
+    assert client.model == "gpt-image-1"
     (kwargs,) = _RecordingOpenAI.instances
     assert kwargs["base_url"] == "https://api.openai.com/v1"
     assert kwargs["max_retries"] == 0
@@ -294,7 +298,7 @@ def test_make_image_client_pins_host_retries_and_timeout(monkeypatch: pytest.Mon
     assert kwargs["api_key"] == "sk-proj-" + "k" * 40
 
 
-def test_make_image_client_redacts_the_env_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_make_openai_client_redacts_the_key(monkeypatch: pytest.MonkeyPatch) -> None:
     key = "not-sk-shaped-env-key-0123456789"
 
     class _FailingOpenAI:
@@ -302,9 +306,8 @@ def test_make_image_client_redacts_the_env_key(monkeypatch: pytest.MonkeyPatch) 
             self.images = _RaisingImages(sdk.status_error(401, f"bad key {key}"))
 
     monkeypatch.setitem(sys.modules, "openai", sdk.make_module(OpenAI=_FailingOpenAI))
-    monkeypatch.setenv("OPENAI_API_KEY", key)
     with pytest.raises(ProviderError) as info:
-        _generate(make_image_client())
+        _generate(make_openai_client(api_key=key, model="gpt-image-2"))
     assert key not in str(info.value)
 
 
@@ -313,7 +316,7 @@ def test_make_image_client_redacts_the_env_key(monkeypatch: pytest.MonkeyPatch) 
 
 def _client_returning(**response: Any) -> OpenAIImageClient:
     images = SimpleNamespace(generate=lambda **_kw: SimpleNamespace(**response))
-    return OpenAIImageClient(SimpleNamespace(images=images))
+    return OpenAIImageClient(SimpleNamespace(images=images), model="gpt-image-2")
 
 
 def test_invalid_base64_is_an_image_payload_error() -> None:

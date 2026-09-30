@@ -14,21 +14,22 @@ ignored), never retries a billed call, and times out after
 
 from __future__ import annotations
 
-import os
 from collections.abc import Iterable
 
 from pydantic import SecretStr
 
 from holiday_card.core.ai_assets import (
-    DEFAULT_AI_MODEL,
     GeneratedImage,
     ImageMediaType,
+    PixelSize,
+    RequestShape,
     decode_b64_image,
     size_is_allowed,
 )
 from holiday_card.core.ai_errors import ProviderError, ProviderErrorKind, parse_retry_after
+from holiday_card.core.ai_providers import AIDependencyError, AIProvider
 
-__all__ = ["OpenAIImageClient", "make_image_client", "AIDependencyError", "OPENAI_TIMEOUT_S"]
+__all__ = ["OpenAIImageClient", "make_openai_client", "OPENAI_TIMEOUT_S"]
 
 _PINNED_BASE_URL = "https://api.openai.com/v1"
 OPENAI_TIMEOUT_S = 300.0
@@ -52,21 +53,18 @@ _MEDIA_TYPES: dict[str, ImageMediaType] = {
 }
 
 
-class AIDependencyError(RuntimeError):
-    """Raised when the AI extra or API key is missing."""
-
-
 class OpenAIImageClient:
     """Thin wrapper over the OpenAI Images API.
 
-    Constructed only by :func:`make_image_client`, which validates that
-    the ``openai`` package and ``OPENAI_API_KEY`` are present first.
+    Constructed by :func:`make_openai_client` (via
+    :func:`holiday_card.core.ai_providers.make_image_client`, which checks
+    the model and ``OPENAI_API_KEY`` first).
     """
 
     def __init__(
         self,
         client: object,
-        model: str = DEFAULT_AI_MODEL,
+        model: str,
         *,
         api_key: SecretStr | None = None,
     ) -> None:
@@ -75,6 +73,11 @@ class OpenAIImageClient:
         self._model = model
         # Used only to redact provider error text; never logged.
         self._api_key = api_key
+
+    @property
+    def provider(self) -> AIProvider:
+        """Always :attr:`AIProvider.OPENAI`."""
+        return AIProvider.OPENAI
 
     @property
     def model(self) -> str:
@@ -86,19 +89,30 @@ class OpenAIImageClient:
         *,
         prompt: str,
         reference_path: str | None,
-        width_px: int,
-        height_px: int,
-        moderation: str,
-        seed: int | None,  # noqa: ARG002 — OpenAI images API has no seed param today
+        shape: RequestShape,
+        seed: int | None,
     ) -> GeneratedImage:
-        size = f"{width_px}x{height_px}"
-        if not size_is_allowed(self._model, width_px, height_px):
+        """Generate (or, with a reference, edit) one image.
+
+        Raises:
+            ValueError: Before any API call, for a non-pixel ``shape``, any
+                ``seed`` (the Images API has none) or a size ``model``
+                does not accept.
+        """
+        if not isinstance(shape, PixelSize):
+            raise ValueError(f"openai takes a pixel size, got {shape!r}")
+        if seed is not None:
+            raise ValueError(
+                f"openai model {self._model!r} takes no seed; the image could not be reproduced"
+            )
+        size = f"{shape.width_px}x{shape.height_px}"
+        if not size_is_allowed(self._model, shape.width_px, shape.height_px):
             raise ValueError(f"{self._model} does not accept size {size}")
         kwargs = {
             "model": self._model,
             "prompt": prompt,
             "size": size,
-            "moderation": moderation,
+            "moderation": "auto",
             "n": 1,
         }
         mapped: ProviderError | None = None
@@ -170,21 +184,15 @@ def _map_openai_error(e: Exception, secrets: Iterable[str]) -> ProviderError | N
     return None
 
 
-def make_image_client(model: str = DEFAULT_AI_MODEL) -> OpenAIImageClient:
-    """Construct a live OpenAI client, validating extras + key first.
+def make_openai_client(*, api_key: str, model: str) -> OpenAIImageClient:
+    """Construct a live OpenAI client for ``model``.
 
-    Raises :class:`AIDependencyError` with an actionable message when the
-    ``[ai]`` extra is not installed or ``OPENAI_API_KEY`` is unset.
+    Raises:
+        AIDependencyError: If the ``[ai]`` extra is not installed.
     """
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise AIDependencyError(
-            "OPENAI_API_KEY is not set. AI imagery requires an OpenAI API "
-            "key (and `pip install holiday-card[ai]`)."
-        )
     try:
         from openai import OpenAI
-    except ImportError as e:  # pragma: no cover - exercised only without extra
+    except ImportError as e:
         raise AIDependencyError(
             "the AI extra is not installed. Run `pip install holiday-card[ai]`."
         ) from e

@@ -191,4 +191,5 @@ exclude_lines = [
     "def __repr__",
     "raise NotImplementedError",
     "if TYPE_CHECKING:",
+    "assert_never\\(",
 ]

@@ -14,7 +14,7 @@ import base64
 import io
 import struct
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
@@ -23,17 +23,20 @@ from hypothesis import strategies as st
 from PIL import EpsImagePlugin, Image, ImageFile
 
 from holiday_card.core.ai_assets import (
-    DEFAULT_AI_MODEL,
     MAX_IMAGE_BYTES,
     MODEL_SIZE_POLICIES,
     AIRequest,
+    AspectSize,
     ConsentRequiredError,
     GeneratedImage,
     ImageMediaType,
     ImagePayloadError,
     ModelSizePolicy,
+    PixelSize,
     RailRefusedError,
+    RequestShape,
     build_ai_request,
+    choose_request_shape,
     choose_request_size,
     decode_b64_image,
     generate_ai_asset,
@@ -41,6 +44,7 @@ from holiday_card.core.ai_assets import (
     size_is_allowed,
 )
 from holiday_card.core.ai_provenance import read_sidecar, record_consent
+from holiday_card.core.ai_providers import AIProvider
 from holiday_card.core.images import MAX_IMAGE_PIXELS
 from holiday_card.core.models import OccasionType
 
@@ -57,6 +61,7 @@ class FakeImageClient:
 
     calls: list[dict] | None = None
     model: str = "gpt-image-2"
+    provider: AIProvider = AIProvider.OPENAI
     returns: tuple[int, int] | None = None
     image: Image.Image | None = None
     fmt: str = "PNG"
@@ -69,25 +74,17 @@ class FakeImageClient:
         *,
         prompt: str,
         reference_path: str | None,
-        width_px: int,
-        height_px: int,
-        moderation: str,
+        shape: RequestShape,
         seed: int | None,
     ) -> GeneratedImage:
         if self.calls is None:
             self.calls = []
         self.calls.append(
-            {
-                "prompt": prompt,
-                "reference_path": reference_path,
-                "width_px": width_px,
-                "height_px": height_px,
-                "moderation": moderation,
-                "seed": seed,
-            }
+            {"prompt": prompt, "reference_path": reference_path, "shape": shape, "seed": seed}
         )
+        assert isinstance(shape, PixelSize)
         buf = io.BytesIO()
-        size = self.returns or (width_px, height_px)
+        size = self.returns or (shape.width_px, shape.height_px)
         img = self.image or Image.new("RGB", size, (10, 120, 60))
         img.save(buf, format=self.fmt)
         return GeneratedImage(
@@ -110,11 +107,11 @@ def _small_request() -> AIRequest:
         prompt="watercolor pine bough border",
         width_px=64,
         height_px=96,
-        request_width_px=64,
-        request_height_px=96,
+        shape=PixelSize(64, 96),
+        provider=AIProvider.OPENAI,
+        model="gpt-image-2",
         dpi=300,
         reference_path="ref.png",
-        moderation="auto",
     )
 
 
@@ -131,36 +128,73 @@ class TestBuildAIRequest:
             trim_height_in=5.83,
             bleed_in=0.125,
             dpi=300,
+            provider=AIProvider.OPENAI,
+            model="gpt-image-2",
         )
         # 4.38in * 300 = 1314 and 6.08in * 300 = 1824: the baked file is
         # exactly this, not /16-rounded (1312 would be 299.5 PPI).
         assert (req.width_px, req.height_px) == (1314, 1824)
         assert req.dpi == 300
-        assert req.moderation == "auto"
 
-    def test_request_size_is_valid_for_the_default_model(self) -> None:
-        req = build_ai_request(prompt="x", trim_width_in=4.13, trim_height_in=5.83, bleed_in=0.125)
-        assert req.model == DEFAULT_AI_MODEL
-        assert size_is_allowed(DEFAULT_AI_MODEL, req.request_width_px, req.request_height_px)
+    def test_flexible_model_shape_is_rounded_up_to_16(self) -> None:
+        req = build_ai_request(
+            prompt="x",
+            trim_width_in=4.13,
+            trim_height_in=5.83,
+            bleed_in=0.125,
+            provider=AIProvider.OPENAI,
+            model="gpt-image-2",
+        )
+        assert (req.provider, req.model) == (AIProvider.OPENAI, "gpt-image-2")
         # Rounded up to /16 so the request never under-resolves the target.
-        assert (req.request_width_px, req.request_height_px) == (1328, 1824)
+        assert req.shape == PixelSize(1328, 1824)
+        assert size_is_allowed("gpt-image-2", req.shape.width_px, req.shape.height_px)
 
     def test_fixed_size_model_gets_its_closest_aspect(self) -> None:
         req = build_ai_request(
-            prompt="x", trim_width_in=4.13, trim_height_in=5.83, bleed_in=0.125, model="gpt-image-1"
+            prompt="x",
+            trim_width_in=4.13,
+            trim_height_in=5.83,
+            bleed_in=0.125,
+            provider=AIProvider.OPENAI,
+            model="gpt-image-1",
         )
-        assert (req.request_width_px, req.request_height_px) == (1024, 1536)
+        assert req.shape == PixelSize(1024, 1536)
         assert (req.width_px, req.height_px) == (1314, 1824)
 
+    def test_provider_and_model_are_required(self) -> None:
+        with pytest.raises(TypeError):
+            build_ai_request(prompt="x", trim_width_in=4.13, trim_height_in=5.83)  # type: ignore[call-arg]
+
     def test_is_deterministic(self) -> None:
-        kwargs = {"prompt": "x", "trim_width_in": 4.13, "trim_height_in": 5.83, "bleed_in": 0.125}
+        kwargs = {
+            "prompt": "x",
+            "trim_width_in": 4.13,
+            "trim_height_in": 5.83,
+            "bleed_in": 0.125,
+            "provider": AIProvider.OPENAI,
+            "model": "gpt-image-2",
+        }
         assert build_ai_request(**kwargs) == build_ai_request(**kwargs)
 
 
-class TestModelSizePolicy:
-    def test_default_model_has_a_policy(self) -> None:
-        assert DEFAULT_AI_MODEL in MODEL_SIZE_POLICIES
+class TestChooseRequestShape:
+    @pytest.mark.parametrize("model", sorted(MODEL_SIZE_POLICIES))
+    @pytest.mark.parametrize("target", [(1314, 1824), (2550, 3300)], ids=["moo-a6", "letter"])
+    def test_openai_shape_is_the_pixel_size(self, model: str, target: tuple[int, int]) -> None:
+        shape = choose_request_shape(AIProvider.OPENAI, model, *target)
+        assert shape == PixelSize(*choose_request_size(model, *target))
 
+    def test_unknown_model_raises(self) -> None:
+        with pytest.raises(ValueError, match="dall-e-9"):
+            choose_request_shape(AIProvider.OPENAI, "dall-e-9", 1314, 1824)
+
+    def test_aspect_size_is_a_request_shape(self) -> None:
+        shape: RequestShape = AspectSize("3:4", "2K")
+        assert (shape.aspect_ratio, shape.resolution) == ("3:4", "2K")
+
+
+class TestModelSizePolicy:
     @pytest.mark.parametrize("model", ["gpt-image-1", "gpt-image-1-mini", "gpt-image-1.5"])
     def test_legacy_models_are_fixed_size(self, model: str) -> None:
         assert MODEL_SIZE_POLICIES[model].fixed_sizes == (
@@ -261,7 +295,7 @@ class TestGenerateHappyPath:
         assert result.asset_path == out
         assert result.overridden == []
 
-    def test_passes_moderation_auto_to_client(self, tmp_path: Path) -> None:
+    def test_passes_the_request_shape_to_the_client(self, tmp_path: Path) -> None:
         client = FakeImageClient()
         generate_ai_asset(
             prompt="balloons",
@@ -273,7 +307,24 @@ class TestGenerateHappyPath:
             consent_path=_consented(tmp_path),
         )
         assert client.calls is not None
-        assert client.calls[0]["moderation"] == "auto"
+        assert client.calls[0]["shape"] == PixelSize(64, 96)
+
+    def test_request_for_another_model_is_refused_before_the_call(self, tmp_path: Path) -> None:
+        client = FakeImageClient(model="gpt-image-2")
+        request = replace(_small_request(), model="gpt-image-1")
+        out = tmp_path / "b.png"
+        with pytest.raises(ValueError, match="gpt-image-1"):
+            generate_ai_asset(
+                prompt="balloons",
+                occasion=OccasionType.BIRTHDAY,
+                out_path=out,
+                request=request,
+                client=client,
+                timestamp="2027-01-15T10:00:00Z",
+                consent_path=_consented(tmp_path),
+            )
+        assert client.calls is None
+        assert not out.exists()
 
 
 class TestResampleToTarget:
@@ -288,6 +339,7 @@ class TestResampleToTarget:
                 trim_width_in=4.13,
                 trim_height_in=5.83,
                 bleed_in=0.125,
+                provider=client.provider,
                 model=client.model,
             ),
             client=client,
@@ -301,7 +353,7 @@ class TestResampleToTarget:
         out = self._moo_a6_run(tmp_path, client)
 
         assert client.calls is not None
-        assert (client.calls[0]["width_px"], client.calls[0]["height_px"]) == (1024, 1536)
+        assert client.calls[0]["shape"] == PixelSize(1024, 1536)
         with Image.open(out) as img:
             assert img.size == (1314, 1824)
             assert img.info["dpi"] == pytest.approx((300, 300), abs=0.01)
@@ -318,7 +370,7 @@ class TestResampleToTarget:
         out = self._moo_a6_run(tmp_path, client)
 
         assert client.calls is not None
-        assert (client.calls[0]["width_px"], client.calls[0]["height_px"]) == (1328, 1824)
+        assert client.calls[0]["shape"] == PixelSize(1328, 1824)
         with Image.open(out) as img:
             assert img.size == (1314, 1824)
         record = read_sidecar(out)

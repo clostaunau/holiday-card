@@ -336,6 +336,11 @@ Guardrails that ship on by default (see
   and the result is centre-cropped and resampled to the target. If the
   model's output is below 300 PPI at print size the CLI warns and the
   sidecar records `native_ppi`.
+* **Provider and model** — `--provider` (default `openai`, or
+  `$HOLIDAY_CARD_AI_PROVIDER`) and `--model` (default `gpt-image-2`)
+  pick what is called; an unknown model exits 2 and lists the known
+  ones. `--seed` is refused (exit 2) for models that take no seed, which
+  today is every OpenAI model.
 * **Hard category rails** — sympathy / condolence / miscarriage /
   pet_loss occasions, religious iconography, trademarked brands, and
   recognizable-likeness / photo-replacement prompts **refuse by

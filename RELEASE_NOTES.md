@@ -13,6 +13,20 @@ Package metadata now has project URLs, a Python 3.13 classifier, the
 bundled font / ICC licence files, and an `openai<4` cap on the `[ai]`
 extra. The sdist no longer carries unrelated repository files.
 
+### `ai-asset generate` takes `--provider` / `--model`; `--seed` is refused for OpenAI
+
+`ai-asset generate` gains `--provider` (default `openai`, or the
+`HOLIDAY_CARD_AI_PROVIDER` environment variable; never inferred from the
+model id) and `--model` (default `gpt-image-2`). An unknown model or
+provider exits 2 and names the valid values. With no new flags the
+command sends the same request and writes the same file as before.
+
+**Breaking change:** `--seed N` now exits 2 for OpenAI models, before
+any consent is recorded or any API call is made. The OpenAI Images API
+has no seed parameter, so the seed was silently ignored while still
+being written to the sidecar, which suggested a reproducibility the API
+does not give. Drop `--seed` from OpenAI invocations.
+
 ### `ai-asset` provider errors exit cleanly (new exit codes 6 and 7)
 
 An AI provider or network error from `ai-asset generate` used to escape

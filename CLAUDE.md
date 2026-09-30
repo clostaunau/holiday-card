@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 3007 tests, mypy-clean, ruff-clean, coverage ≥ 92%
+uv run pytest                       # all 3060 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -110,7 +110,10 @@ src/holiday_card/
     ai_errors.py        # ProviderError (refused/environment/usage/transient) + redact / sanitize (stdlib only, #142)
     ai_rails.py         # L3 hard category rails (occasion + prompt blocklists)
     ai_provenance.py    # L3 LicenseRecord sidecar + first-use consent gate
-    ai_assets.py        # L3 POD-aware sizing, DEFAULT_AI_MODEL + MODEL_SIZE_POLICIES (#87), generate orchestration,
+    ai_providers.py     # AIProvider registry (key var + default model), resolve_model / supports_seed,
+                        #   make_image_client: the ONE client factory (#146; stdlib-only imports)
+    ai_assets.py        # L3 POD-aware sizing, MODEL_SIZE_POLICIES (#87), PixelSize / AspectSize request shapes
+                        #   + provider-neutral ImageClient (#146), generate orchestration,
                         #   decode_b64_image / open_generated_image: model bytes as untrusted input (#141)
     ai_openai.py        # L3 OpenAI image-client adapter (only module importing openai)
     images.py           # Template image path containment + PNG/JPEG content probe (D5)
@@ -159,6 +162,7 @@ tests/
                         #   test_per_panel, test_markdown, test_render_changed
                         # L3 AI imagery: test_ai_rails, test_ai_provenance, test_ai_assets,
                         #   test_ai_openai (fake openai client, no network, #87)
+                        #   test_ai_providers (registry, factory order, import-light, #146)
                         # SVG font subsets: test_svg_fonts (#76)
                         # Loader: test_templates_loading (extra="forbid", fail-loud keys)
                         # CLI preview / init end to end: test_cli_preview_init (#84)
@@ -226,7 +230,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 3007 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 3060 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
@@ -416,6 +420,47 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-30 — AI provider registry, request shapes and a
+  provider-neutral `ImageClient`; `--provider` / `--model`; `--seed`
+  refused for OpenAI (issue #146, OpenRouter program)**: the AI seam was
+  pixel-typed and OpenAI-shaped (`generate(width_px, height_px,
+  moderation, …)`, the CLI imported the OpenAI factory). New stdlib-only
+  `core/ai_providers.py`: `AIProvider` (`OPENAI` only; #150 adds
+  `OPENROUTER`), frozen `ProviderInfo(name, api_key_env, default_model)`,
+  the read-only `PROVIDERS` map (the **one** home of the `gpt-image-2`
+  default), `AIDependencyError` (moved here, not re-exported from
+  `ai_openai`), `UnknownModelError(ValueError)`, `known_models`,
+  `resolve_model` (`None` → default; unknown → `unknown openai image model
+  'dall-e-9'; known: …`), `supports_seed` (False for every OpenAI model)
+  and `make_image_client(provider, model=None)`: model resolved first, then
+  the key (unset / blank → `AIDependencyError` naming the variable), then a
+  function-local adapter import. `match` + `assert_never` everywhere a
+  provider is switched on, so a new member is a mypy error until wired
+  (`assert_never\(` is in coverage `exclude_lines`). `ai_assets.py`:
+  frozen `PixelSize` / `AspectSize(aspect_ratio, resolution)`,
+  `RequestShape`, `choose_request_shape(provider, model, w, h)`;
+  `AIRequest` has `shape` / `provider` / `model` (no `request_width_px` /
+  `request_height_px` / `moderation`); `build_ai_request` requires
+  `provider=` / `model=`; `ImageClient` is `provider`, `model`,
+  `generate(*, prompt, reference_path, shape, seed)`; `generate_ai_asset`
+  refuses a request sized for another provider / model before calling the
+  client. `DEFAULT_AI_MODEL` is deleted (D17). `ai_openai.py`:
+  `make_openai_client(*, api_key, model)` holds the lazy SDK import and
+  #142's pinned settings; `OpenAIImageClient(client, model)` (model
+  required) has `provider`, refuses an `AspectSize` or any `seed` before
+  the SDK, and always sends `moderation="auto"`. CLI `ai-asset generate`:
+  `--provider` (envvar `HOLIDAY_CARD_AI_PROVIDER`, empty = unset) and
+  `--model`, no short flags; right after the occasion check (before the
+  reference probe and consent), an unknown model or `--seed` on a seedless
+  model exits 2. **Breaking:** `--seed` with OpenAI (RELEASE_NOTES).
+  Guarded by `tests/unit/test_ai_providers.py` (registry, resolve, seed,
+  factory order, missing extra via `sys.modules["openai"] = None`,
+  subprocess: importing it loads neither `openai` nor `PIL`),
+  `TestChooseRequestShape` / the mismatch refusal in `test_ai_assets.py`,
+  the shape / seed / provider cases in `test_ai_openai.py`,
+  `TestProviderAndModel` / `TestSeedRefused` in `test_ai_asset_cli.py`
+  and two `TestShortFlags` rows. Tests 3007 → 3060.
 
 - **2026-09-30 — `ai-asset` decodes model output as untrusted input,
   records only a reported cost, and content-checks `--reference` (issue
