@@ -83,7 +83,7 @@ class _CLIGroup(TyperGroup):
 # Create main Typer app
 app = typer.Typer(
     name="holiday-card",
-    help="Create printable holiday greeting cards optimized for laser printing.",
+    help="Greeting cards as code: compile YAML templates to print-ready PDF, SVG, and PNG previews.",
     add_completion=False,
     cls=_CLIGroup,
     epilog=EXIT_CODES_HELP,
@@ -124,9 +124,9 @@ def main(
 ) -> None:
     """Holiday Card Generator - Create printable greeting cards.
 
-    Generate PDF greeting cards optimized for color laser printing
-    on standard 8.5" x 11" paper. Supports multiple fold formats
-    and customizable templates.
+    Compile YAML templates into print-ready PDF (home printing or POD
+    targets via ``--export-for``), self-contained SVG, and PNG previews
+    (``preview``).
     """
     del version  # handled by the eager version_callback
     global _debug
@@ -338,11 +338,11 @@ _INSIDE_MESSAGE_MD_OPTION = typer.Option(
     "--inside-message-md",
     help=(
         "Path to a Markdown file for the inside panel ('Christmas "
-        "letter' mode). Supports paragraphs, **bold**, and hard line "
-        "breaks. Mutually exclusive with --inside-message and "
-        "overrides --voice's inside pick. For best bold rendering, "
-        "use a template whose inside font is 'Lato' (the only "
-        "curated font with a registered Bold variant today)."
+        "letter' mode). Supports paragraphs, **bold**, *italic*, "
+        "***bold-italic*** and hard line breaks. Mutually exclusive "
+        "with --inside-message and overrides --voice's inside pick. "
+        "Cormorant and PlayfairDisplay render every style; Lato has "
+        "Bold only; Inter, Caveat and Comfortaa render regular."
     ),
     rich_help_panel=_CONTENT,
 )
@@ -461,7 +461,8 @@ def create(
         rich_help_panel=_LAYOUT,
     ),
     output: Path | None = typer.Option(
-        None, "--output", "-o", help="Output PDF file path",
+        None, "--output", "-o",
+        help="Output file (.pdf/.svg), or directory for per-panel --export-for targets",
         rich_help_panel=_OUTPUT,
     ),
     output_format: str = typer.Option(
@@ -690,7 +691,7 @@ def preview(
 def init(
     name: str = typer.Argument(..., help="Template name (e.g., my-template)"),
     occasion: str = typer.Option(
-        "generic", "--occasion", help="Occasion type: christmas, hanukkah, birthday, generic"
+        "generic", "--occasion", help=f"Occasion type: {', '.join(o.value for o in OccasionType)}"
     ),
     fold_type: str = typer.Option(
         "quarter_fold", "--fold-type", "-f", help="Fold type: quarter_fold (half_fold is an alias), tri_fold"
@@ -758,7 +759,7 @@ def init(
                         "content": "Your Greeting Here",
                         "x": 2.125,
                         "y": 2.75,
-                        "font_family": "Helvetica",
+                        "font_family": "PlayfairDisplay",
                         "font_size": 28,
                         "alignment": "center",
                         "color": {"r": 0.2, "g": 0.2, "b": 0.2},
@@ -789,7 +790,7 @@ def init(
                         "x": 0.5,
                         "y": 3.0,
                         "width": 3.25,
-                        "font_family": "Helvetica",
+                        "font_family": "Lato",
                         "font_size": 14,
                         "color": {"r": 0.3, "g": 0.3, "b": 0.3},
                     }
@@ -959,7 +960,7 @@ def ai_asset_generate(
 
         holiday-card ai-asset generate \\
           --subject "watercolor pine bough border, sage green and burgundy" \\
-          --reference fonts/curated/motif.png --style watercolor \\
+          --reference path/to/reference.png --style watercolor \\
           --occasion christmas --export-for moo-a6 -o assets/ai/border.png
     """
     from holiday_card.core.ai_assets import (

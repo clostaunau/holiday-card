@@ -1,3 +1,5 @@
+> **Historical** — commands may not match the current CLI; see README.
+
 # Quickstart Guide: Vector Graphics and Decorative Elements
 
 **Feature**: Vector Graphics and Decorative Elements System

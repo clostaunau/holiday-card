@@ -1,3 +1,5 @@
+> **Historical** — commands may not match the current CLI; see README.
+
 # Quickstart Guide: Holiday Card Generator
 
 **Feature**: 001-holiday-card-generator

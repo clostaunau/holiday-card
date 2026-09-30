@@ -1,6 +1,6 @@
 # holiday-card — Development Guidelines
 
-Last updated: 2026-09-26. Wave 2 architecture refactor is **complete**.
+Last updated: 2026-09-30. Wave 2 architecture refactor is **complete**.
 Of the five industry-panel leapfrogs, **L1 (POD prepress), L2-engineering
 (curated taste layer), L3 (AI imagery — authoring-time `ai-asset generate`
 in its narrow, hard-railed form), L4 (cards-as-code identity), and L5
@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 2800 tests, mypy-clean, ruff-clean, coverage ≥ 92%
+uv run pytest                       # all 2833 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -74,7 +74,7 @@ primitives (#74, D13).
 
 - Python 3.11, 3.12, 3.13 (CI matrix on Ubuntu + macOS)
 - ReportLab 4.0+ (PDF backend)
-- Pillow 10.0+ (PNG backend + image effects)
+- Pillow 10.3+ (PNG backend, image probing, ICC via ImageCms)
 - Pydantic 2.0+ (domain models + IR)
 - Typer 0.9+ (CLI)
 - PyYAML 6.0+ (template loading)
@@ -166,11 +166,17 @@ tests/
                         # Patterns: test_compiler_patterns (lowering to clip + primitives, #74)
                         # Imposition: test_imposition (slot table, paper-fold oracle,
                         #   panel_placements, stale-coordinate loader check, #58)
+                        # Photos + letters: test_compiler_image (clip masks, rotation),
+                        #   test_letter (LetterContent model)
+                        # Docs drift: test_docs_counts (template counts in README / CLAUDE.md,
+                        #   help text, spec banners, #88)
     __snapshots__/      # JSON snapshots of compile_card() output per template (16 files)
   integration/          # test_full_generation, test_svg_backend, test_png_backend,
                         #   test_per_panel_output, test_voice_flag, test_md_inside,
                         #   test_png_ir_fixtures (PNG clip/dash/alpha/font IR fixtures, #61),
-                        #   test_ai_asset_cli (L3 ai-asset generate subcommand)
+                        #   test_ai_asset_cli (L3 ai-asset generate subcommand),
+                        #   test_letter_flags (--salutation/--signoff/--signature/--ps),
+                        #   test_readme_examples (every README `holiday-card` line exits 0, #88)
   visual/               # Per-panel pixel-ratio gate (#68): all 21 templates × {png, pdf}
                         #   × 4 panels at 144 DPI (test_visual_regression.py); helpers +
                         #   calibrated constants in visual_gate.py, locked by
@@ -218,7 +224,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 2800 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 2833 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
@@ -408,6 +414,42 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-30 — README, CLAUDE.md and help text reconciled with the
+  code; README examples run in CI (expert-panel §P15 / D16 / D17, issue
+  #88)**: New `tests/integration/test_readme_examples.py` pulls every
+  `holiday-card …` line out of README.md's fenced `bash` blocks (joins
+  `\` continuations, strips `#` comments shell-style via `shlex`,
+  skips `ai-asset`, `pipx`, `pip` and `uv run` lines), runs each through
+  `CliRunner` in a `tmp_path` cwd seeded with `letter.md`,
+  `my-template.yaml` (christmas-classic), `cover.jpg` / `star.jpg` /
+  `~/me.jpg` (the placeholder photo; `HOME` points at the tmp dir and `~`
+  is expanded as the shell would), an isolated `XDG_DATA_HOME` holding a
+  `my-card` user template, and `--no-open` on `preview`, and requires exit
+  0 (15 examples; at least 6 or the test fails). Appending a
+  `create --format png` example turns it red. New
+  `tests/unit/test_docs_counts.py`: the template count in README ("21
+  ship-quality templates") and CLAUDE.md (`# YAML card templates (21)`,
+  "All 21 shipped templates") equals `len(discover_templates(<bundled>))`;
+  README states no test count; the "Six things" heading matches its
+  numbered items; the Output formats row says PNG is `preview`-only; the
+  Markdown example mentions italic; no `motif.png`; `create --output` /
+  `--inside-message-md` help, `init --help` (every `OccasionType`), root
+  `--help` (PDF, SVG, PNG); no `"Helvetica"` in `commands.py`; every
+  `specs/*/quickstart.md` starts with the historical banner. Fixed: README
+  (Five → Six things, italic / bold-italic, PNG is `preview`-only, the hard
+  test counts are gone, `--reference path/to/reference.png`); CLI help
+  (`--output` names .pdf/.svg and per-panel directories,
+  `--inside-message-md` lists italic and bold-italic and which families
+  render them, `init --occasion` is generated from `OccasionType`, the
+  root help and docstring name PDF / SVG / PNG, the `ai-asset` example
+  reference); the `init` scaffold uses `PlayfairDisplay` (cover) and
+  `Lato` (body); CLAUDE.md (Pillow 10.3+, 4 unlisted test files). Already
+  fixed before this PR, verified: R1 `preview --voice` (#78), R2 `create
+  ./my-template.yaml` (#79), R7 `ruff … scripts/`, R9 moo-a6 fill (#73),
+  R10 exit codes / search path / `--debug`, H6 (`preview` docstring no
+  longer claims WYSIWYG), C1–C5, and #83's dead-module rows. No CLI
+  behaviour changed. Tests 2800 → 2833.
 
 - **2026-09-29 — Domain models validate on assignment; the generator
   reassigns instead of mutating (expert-panel §P14 / D4 / D17, issue
