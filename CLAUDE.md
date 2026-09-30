@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 3487 tests, mypy-clean, ruff-clean, coverage ≥ 92%
+uv run pytest                       # all 3796 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -118,6 +118,9 @@ src/holiday_card/
     ai_openai.py        # L3 OpenAI image-client adapter (only module importing openai)
     ai_openrouter_models.py  # L3 curated OpenRouter image allowlist: pinned endpoint, capabilities,
                         #   pricing, upstream terms (stdlib only, #148)
+    ai_openrouter.py    # L3 OpenRouter `/images` client over stdlib urllib (#149): the only
+                        #   `urllib.request` importer; no redirects, capped read, split timeouts;
+                        #   not yet wired to the CLI (#150)
     images.py           # Template image path containment + PNG/JPEG content probe (D5)
     template_checks.py  # check_template: fonts, bounds, default theme, compile smoke (#57)
     template_schema.py  # template_json_schema: model JSON Schema + AliasChoices names (#57)
@@ -168,6 +171,10 @@ tests/
                         # AI test isolation (#143): test_ai_import_confinement (openai only
                         #   function-locally in core/ai_openai.py; AST + sys.meta_path),
                         #   test_test_isolation (the conftest key scrub + socket guard)
+                        # OpenRouter client (#149): test_ai_openrouter (FakeTransport: request
+                        #   contract, refusals, the 22-row response table, secrets),
+                        #   test_ai_openrouter_transport (real urllib vs loopback servers),
+                        #   test_openrouter_fixtures (size, shape, generator drift guard)
                         # SVG font subsets: test_svg_fonts (#76)
                         # Loader: test_templates_loading (extra="forbid", fail-loud keys)
                         # CLI preview / init end to end: test_cli_preview_init (#84)
@@ -214,6 +221,8 @@ scripts/                # Stand-alone helpers used by CI/Actions
                         #   make_placeholder_photo.py — regenerates the CC0 placeholder-photo.jpg
                         #   refresh_openrouter_models.py — OpenRouter allowlist drift table / entries
                         #     from the public catalogue (dev-only; never in CI, #148)
+                        #   make_openrouter_fixtures.py — writes the image-bearing OpenRouter
+                        #     response fixtures + golden request deterministically (dev-only, #149)
 .github/workflows/      # CI: ci.yml (lint/type/test → build → smoke of the installed wheel;
                         #     `audit` = pip-audit of the uv.lock export, fails on any known CVE)
                         #     render-cards.yml (PR-comment card previews; job summary on fork PRs)
@@ -238,7 +247,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 3487 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 3796 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
@@ -431,6 +440,91 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-30 — OpenRouter `/images` client over a hardened stdlib
+  transport (issue #149, OpenRouter program)**: new `core/ai_openrouter.py`
+  (stdlib + Pillow + pydantic; the **only** `src/` importer of
+  `urllib.request`; not wired to the CLI until #150). `OpenRouterImageClient(*,
+  api_key: SecretStr, model, transport=urllib_transport)` looks the model up
+  with #148's `openrouter_model` (unknown → `ValueError` listing the curated
+  ids), refuses a blank key (`ProviderError(kind="environment")`) and stores
+  only the `SecretStr` (no header dict on `self`; `repr` shows the model only).
+  `generate(*, prompt, reference_path, shape, seed)` refuses locally, before
+  any call, as `usage`: a `PixelSize`, an aspect / tier the pinned endpoint
+  doesn't advertise, a seed on a seedless model, a reference on an
+  `input_refs_max == 0` entry, none on an `input_refs_min >= 1` one, and a
+  `--reference` that `probe_image` refuses. The body is compact UTF-8 JSON in
+  spec §6.2 order (`model`, `prompt`, `n: 1`, `aspect_ratio`, `resolution` only
+  with a tier, `output_format: "png"` only when advertised, `seed` only when
+  given, `input_references` as a `data:image/{png|jpeg};base64,` URL from the
+  probe, `provider: {only: [tag], allow_fallbacks: false}` plus `options.<slug>.
+  moderation = "auto"` only when `moderation` is a passthrough); `size` /
+  `models` / `stream` / `quality` / `background` / `user` / `session_id` are
+  never sent. Headers are exactly `Authorization`, `Content-Type`, `Accept`,
+  `User-Agent: holiday-card/<version>` and the three `ATTRIBUTION_HEADERS`;
+  the key is unwrapped only in `_request_headers` and `_key_redactor` (an AST
+  test holds it). One transport call, never retried (§6.3.6).
+  `make_urllib_transport(*, require_https=True)` (production:
+  `urllib_transport`; a test greps `src/` so nothing relaxes it): scheme
+  check before any socket (`https` only; `file:` / `ftp:` / `data:` refused),
+  `_NoRedirect` (a 3xx is returned, so no second host sees `Authorization`),
+  `ssl.create_default_context()`, connect under `CONNECT_TIMEOUT_S = 10` then
+  every read under `timeout_s` via `http.client` connection subclasses built
+  with `functools.partial`, a `timeout_s` wall-clock deadline between reads
+  (**`read1`, not `read`**: `HTTPResponse.read(n)` blocks until `n` bytes, so a
+  trickling server never hit the deadline; found by the trickle test), an
+  oversize `Content-Length` refused before reading, else 64 KiB chunks refused
+  past `max_bytes` (`MAX_RESPONSE_BYTES = 48 MiB`); non-2xx statuses are
+  returned; every socket / TLS / URL / protocol error is
+  `ProviderError(kind="transient", status=None)`. `parse_images_response(
+  response, *, entry, redact)` returns a `GeneratedImage` or raises
+  `ProviderError`, nothing else (Hypothesis-checked): 3xx / 408 / 429 / 5xx /
+  other → `transient` (with `Retry-After` delta-seconds or HTTP-date,
+  clamped ≥ 0); 400 / 404 / 413 / 422 → `usage`; 401 → `environment`; 402 →
+  `transient` for `limit_source == "openrouter_in_flight_budget"`, else
+  `environment`; 403 → `refused` for `error_type` `content_policy_violation`
+  / `refusal`, else `environment`; a 200 that is not `application/json`, not
+  valid JSON or not an images response → `transient`; a 200 error envelope →
+  its `code` through the same table; 0 or > 1 images, or a `url` /
+  URL-shaped `b64_json` (never fetched) → `refused`; missing `b64_json`, a
+  non-PNG/JPEG/WebP `media_type`, oversize base64 (`MAX_B64_CHARS`, before
+  decoding), invalid base64, magic bytes that don't match (or, with no
+  `media_type`, identify none of the three), or a failed header-only open →
+  `transient`. Provider text (`message`, `error_type`, `provider_code`,
+  `reasons`, `remedy_hint`) is redacted with the literal key before
+  `ProviderError`'s sanitiser; a pydantic `ValidationError` (which echoes its
+  input) is never chained. `cost_usd` is `usage.cost` when finite and ≥ 0
+  (`"reported"`), else `None` (`"unknown"`; a string cost is a malformed
+  response); `generation_id` is `x-generation-id` only when it matches
+  `[A-Za-z0-9_-]{1,128}`; `provider_route` is the pinned tag. Response
+  models are frozen with `extra="ignore"` (a third-party payload may gain
+  fields). `ai_assets`: `GeneratedImage` gains `generation_id` /
+  `provider_route` (default `None`), and new `probe_generated_image(bytes,
+  media_type) -> (w, h)` shares `open_generated_image`'s checks through
+  `_checked_image` without decoding a pixel. Fixtures:
+  `tests/fixtures/openrouter/*.json` (`{"status", "headers", "body" |
+  "body_text"}`, all ≤ 2 KiB, 8×8 images): `ok_{png,jpeg,webp}`,
+  `two_images`, `empty_data`, `svg`, `mime_mismatch`, `bad_base64`,
+  `remote_url`, `bomb_png` (IHDR 20000×20000), `not_json`, `err_{400,401,402,
+  402_in_flight,403_policy,403_refusal,403_permission,429,502,524,
+  200_envelope}`, plus `reference_8x8.png` and the golden
+  `request_moo_a6.json` (gemini-3-pro-image, `3:4` / `2K`, no
+  `output_format`); the image-bearing ones come from the new
+  `scripts/make_openrouter_fixtures.py`, loaded by `tests/openrouter_fixtures.py`.
+  Guarded by `tests/unit/test_ai_openrouter.py`,
+  `tests/unit/test_ai_openrouter_transport.py` (`ThreadingHTTPServer` on
+  127.0.0.1: headers / body seen, 403 returned, 301–308 never followed and
+  server B sees no connection, `max_bytes` exact / Content-Length / chunked,
+  stall, trickle, silent server, closed port, garbage, plain http and other
+  schemes refused by the production transport, TLS verified, and HTTPS
+  against a throwaway `openssl` cert), `tests/unit/test_openrouter_fixtures.py`,
+  `TestOpenRouterResponseParser` in `test_parsers_properties.py`,
+  `TestProbeGeneratedImage` in `test_ai_assets.py` and new rows in
+  `test_ai_import_confinement.py` (`urllib.request` only in
+  `core/ai_openrouter.py` among `src/`, plus the dev refresh script; no
+  `openai` / `httpx` / `requests` there; importing the CLI loads neither
+  `urllib.request` nor the client). Branch coverage of the module: 99%, no
+  `pragma: no cover`. Tests 3487 → 3796 (collected).
 
 - **2026-09-30 — Tests enforce AI import confinement, scrub API keys and
   block the network (issue #143, OpenRouter program)**: three safety
