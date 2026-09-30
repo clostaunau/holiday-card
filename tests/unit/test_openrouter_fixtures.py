@@ -48,9 +48,7 @@ def test_response_fixture_has_the_envelope_shape(name: str) -> None:
 
 
 def test_generator_reproduces_the_committed_image_fixtures(tmp_path: Path) -> None:
-    subprocess.run(
-        [sys.executable, str(SCRIPT), "--out", str(tmp_path)], check=True, timeout=120
-    )
+    subprocess.run([sys.executable, str(SCRIPT), "--out", str(tmp_path)], check=True, timeout=120)
     written = sorted(p.name for p in tmp_path.iterdir())
     assert {"reference_8x8.png", GOLDEN_REQUEST, "ok_png.json", "bomb_png.json"} <= set(written)
     for name in written:

@@ -144,3 +144,75 @@ def test_the_recorder_sees_an_openai_lookup() -> None:
 
 def test_importing_the_cli_never_looks_for_openai() -> None:
     assert _openai_lookups_during("import holiday_card.cli.commands") == []
+
+
+# --------------------------------------------------------------------------- urllib.request (#149)
+
+_URLLIB_OWNER = "src/holiday_card/core/ai_openrouter.py"
+_HTTP_CLIENTS = ("openai", "httpx", "httpx2", "requests")
+
+
+def urllib_request_imports(source: str) -> list[int]:
+    """Lines importing ``urllib.request``: ``import urllib.request``,
+    ``from urllib.request import …`` and ``from urllib import request``."""
+    lines = []
+    for node, module, _local in imports(ast.parse(source)):
+        if module == "urllib.request" or module.startswith("urllib.request."):
+            lines.append(node.lineno)  # type: ignore[attr-defined]
+        elif (
+            module == "urllib"
+            and isinstance(node, ast.ImportFrom)
+            and any(alias.name == "request" for alias in node.names)
+        ):
+            lines.append(node.lineno)
+    return lines
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import urllib.request\n",
+        "from urllib.request import urlopen\n",
+        "from urllib import request\n",
+        "from urllib import parse, request as r\n",
+        "def f():\n    import urllib.request as u\n",
+        "__import__('urllib.request')\n",
+    ],
+)
+def test_scanner_sees_every_urllib_request_spelling(source: str) -> None:
+    assert urllib_request_imports(source) != []
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["from urllib.parse import urlsplit\n", "import urllib.parse\n", "from urllib import parse\n"],
+)
+def test_urllib_parse_is_not_urllib_request(source: str) -> None:
+    assert urllib_request_imports(source) == []
+
+
+def test_only_ai_openrouter_imports_urllib_request() -> None:
+    importers = sorted(
+        p.relative_to(REPO_ROOT).as_posix()
+        for p in SCANNED
+        if urllib_request_imports(p.read_text(encoding="utf-8"))
+    )
+    # The dev-only catalogue refresher (#148; never run in CI) is the one script exception.
+    assert importers == ["scripts/refresh_openrouter_models.py", _URLLIB_OWNER]
+
+
+def test_ai_openrouter_imports_no_third_party_http_client() -> None:
+    tree = ast.parse((REPO_ROOT / _URLLIB_OWNER).read_text(encoding="utf-8"))
+    roots = {module.split(".")[0] for _n, module, _l in imports(tree)}
+    assert not roots & set(_HTTP_CLIENTS)
+
+
+def test_importing_the_cli_loads_neither_urllib_request_nor_the_client() -> None:
+    code = (
+        "import sys, holiday_card.cli.commands\n"
+        "print('urllib.request' in sys.modules, 'holiday_card.core.ai_openrouter' in sys.modules)"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True, timeout=120
+    )
+    assert result.stdout.split() == ["False", "False"]
