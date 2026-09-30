@@ -1512,6 +1512,8 @@ class TestExitCodes:
             "CONSENT_REQUIRED": 3,
             "ENVIRONMENT": 4,
             "RAIL_REFUSED": 5,
+            "PROVIDER_REFUSED": 6,
+            "PROVIDER_ERROR": 7,
         }
 
     def test_root_help_lists_every_code(self, runner: CliRunner) -> None:
@@ -1519,7 +1521,7 @@ class TestExitCodes:
 
         text = _help(runner)
         assert "Exit codes" in text
-        for code in range(6):
+        for code in range(8):
             assert re.search(rf"(?m)^\s*{code}\s+\S", text), code
 
     def test_commands_use_named_exit_codes(self) -> None:
