@@ -422,6 +422,23 @@
           "default": null,
           "description": "Image processing effects"
         },
+        "fit": {
+          "anyOf": [
+            {
+              "enum": [
+                "contain",
+                "cover"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How an aspect-preserving image meets its rect: 'contain' fits it inside (may leave margins), 'cover' fills the rect and crops the overflow. Unset: 'cover' for a photo slot, 'contain' otherwise",
+          "title": "Fit"
+        },
         "frame_color": {
           "anyOf": [
             {

@@ -286,6 +286,7 @@ image_elements:
     width: 2.95                          # width and height are required
     height: 2.95
     preserve_aspect: true
+    fit: cover                           # cover (fill + crop) or contain; see below
     rotation: 0
     clip_mask:                           # optional; coordinates relative to the image
       type: circle                       # circle, rectangle, ellipse, star
@@ -299,6 +300,15 @@ image_elements:
 absolute paths, no `..`). For print, give photos at least 300 PPI at their
 placed size: a 2.95 in slot wants 885 px. `effects` and `frame_style` are
 not supported yet and are refused at compile time.
+
+`fit` picks how an aspect-preserving image meets its `width` × `height`
+rect. `cover` scales it to fill the rect and crops the overflow (centred),
+so a clip mask as large as the rect is always filled; `contain` fits the
+whole image inside and can leave margins. Unset, a `slot` element is
+`cover` (a user's photo rarely matches the slot's shape) and any other
+image is `contain`. `fit` with `preserve_aspect: false` is a load error:
+that stretches the image to the rect. PPI under `cover` is measured at the
+covering size, so a square photo in a 2.6 × 3.4 in slot needs 1020 px.
 
 ## See also
 
