@@ -280,12 +280,36 @@ def test_sympathy_class_inappropriate_voices_raise(
 # ---------------------------------------------------------------------------
 
 
-def test_available_voices_for_sympathy_is_sorted_shipped_subset() -> None:
-    assert available_voices("sympathy") == ("devotional", "spare", "warm")
+def test_available_voices_matches_shipped_files() -> None:
+    # VOICES order, not alphabetical (#82: the gallery renders them as-is).
+    assert available_voices("sympathy") == ("warm", "spare", "devotional")
+    assert available_voices("pet_loss") == ("warm", "spare")
+    assert available_voices("christmas") == VOICES
+
+
+def test_available_voices_needs_both_cover_and_inside(fake_lib: Path) -> None:
+    # A voice with only a cover file can't fill the inside: not available.
+    witty = fake_lib / "christmas" / "witty"
+    witty.mkdir()
+    (witty / "cover.yaml").write_text(
+        yaml.safe_dump({
+            "voice": "witty", "occasion": "christmas", "role": "cover",
+            "sentiments": ["x"],
+        })
+    )
+    (fake_lib / "christmas" / "spare").mkdir()
+    assert available_voices("christmas", sentiments_dir=fake_lib) == ("warm",)
+
+
+def test_available_voices_ignores_unknown_voice_dirs(fake_lib: Path) -> None:
+    (fake_lib / "christmas" / "grumpy").mkdir()
+    for role in ROLES:
+        (fake_lib / "christmas" / "grumpy" / f"{role}.yaml").write_text("{}")
+    assert available_voices("christmas", sentiments_dir=fake_lib) == ("warm",)
 
 
 def test_available_voices_accepts_occasion_enum() -> None:
-    assert available_voices(OccasionType.PET_LOSS) == ("spare", "warm")
+    assert available_voices(OccasionType.PET_LOSS) == ("warm", "spare")
 
 
 def test_available_voices_unknown_occasion_is_empty(

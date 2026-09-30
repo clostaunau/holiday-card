@@ -41,9 +41,10 @@ _THIS = Path(__file__).resolve()
 _REPO = _THIS.parent.parent
 sys.path.insert(0, str(_REPO / "src"))
 
+from holiday_card.core.card_request import CardRequest, build_card  # noqa: E402
 from holiday_card.core.compiler import compile_card  # noqa: E402
 from holiday_card.core.data_paths import data_path  # noqa: E402
-from holiday_card.core.generators import CardGenerator  # noqa: E402
+from holiday_card.core.sentiments import available_voices  # noqa: E402
 from holiday_card.core.templates import (  # noqa: E402
     discover_templates,
     resolve_template,
@@ -61,6 +62,7 @@ class TemplateCard:
     fold_type: str
     description: str
     thumbnail_path: str  # relative to site root, e.g. "thumbs/christmas-classic.png"
+    has_photo_slot: bool  # a photo slot ``-i`` can fill (#65)
 
 
 _OCCASION_LABELS = {
@@ -90,10 +92,6 @@ _CATEGORIES = (
         "Cards for grief and loss. Restrained design, hand-curated copy.",
     ),
 )
-
-# Voice options surfaced in the form. Matches the CLI's VOICES set.
-_VOICES = ("warm", "witty", "spare", "devotional", "irreverent")
-
 
 def build(output_dir: Path, dpi: int = 144) -> list[TemplateCard]:
     """Build the microsite into ``output_dir``.
@@ -133,6 +131,9 @@ def build(output_dir: Path, dpi: int = 144) -> list[TemplateCard]:
             fold_type=tmpl.fold_type.value,
             description=tmpl.description or "",
             thumbnail_path=thumb_rel,
+            has_photo_slot=any(
+                e.slot for p in tmpl.panels for e in p.image_elements
+            ),
         ))
 
     (output_dir / "style.css").write_text(_STYLESHEET)
@@ -154,11 +155,9 @@ def _render_thumbnail(
     (where's the inside message? the back? — visible structure that
     distinguishes templates).
     """
-    generator = CardGenerator(templates_dir=templates_dir, renderer=PNGRenderer(dpi=dpi))
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    card = generator.create_card(template_id=template_id)
-    commands = compile_card(card)
-    generator.renderer.render(commands, out_path)
+    card = build_card(CardRequest(template=template_id), templates_dir=templates_dir)
+    PNGRenderer(dpi=dpi).render(compile_card(card), out_path)
 
 
 def _render_index(cards: list[TemplateCard]) -> str:
@@ -240,13 +239,47 @@ def _index_card(card: TemplateCard) -> str:
         </a>""".strip()
 
 
+def _script_json(obj: object) -> str:
+    """JSON that is safe to place inside ``<script>``: no ``</script>``,
+    ``<!--`` or U+2028/2029 can survive it."""
+    return (json.dumps(obj, ensure_ascii=True)
+            .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
+
+
 def _render_template_page(card: TemplateCard) -> str:
-    """Render the per-template page with form + copy-command JS."""
-    voices_html = "\n".join(
-        f'              <option value="{v}">{v.title()}</option>'
-        for v in _VOICES
-    )
-    metadata_json = json.dumps({
+    """Render the per-template page with form + copy-command JS.
+
+    The form offers only what ``create`` accepts for this template: the
+    voices shipped for its occasion and, for photo-slot templates, ``-i``.
+    """
+    voices = available_voices(card.occasion)
+    voice_field = ""
+    voice_js = ""
+    if voices:
+        voices_html = "\n".join(
+            f'            <option value="{v}">{v.title()}</option>' for v in voices
+        )
+        voice_field = f"""
+        <label>
+          Voice (curated sentiment)
+          <select id="f-voice">
+            <option value="">(none)</option>
+{voices_html}
+          </select>
+        </label>"""
+        voice_js = (
+            "\n      if (v('f-voice')) parts.push('--voice', shellEscape(v('f-voice')));"
+        )
+    photo_field = ""
+    photo_js = ""
+    if card.has_photo_slot:
+        photo_field = """
+        <label>
+          Photo path
+          <input type="text" id="f-image" placeholder="./my-photo.jpg"/>
+        </label>"""
+        photo_js = "\n      if (v('f-image')) parts.push('-i', shellEscape(v('f-image')));"
+    metadata_json = _script_json({
         "id": card.id,
         "name": card.name,
         "occasion": card.occasion,
@@ -279,14 +312,7 @@ def _render_template_page(card: TemplateCard) -> str:
         <label>
           Inside message
           <input type="text" id="f-inside" placeholder="Hope your holidays are bright."/>
-        </label>
-        <label>
-          Voice (curated sentiment)
-          <select id="f-voice">
-            <option value="">(none)</option>
-{voices_html}
-          </select>
-        </label>
+        </label>{photo_field}{voice_field}
         <fieldset>
           <legend>Optional letter parts</legend>
           <label>
@@ -335,8 +361,7 @@ def _render_template_page(card: TemplateCard) -> str:
       const chk = id => document.getElementById(id).checked;
 
       if (v('f-message')) parts.push('-m', shellEscape(v('f-message')));
-      if (v('f-inside')) parts.push('--inside-message', shellEscape(v('f-inside')));
-      if (v('f-voice')) parts.push('--voice', shellEscape(v('f-voice')));
+      if (v('f-inside')) parts.push('--inside-message', shellEscape(v('f-inside')));{photo_js}{voice_js}
       if (v('f-salutation')) parts.push('--salutation', shellEscape(v('f-salutation')));
       if (v('f-signoff')) parts.push('--signoff', shellEscape(v('f-signoff')));
       if (v('f-signature')) parts.push('--signature', shellEscape(v('f-signature')));
@@ -373,7 +398,7 @@ def _render_template_page(card: TemplateCard) -> str:
   </footer>
 """
     return _HTML_FRAME.format(
-        title=f"{card.name} — holiday-card",
+        title=html.escape(f"{card.name} — holiday-card"),
         head_extra=head_extra,
         style_href="../style.css",
         body=body,

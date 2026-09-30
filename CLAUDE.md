@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 2712 tests, mypy-clean, ruff-clean, coverage ≥ 92%
+uv run pytest                       # all 2726 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -191,7 +191,8 @@ LICENSE                 # MIT
 scripts/                # Stand-alone helpers used by CI/Actions
                         #   render_changed_templates.py — powers .github/workflows/render-cards.yml
                         #   check_release_version.py — release.yml's tag == __version__ check + notes (#86)
-                        #   build_microsite.py — Leapfrog 5 template-gallery generator
+                        #   build_microsite.py — Leapfrog 5 template-gallery generator (thumbnails
+                        #     via build_card; voices from available_voices; -i on photo-slot pages)
                         #   make_placeholder_photo.py — regenerates the CC0 placeholder-photo.jpg
 .github/workflows/      # CI: ci.yml (lint/type/test → build → smoke of the installed wheel;
                         #     `audit` = pip-audit of the uv.lock export, fails on any known CVE)
@@ -217,7 +218,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 2712 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 2726 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
@@ -405,6 +406,36 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — The gallery emits only commands `create` accepts:
+  curated voices, a photo field, script-safe JSON (expert-panel §P14 /
+  D15 / D4, issue #82)**: `scripts/build_microsite.py` hard-coded all five
+  voices on every page, so `sympathy-spare` offered Witty / Irreverent
+  (exit 2 since #60), photo templates had no way to pass `-i`, and the
+  page metadata went into `<script>` through a bare `json.dumps`.
+  `sentiments.available_voices(occasion, sentiments_dir=None)` now returns
+  voices **in `VOICES` order** for which **both** `cover.yaml` and
+  `inside.yaml` exist (was: sorted voice directories). The CLI's rule-11
+  refusal uses it too, so its list reads `Available: warm, spare,
+  devotional`, and a half-shipped voice (one role file) is refused as "not
+  available" (was `has no inside sentiment`). The gallery renders an
+  `<option>` per available voice and omits the `f-voice` select (and its
+  JS) when there are none; `_VOICES` is deleted. `TemplateCard.
+  has_photo_slot` is true when an `ImageElement` has a `slot` (what `-i`
+  fills, #65; `image_elements: []` is false), and those five pages get a
+  `Photo path` input `f-image` that pushes `-i <shellEscaped>`.
+  `_script_json` (`ensure_ascii`, then `<` / `>` / `&` → `<` /
+  `>` / `&`) encodes the `TEMPLATE` literal. **Found by the
+  hostile-name test:** the page `<title>` interpolated `card.name`
+  unescaped; it now goes through `html.escape`. Thumbnails are
+  `build_card(CardRequest(template=id), templates_dir=builtin)` →
+  `compile_card` → `PNGRenderer` (no `CardGenerator`; the `chdir` was
+  already gone). Guarded by `test_available_voices_*` in
+  `tests/unit/test_sentiments.py` and `TestVoiceOptions` /
+  `TestPhotoField` / `TestScriptSafeJson` / `TestFormFlags` (every flag a
+  page's `buildCommand` can push is a `create` option, read from the
+  Typer command's params) / `TestSharedPipeline` in
+  `tests/integration/test_microsite_build.py`. Tests 2712 → 2726.
 
 - **2026-09-29 — AI imagery requests only model-supported sizes and bakes
   exactly trim+bleed at 300 PPI (expert-panel §P15 / D4, issue #87)**:

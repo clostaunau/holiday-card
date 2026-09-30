@@ -152,19 +152,20 @@ def load_sentiment_file(
     return sentiment
 
 
-def available_voices(occasion: OccasionType | str) -> tuple[str, ...]:
-    """Return the voices shipped for ``occasion``, sorted (``()`` if none).
+def available_voices(
+    occasion: OccasionType | str, sentiments_dir: Path | None = None
+) -> tuple[str, ...]:
+    """Voices in VOICES order for which BOTH cover and inside sentiment files exist.
 
-    Read from the directory listing, so it reflects exactly what
-    :func:`pick_sentiment` can load.
+    Read from the file layout, so it reflects exactly what
+    :func:`pick_sentiment` can load (``()`` for an unknown occasion).
     """
     occasion_str = occasion.value if isinstance(occasion, OccasionType) else occasion
-    occasion_dir = get_sentiments_dir() / occasion_str
-    if not occasion_dir.is_dir():
-        return ()
-    return tuple(sorted(
-        d.name for d in occasion_dir.iterdir() if d.is_dir() and d.name in VOICES
-    ))
+    occasion_dir = (sentiments_dir or get_sentiments_dir()) / occasion_str
+    return tuple(
+        voice for voice in VOICES
+        if all((occasion_dir / voice / f"{role}.yaml").is_file() for role in ROLES)
+    )
 
 
 # ---------------------------------------------------------------------------
