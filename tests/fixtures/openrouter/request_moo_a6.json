@@ -1,0 +1,21 @@
+{
+ "model": "google/gemini-3-pro-image",
+ "prompt": "watercolor pine bough border, sage green and burgundy",
+ "n": 1,
+ "aspect_ratio": "3:4",
+ "resolution": "2K",
+ "input_references": [
+  {
+   "type": "image_url",
+   "image_url": {
+    "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAF0lEQVR4nGNkYGhQYGDARCwgAhsYnBIAaG8CXsbfrCgAAAAASUVORK5CYII="
+   }
+  }
+ ],
+ "provider": {
+  "only": [
+   "google-ai-studio/global"
+  ],
+  "allow_fallbacks": false
+ }
+}

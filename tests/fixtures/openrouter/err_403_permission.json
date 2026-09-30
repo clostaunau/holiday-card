@@ -1,0 +1,15 @@
+{
+ "status": 403,
+ "headers": {
+  "content-type": "application/json"
+ },
+ "body": {
+  "error": {
+   "code": 403,
+   "message": "This key is not allowed to use this model.",
+   "metadata": {
+    "error_type": "permission_denied"
+   }
+  }
+ }
+}

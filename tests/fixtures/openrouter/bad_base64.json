@@ -1,0 +1,15 @@
+{
+ "status": 200,
+ "headers": {
+  "content-type": "application/json"
+ },
+ "body": {
+  "created": 1790000000,
+  "data": [
+   {
+    "b64_json": "iVBOR!!notbase64",
+    "media_type": "image/png"
+   }
+  ]
+ }
+}

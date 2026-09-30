@@ -1,0 +1,15 @@
+{
+ "status": 502,
+ "headers": {
+  "content-type": "application/json"
+ },
+ "body": {
+  "error": {
+   "code": 502,
+   "message": "Provider returned error",
+   "metadata": {
+    "error_type": "provider_unavailable"
+   }
+  }
+ }
+}

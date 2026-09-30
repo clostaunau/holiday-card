@@ -1,0 +1,21 @@
+{
+ "status": 200,
+ "headers": {
+  "content-type": "application/json"
+ },
+ "body": {
+  "created": 1790000000,
+  "data": [
+   {
+    "b64_json": "PHN2Zy8+",
+    "media_type": "image/svg+xml"
+   }
+  ],
+  "usage": {
+   "prompt_tokens": 12,
+   "completion_tokens": 1120,
+   "total_tokens": 1132,
+   "cost": 0.04
+  }
+ }
+}

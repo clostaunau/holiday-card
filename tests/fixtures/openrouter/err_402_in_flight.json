@@ -1,0 +1,17 @@
+{
+ "status": 402,
+ "headers": {
+  "content-type": "application/json",
+  "retry-after": "5"
+ },
+ "body": {
+  "error": {
+   "code": 402,
+   "message": "Too many in-flight requests for your remaining balance.",
+   "metadata": {
+    "error_type": "insufficient_credits",
+    "limit_source": "openrouter_in_flight_budget"
+   }
+  }
+ }
+}

@@ -1,0 +1,16 @@
+{
+ "status": 429,
+ "headers": {
+  "content-type": "application/json",
+  "retry-after": "30"
+ },
+ "body": {
+  "error": {
+   "code": 429,
+   "message": "Rate limit exceeded: free-models-per-min.",
+   "metadata": {
+    "error_type": "rate_limit_exceeded"
+   }
+  }
+ }
+}
