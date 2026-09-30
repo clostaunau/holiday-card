@@ -30,6 +30,23 @@ always go to `https://api.openai.com/v1`: the `OPENAI_BASE_URL`
 environment variable is ignored. If you relied on either, retry from
 your script on exit 7.
 
+### `ai-asset` checks what it sends and what it gets back
+
+- **Sidecars no longer contain an invented `$0.04`.** v1.3.0 wrote
+  `cost_usd: 0.04` for every live call, but OpenAI's image API reports
+  token usage, not a price. The cost is now recorded only when the
+  provider reports one; otherwise the sidecar says `cost_usd: null` and
+  the CLI prints `Cost: unknown`.
+- **New sidecar field `cost_source`** (`reported` or `unknown`). Existing
+  v1.3.0 sidecars still load and read as `unknown`.
+- **`--reference` must be a readable PNG or JPEG.** It is content-checked
+  before anything is uploaded, so a mistyped path (a text or secrets
+  file) exits 2 instead of being sent to the provider. WebP references
+  are now refused.
+- **The model's image is decoded as untrusted input**: PNG, JPEG or WebP
+  only, matching the declared type, one frame, at most 50 megapixels and
+  32 MiB. Anything else exits 7 with no file written.
+
 ## v1.3.0 — "AI as plumbing, hard-railed" — 2026-06-02
 
 L3 ships — the last named leapfrog the panel endorsed, in the narrow

@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 2968 tests, mypy-clean, ruff-clean, coverage ≥ 92%
+uv run pytest                       # all 3007 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -110,7 +110,8 @@ src/holiday_card/
     ai_errors.py        # ProviderError (refused/environment/usage/transient) + redact / sanitize (stdlib only, #142)
     ai_rails.py         # L3 hard category rails (occasion + prompt blocklists)
     ai_provenance.py    # L3 LicenseRecord sidecar + first-use consent gate
-    ai_assets.py        # L3 POD-aware sizing, DEFAULT_AI_MODEL + MODEL_SIZE_POLICIES (#87), generate orchestration
+    ai_assets.py        # L3 POD-aware sizing, DEFAULT_AI_MODEL + MODEL_SIZE_POLICIES (#87), generate orchestration,
+                        #   decode_b64_image / open_generated_image: model bytes as untrusted input (#141)
     ai_openai.py        # L3 OpenAI image-client adapter (only module importing openai)
     images.py           # Template image path containment + PNG/JPEG content probe (D5)
     template_checks.py  # check_template: fonts, bounds, default theme, compile smoke (#57)
@@ -225,7 +226,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 2968 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 3007 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
@@ -415,6 +416,50 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-30 — `ai-asset` decodes model output as untrusted input,
+  records only a reported cost, and content-checks `--reference` (issue
+  #141)**: `generate_ai_asset` opened the model's bytes with a bare
+  `Image.open` (any Pillow decoder, EPS → Ghostscript included; a 400 MP
+  header only warned; animations flattened to frame 0), the OpenAI adapter
+  `b64decode`d with no length cap or validation, every live call wrote an
+  invented `_FALLBACK_COST_USD = 0.04` to the sidecar (openai 3.19.2's
+  `ImagesResponse` has token `usage`, no USD cost field), and
+  `--reference` was only `exists()`-checked before being uploaded
+  (`--reference .env` would upload a secrets file). New in
+  `core/ai_assets.py`: `ImageMediaType` (`image/png|jpeg|webp`),
+  `MAX_IMAGE_BYTES = 32 MiB`, `ImagePayloadError(ValueError)`,
+  `decode_b64_image(b64, *, max_bytes)` (length refused before decoding,
+  then `validate=True`) and `open_generated_image(bytes, media_type)`
+  (`formats=["PNG", "JPEG", "WEBP"]`, `DecompressionBombWarning` as an
+  error, the Pillow format must match `media_type` (MPO = JPEG), `w × h ≤
+  images.MAX_IMAGE_PIXELS` before `load()`, one frame, truncation
+  refused; returns a loaded RGB copy; messages name the reason, never the
+  bytes). The bake calls it before `mkdir`, so a refusal writes neither
+  asset nor sidecar. `GeneratedImage` is `image_bytes` (was `png_bytes`,
+  no alias), `media_type`, `cost_usd: float | None`, `cost_source:
+  "reported" | "unknown"` (`__post_init__` refuses a mismatch);
+  `GenerationResult` gains `cost_source`. The OpenAI adapter always
+  returns `cost_usd=None, cost_source="unknown"` and takes `media_type`
+  from `response.output_format` (default PNG). `LicenseRecord.cost_source`
+  defaults to `"unknown"`, so a v1.3.0 sidecar still loads and reads as
+  unknown. CLI: `Cost: $0.13 (reported)` or `Cost: unknown (the provider
+  did not report one)`; `--reference` goes through `images.probe_image`
+  (PNG / JPEG only, so WebP references are now refused) before consent or
+  any client, `ImageSourceError` → `Error: --reference: …`, exit 2, and
+  the resolved path is what gets uploaded; `ImagePayloadError` → `Error:
+  the model's image was refused: …`, exit 7 (`PROVIDER_ERROR`, #142 was
+  already on `main`), never a traceback, even under `--debug`. Guarded by
+  `TestGeneratedImage` / `TestDecodeB64Image` / `TestOpenGeneratedImage`
+  (EPS with Ghostscript patched to fail, GIF, type mismatch, APNG /
+  animated WebP, a hand-built 20000² and 8000×7000 IHDR with
+  `ImageFile.load` patched to fail, truncation) /
+  `test_open_generated_image_returns_or_refuses` (Hypothesis, 200
+  examples each: PNG / JPEG / WebP magic + random bytes, and byte-flipped / truncated real images) / `TestBakePayload`
+  in `tests/unit/test_ai_assets.py`, the #141 block in `test_ai_openai.py`,
+  the v1.3.0 sidecar case in `test_ai_provenance.py` and
+  `TestUntrustedPayload` / `TestReferenceIsProbed` in
+  `test_ai_asset_cli.py`. Tests 2968 → 3007.
 
 - **2026-09-30 — `ai-asset` provider errors exit cleanly with redacted
   messages; exit codes 6 / 7 (issue #142)**: an OpenAI `AuthenticationError`,

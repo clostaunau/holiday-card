@@ -14,7 +14,6 @@ ignored), never retries a billed call, and times out after
 
 from __future__ import annotations
 
-import base64
 import os
 from collections.abc import Iterable
 
@@ -23,6 +22,8 @@ from pydantic import SecretStr
 from holiday_card.core.ai_assets import (
     DEFAULT_AI_MODEL,
     GeneratedImage,
+    ImageMediaType,
+    decode_b64_image,
     size_is_allowed,
 )
 from holiday_card.core.ai_errors import ProviderError, ProviderErrorKind, parse_retry_after
@@ -43,10 +44,12 @@ _QUOTA_CODES = frozenset(
         "organization_usage_limit_exceeded",
     }
 )
-
-# gpt-image pricing is per-image and tier-dependent; we surface the
-# value OpenAI returns when available and fall back to this estimate.
-_FALLBACK_COST_USD = 0.04
+# ImagesResponse.output_format -> media type; PNG is the documented default.
+_MEDIA_TYPES: dict[str, ImageMediaType] = {
+    "png": "image/png",
+    "jpeg": "image/jpeg",
+    "webp": "image/webp",
+}
 
 
 class AIDependencyError(RuntimeError):
@@ -119,11 +122,14 @@ class OpenAIImageClient:
         b64 = getattr(data[0], "b64_json", None) if data else None
         if not b64:
             raise ProviderError("the provider returned no image", kind="refused")
-        png_bytes = base64.b64decode(b64)
-        cost = getattr(response, "cost_usd", None)
+        output_format = getattr(response, "output_format", None)
+        # The SDK's ImagesResponse carries token `usage`, never a USD cost,
+        # so the cost is unknown rather than estimated (#141).
         return GeneratedImage(
-            png_bytes=png_bytes,
-            cost_usd=float(cost) if cost is not None else _FALLBACK_COST_USD,
+            image_bytes=decode_b64_image(b64),
+            media_type=_MEDIA_TYPES.get(output_format or "png", "image/png"),
+            cost_usd=None,
+            cost_source="unknown",
             model_version=getattr(response, "model", None) or self._model,
         )
 

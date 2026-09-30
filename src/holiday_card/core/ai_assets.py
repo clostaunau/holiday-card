@@ -14,7 +14,9 @@ Responsibilities, in order:
    ``--i-know-what-im-doing`` path), recording the overridden reasons.
 3. **Generate** — call the client with ``moderation="auto"`` and a
    request size the client's model accepts (:func:`choose_request_size`).
-4. **Bake** — cover-crop + LANCZOS-resample the result to exactly
+4. **Bake** — open the model's bytes as untrusted input
+   (:func:`open_generated_image`: PNG / JPEG / WebP only, matching the
+   declared type, one frame, at most ``MAX_IMAGE_PIXELS``), then cover-crop + LANCZOS-resample the result to exactly
    trim + 2×bleed at 300 PPI, write it as a PNG tagged sRGB IEC61966-2.1
    with ``dpi=(300, 300)`` and a sibling ``<asset>.license.yaml``
    provenance sidecar recording the generated size and native PPI.
@@ -22,12 +24,15 @@ Responsibilities, in order:
 
 from __future__ import annotations
 
+import base64
+import binascii
 import io
 import itertools
 import math
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 from PIL import Image, ImageCms
 
@@ -37,6 +42,7 @@ from holiday_card.core.ai_provenance import (
     write_sidecar,
 )
 from holiday_card.core.ai_rails import RailViolation, evaluate_rails
+from holiday_card.core.images import MAX_IMAGE_PIXELS
 from holiday_card.core.models import OccasionType
 from holiday_card.utils.measurements import DEFAULT_BLEED
 
@@ -48,8 +54,14 @@ __all__ = [
     "GeneratedImage",
     "GenerationResult",
     "ImageClient",
+    "ImageMediaType",
+    "CostSource",
+    "MAX_IMAGE_BYTES",
+    "ImagePayloadError",
     "ConsentRequiredError",
     "RailRefusedError",
+    "decode_b64_image",
+    "open_generated_image",
     "choose_request_size",
     "size_is_allowed",
     "build_ai_request",
@@ -228,13 +240,46 @@ class AIRequest:
     moderation: str = "auto"
 
 
+ImageMediaType = Literal["image/png", "image/jpeg", "image/webp"]
+CostSource = Literal["reported", "unknown"]
+
+MAX_IMAGE_BYTES = 32 * 1024 * 1024
+"""Largest decoded model image accepted (spec §6.3)."""
+
+# Pillow format -> the media type it satisfies. MPO is a JPEG with an MPF
+# marker (as in core/images.py); a multi-frame one is refused anyway.
+_PILLOW_MEDIA_TYPES: dict[str, ImageMediaType] = {
+    "PNG": "image/png",
+    "JPEG": "image/jpeg",
+    "MPO": "image/jpeg",
+    "WEBP": "image/webp",
+}
+
+
+class ImagePayloadError(ValueError):
+    """The model returned bytes the bake refuses to decode (never a partial asset)."""
+
+
 @dataclass(frozen=True)
 class GeneratedImage:
-    """What an :class:`ImageClient` returns: raw PNG bytes + metadata."""
+    """What an :class:`ImageClient` returns: the encoded image + metadata.
 
-    png_bytes: bytes
-    cost_usd: float
+    ``cost_usd`` is what the provider reported (``cost_source="reported"``)
+    or ``None`` (``"unknown"``); a cost is never estimated.
+    """
+
+    image_bytes: bytes
+    media_type: ImageMediaType
+    cost_usd: float | None
+    cost_source: CostSource
     model_version: str | None = None
+
+    def __post_init__(self) -> None:
+        if (self.cost_source == "reported") != (self.cost_usd is not None):
+            raise ValueError(
+                f"cost_source {self.cost_source!r} does not match cost_usd {self.cost_usd!r}: "
+                "'reported' needs a cost, 'unknown' must have none"
+            )
 
 
 @dataclass(frozen=True)
@@ -243,7 +288,8 @@ class GenerationResult:
 
     asset_path: Path
     sidecar_path: Path
-    cost_usd: float
+    cost_usd: float | None
+    cost_source: CostSource
     width_px: int
     height_px: int
     native_ppi: float
@@ -257,6 +303,8 @@ class ImageClient(Protocol):
     fake. Keeping this a Protocol is what keeps the OpenAI dependency out
     of the import graph unless the user installs ``holiday-card[ai]``.
     ``model`` is the model the client calls; the sidecar records it.
+    The returned bytes are untrusted: the bake decodes them only through
+    :func:`open_generated_image`.
     """
 
     @property
@@ -272,6 +320,74 @@ class ImageClient(Protocol):
         moderation: str,
         seed: int | None,
     ) -> GeneratedImage: ...
+
+
+def decode_b64_image(b64: str, *, max_bytes: int = MAX_IMAGE_BYTES) -> bytes:
+    """Decode a provider's base64 image, refusing oversize or malformed input.
+
+    The length is checked before anything is decoded, and characters
+    outside the base64 alphabet are an error rather than silently skipped.
+
+    Raises:
+        ImagePayloadError: If the text could decode to more than
+            ``max_bytes`` or is not valid base64.
+    """
+    if len(b64) > 4 * math.ceil(max_bytes / 3):
+        raise ImagePayloadError(
+            f"the base64 image is {len(b64)} characters, over the {max_bytes}-byte limit"
+        )
+    try:
+        return base64.b64decode(b64, validate=True)
+    except binascii.Error as e:
+        raise ImagePayloadError("the image is not valid base64") from e
+
+
+def open_generated_image(image_bytes: bytes, media_type: ImageMediaType) -> Image.Image:
+    """Decode model output as untrusted input and return a loaded RGB copy.
+
+    Only PNG, JPEG and WebP decoders are consulted (never EPS / Ghostscript),
+    the bytes must be the declared ``media_type``, a single frame, and at
+    most ``MAX_IMAGE_PIXELS`` (checked before any pixel is decoded).
+
+    Raises:
+        ImagePayloadError: For every refusal; the message names the reason,
+            never the bytes.
+    """
+    try:
+        with warnings.catch_warnings():
+            # Pillow warns (not raises) between its own limit and 2x it.
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(image_bytes), formats=["PNG", "JPEG", "WEBP"]) as img:
+                found = _PILLOW_MEDIA_TYPES.get(img.format or "")
+                if found != media_type:
+                    raise ImagePayloadError(
+                        f"the image is {img.format or 'an unknown format'}, "
+                        f"not the declared {media_type}"
+                    )
+                width, height = img.size
+                if width * height > MAX_IMAGE_PIXELS:
+                    raise ImagePayloadError(
+                        f"the image is {width}x{height} ({width * height / 1e6:.1f} "
+                        f"megapixels); the limit is {MAX_IMAGE_PIXELS / 1e6:.0f} megapixels"
+                    )
+                frames = getattr(img, "n_frames", 1)
+                if frames > 1:
+                    raise ImagePayloadError(f"the image has {frames} frames; only one is accepted")
+                img.load()
+                return img.convert("RGB")
+    except ImagePayloadError:
+        raise
+    except Image.UnidentifiedImageError as e:
+        raise ImagePayloadError("the bytes are not a PNG, JPEG or WebP image") from e
+    except (
+        OSError,
+        SyntaxError,
+        ValueError,
+        EOFError,
+        Image.DecompressionBombError,
+        Image.DecompressionBombWarning,
+    ) as e:
+        raise ImagePayloadError(f"the image could not be decoded ({type(e).__name__})") from e
 
 
 def build_ai_request(
@@ -371,10 +487,10 @@ def generate_ai_asset(
         seed=seed,
     )
 
-    # Re-encode as sRGB-tagged PNG (the model emits untagged sRGB).
+    # Decode as untrusted input before anything touches the disk, then
+    # re-encode as an sRGB-tagged PNG (drops ancillary metadata).
     target = (request.width_px, request.height_px)
-    with Image.open(io.BytesIO(generated.png_bytes)) as img:
-        rgb = img.convert("RGB")
+    rgb = open_generated_image(generated.image_bytes, generated.media_type)
     generated_w, generated_h = rgb.size
     baked = _cover_resample(rgb, target)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -395,6 +511,7 @@ def generate_ai_asset(
         seed=seed,
         timestamp=timestamp,
         cost_usd=generated.cost_usd,
+        cost_source=generated.cost_source,
         width_px=target[0],
         height_px=target[1],
         generated_width_px=generated_w,
@@ -409,6 +526,7 @@ def generate_ai_asset(
         asset_path=out_path,
         sidecar_path=sidecar,
         cost_usd=generated.cost_usd,
+        cost_source=generated.cost_source,
         width_px=target[0],
         height_px=target[1],
         native_ppi=native_ppi,

@@ -982,6 +982,7 @@ def ai_asset_generate(
     """
     from holiday_card.core.ai_assets import (
         ConsentRequiredError,
+        ImagePayloadError,
         RailRefusedError,
         build_ai_request,
         generate_ai_asset,
@@ -993,6 +994,7 @@ def ai_asset_generate(
         has_consented,
         record_consent,
     )
+    from holiday_card.core.images import ImageSourceError, probe_image
 
     # Validate occasion early.
     try:
@@ -1014,13 +1016,15 @@ def ai_asset_generate(
             err=True,
         )
         raise typer.Exit(ExitCode.USAGE)
-    if reference is not None and not reference.exists():
-        typer.secho(
-            f"Error: reference image not found: {reference}",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(ExitCode.USAGE)
+    # The reference is uploaded as-is, so it must really be a PNG / JPEG:
+    # a typo such as `--reference .env` would otherwise exfiltrate the file.
+    reference_path: str | None = None
+    if reference is not None:
+        try:
+            reference_path = str(probe_image(reference).path)
+        except ImageSourceError as e:
+            typer.secho(f"Error: --reference: {e}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(ExitCode.USAGE) from e
 
     # First-use consent gate.
     consent_path = default_consent_path()
@@ -1080,7 +1084,7 @@ def ai_asset_generate(
         trim_width_in=geom.trim_width_in,
         trim_height_in=geom.trim_height_in,
         bleed_in=geom.bleed_in,
-        reference_path=str(reference) if reference else None,
+        reference_path=reference_path,
         model=client.model,
     )
 
@@ -1117,6 +1121,9 @@ def ai_asset_generate(
         if e.retry_after_s is not None:
             typer.echo(f"Retry after {e.retry_after_s:g} s.", err=True)
         raise typer.Exit(_PROVIDER_EXIT[e.kind]) from e
+    except ImagePayloadError as e:  # like ProviderError: an exit code, never a traceback
+        typer.secho(f"Error: the model's image was refused: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(ExitCode.PROVIDER_ERROR) from e
     except (typer.Exit, BrokenPipeError):
         raise
     except Exception as e:
@@ -1134,7 +1141,10 @@ def ai_asset_generate(
             f"print size, below {request.dpi}; it was upscaled and may print soft.",
             fg=typer.colors.YELLOW,
         )
-    typer.echo(f"  Cost: ${result.cost_usd:.2f}")
+    if result.cost_usd is not None:
+        typer.echo(f"  Cost: ${result.cost_usd:.2f} (reported)")
+    else:
+        typer.echo("  Cost: unknown (the provider did not report one)")
     typer.echo("  OpenAI policy: https://openai.com/policies/usage-policies")
     typer.echo(
         "  Personal use only — AI imagery is not recommended for cards you sell."
