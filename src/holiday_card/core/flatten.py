@@ -60,6 +60,7 @@ from holiday_card.core.render_ir import (
     SolidPaint,
     Stroke,
 )
+from holiday_card.core.text_measure import TextMeasurer, default_text_measurer
 
 __all__ = ["Flattener", "PAPER", "flatten_transparency"]
 
@@ -78,14 +79,15 @@ _DESCENT = 0.3
 
 
 def flatten_transparency(
-    commands: Iterable[RenderCommand], *, where: str
+    commands: Iterable[RenderCommand], *, where: str, measurer: TextMeasurer | None = None
 ) -> list[RenderCommand]:
     """Flatten one command list as a single element (see the module doc).
 
     The compiler uses :class:`Flattener` directly so each element gets its
-    own ``where``; this entry point is for hand-built IR.
+    own ``where``; this entry point is for hand-built IR. Text boxes are
+    measured with ``measurer`` (default: ``default_text_measurer()``).
     """
-    return Flattener().element(commands, where=where)
+    return Flattener(measurer).element(commands, where=where)
 
 
 @dataclass(frozen=True)
@@ -112,7 +114,8 @@ class _Clip:
 class Flattener:
     """Backdrop-tracking alpha flattener for the draws of one panel."""
 
-    def __init__(self) -> None:
+    def __init__(self, measurer: TextMeasurer | None = None) -> None:
+        self._measurer = measurer or default_text_measurer()
         self._painted: list[_Painted] = []
         self._next_group = 0
 
@@ -162,7 +165,7 @@ class Flattener:
         if all(a <= 0.0 for a in _alphas(cmd, group_alpha)):
             return None
         tokens = frozenset(t for t, _op in groups if t is not None)
-        box = _clip_box(_transform_box(_local_box(cmd), matrix), clips)
+        box = _clip_box(_transform_box(_local_box(cmd, self._measurer), matrix), clips)
         if box is None:
             return None  # clipped away entirely
         what = _describe(cmd)
@@ -431,23 +434,15 @@ def _geom_box(geom: GeomU) -> Box:
     return (min(xs), min(ys), max(xs), max(ys))
 
 
-def _local_box(cmd: DrawShape | DrawText | DrawImage) -> Box:
+def _local_box(cmd: DrawShape | DrawText | DrawImage, measurer: TextMeasurer) -> Box:
     if isinstance(cmd, DrawShape):
         x0, y0, x1, y1 = _geom_box(cmd.geometry)
         pad = cmd.stroke.width / 2 if cmd.stroke is not None else 0.0
         return (x0 - pad, y0 - pad, x1 + pad, y1 + pad)
     if isinstance(cmd, DrawImage):
         return _rect_box(cmd.image.rect)
-    from reportlab.pdfbase.pdfmetrics import stringWidth
-
-    from holiday_card.renderers.font_registry import (
-        ensure_default_fonts_registered,
-        resolve_font_id,
-    )
-
-    ensure_default_fonts_registered()
     run = cmd.run
-    width = stringWidth(run.text, resolve_font_id(run.font_id), run.size_pt)
+    width = measurer.string_width(run.text, run.font_id, run.size_pt)
     left = {"left": 0.0, "center": width / 2, "right": width}[run.align]
     x0 = run.origin.x - left
     return (x0, run.origin.y - _DESCENT * run.size_pt, x0 + width, run.origin.y + run.size_pt)

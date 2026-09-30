@@ -4,9 +4,9 @@ This module provides functions for measuring text dimensions and applying
 overflow adjustment strategies (shrink, wrap, truncate).
 """
 
-
 from pydantic import BaseModel, Field
-from reportlab.pdfgen import canvas
+
+from holiday_card.core.text_measure import TextMeasurer
 
 
 class TextMetrics(BaseModel):
@@ -47,7 +47,7 @@ def calculate_line_height(font_size_pt: int) -> float:
 
 
 def measure_text(
-    c: canvas.Canvas,
+    measurer: TextMeasurer,
     content: str,
     font_name: str,
     font_size: int,
@@ -55,10 +55,10 @@ def measure_text(
     max_height: float | None = None,
     lines: list[str] | None = None,
 ) -> TextMetrics:
-    """Measure text dimensions using ReportLab's stringWidth.
+    """Measure text dimensions with ``measurer.string_width``.
 
     Args:
-        c: ReportLab Canvas for measurement.
+        measurer: Font metrics used for widths.
         content: Text content to measure.
         font_name: Font name (e.g., "Helvetica").
         font_size: Font size in points.
@@ -73,14 +73,14 @@ def measure_text(
         # Multi-line measurement
         line_count = len(lines)
         # Measure widest line
-        width_pts = max(c.stringWidth(line, font_name, font_size) for line in lines) if lines else 0.0
+        width_pts = max(measurer.string_width(line, font_name, font_size) for line in lines) if lines else 0.0
         # Calculate total height
         line_height = calculate_line_height(font_size)
         height_pts = line_height * line_count
     else:
         # Single-line measurement
         line_count = 1
-        width_pts = c.stringWidth(content, font_name, font_size)
+        width_pts = measurer.string_width(content, font_name, font_size)
         height_pts = calculate_line_height(font_size)
 
     # Check if fits within bounds
@@ -97,7 +97,7 @@ def measure_text(
 
 
 def shrink_to_fit(
-    c: canvas.Canvas,
+    measurer: TextMeasurer,
     content: str,
     font_name: str,
     initial_size: int,
@@ -107,7 +107,7 @@ def shrink_to_fit(
     """Shrink font size using binary search until text fits within width.
 
     Args:
-        c: ReportLab Canvas for measurement.
+        measurer: Font metrics used for widths.
         content: Text content to fit.
         font_name: Font name (e.g., "Helvetica").
         initial_size: Starting font size in points.
@@ -124,7 +124,7 @@ def shrink_to_fit(
 
     while low <= high:
         mid = (low + high) // 2
-        metrics = measure_text(c, content, font_name, mid, max_width)
+        metrics = measure_text(measurer, content, font_name, mid, max_width)
 
         if metrics.fits_within_bounds:
             # This size fits - try larger
@@ -138,7 +138,7 @@ def shrink_to_fit(
 
 
 def wrap_text(
-    c: canvas.Canvas,
+    measurer: TextMeasurer,
     content: str,
     font_name: str,
     font_size: int,
@@ -148,7 +148,7 @@ def wrap_text(
     """Wrap text at word boundaries to fit within width.
 
     Args:
-        c: ReportLab Canvas for measurement.
+        measurer: Font metrics used for widths.
         content: Text content to wrap.
         font_name: Font name (e.g., "Helvetica").
         font_size: Font size in points.
@@ -165,7 +165,7 @@ def wrap_text(
     for word in words:
         # Try adding this word to current line
         test_line = ' '.join(current_line + [word])
-        test_width = c.stringWidth(test_line, font_name, font_size)
+        test_width = measurer.string_width(test_line, font_name, font_size)
 
         if test_width <= max_width:
             # Word fits - add it

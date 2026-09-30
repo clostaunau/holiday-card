@@ -1,8 +1,5 @@
 """Unit tests for text_utils module (overflow prevention)."""
 
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-
 from holiday_card.core.text_utils import (
     TextMetrics,
     calculate_line_height,
@@ -10,6 +7,7 @@ from holiday_card.core.text_utils import (
     shrink_to_fit,
     wrap_text,
 )
+from holiday_card.renderers.reportlab_measurer import ReportLabTextMeasurer
 
 
 class TestTextMetrics:
@@ -34,10 +32,8 @@ class TestMeasureText:
 
     def test_measure_text_width_single_line(self):
         """Test basic width measurement for single line text."""
-        # Create a temporary PDF canvas for measurement
-        import io
-        buffer = io.BytesIO()
-        c = canvas.Canvas(buffer, pagesize=letter)
+        # The production ReportLab measurer
+        c = ReportLabTextMeasurer()
 
         metrics = measure_text(c, "Hello World", "Helvetica", 12, max_width=500.0)
 
@@ -49,9 +45,7 @@ class TestMeasureText:
 
     def test_measure_text_returns_metrics(self):
         """Test that measure_text returns TextMetrics structure."""
-        import io
-        buffer = io.BytesIO()
-        c = canvas.Canvas(buffer, pagesize=letter)
+        c = ReportLabTextMeasurer()
 
         metrics = measure_text(c, "Test", "Helvetica", 24, max_width=200.0)
 
@@ -63,9 +57,7 @@ class TestMeasureText:
 
     def test_measure_text_overflow_detection(self):
         """Test that overflow is correctly detected."""
-        import io
-        buffer = io.BytesIO()
-        c = canvas.Canvas(buffer, pagesize=letter)
+        c = ReportLabTextMeasurer()
 
         # Very long text with small max_width should not fit
         metrics = measure_text(
@@ -84,9 +76,7 @@ class TestShrinkToFit:
 
     def test_shrink_to_fit_reduces_font_size(self):
         """Test that oversized text gets font size reduced."""
-        import io
-        buffer = io.BytesIO()
-        c = canvas.Canvas(buffer, pagesize=letter)
+        c = ReportLabTextMeasurer()
 
         # Long text at 36pt will not fit in 200pts width
         final_size = shrink_to_fit(
@@ -105,9 +95,7 @@ class TestShrinkToFit:
 
     def test_shrink_to_fit_returns_original_if_fits(self):
         """Test that text that already fits is not shrunk."""
-        import io
-        buffer = io.BytesIO()
-        c = canvas.Canvas(buffer, pagesize=letter)
+        c = ReportLabTextMeasurer()
 
         # Short text at 12pt should fit in 500pts width
         final_size = shrink_to_fit(
@@ -124,9 +112,7 @@ class TestShrinkToFit:
 
     def test_shrink_to_fit_enforces_minimum(self):
         """Test that minimum font size (8pt) is enforced."""
-        import io
-        buffer = io.BytesIO()
-        c = canvas.Canvas(buffer, pagesize=letter)
+        c = ReportLabTextMeasurer()
 
         # Extreme text that would require very small font
         final_size = shrink_to_fit(
@@ -143,9 +129,7 @@ class TestShrinkToFit:
 
     def test_shrink_to_fit_binary_search_efficiency(self):
         """Test that binary search completes in reasonable iterations."""
-        import io
-        buffer = io.BytesIO()
-        c = canvas.Canvas(buffer, pagesize=letter)
+        c = ReportLabTextMeasurer()
 
         # This is more of a performance check - should complete quickly
         # Testing that it doesn't do linear search (which would be slow)
@@ -184,9 +168,7 @@ class TestWrapText:
 
     def test_wrap_text_at_word_boundaries(self):
         """Test that text wraps at word boundaries."""
-        import io
-        buffer = io.BytesIO()
-        c = canvas.Canvas(buffer, pagesize=letter)
+        c = ReportLabTextMeasurer()
 
         lines = wrap_text(
             c,
@@ -207,9 +189,7 @@ class TestWrapText:
 
     def test_wrap_text_respects_max_lines(self):
         """Test that max_lines parameter is respected."""
-        import io
-        buffer = io.BytesIO()
-        c = canvas.Canvas(buffer, pagesize=letter)
+        c = ReportLabTextMeasurer()
 
         lines = wrap_text(
             c,
@@ -225,9 +205,7 @@ class TestWrapText:
 
     def test_wrap_text_single_word_exceeds_width(self):
         """Test handling of single word that exceeds width."""
-        import io
-        buffer = io.BytesIO()
-        c = canvas.Canvas(buffer, pagesize=letter)
+        c = ReportLabTextMeasurer()
 
         # Single very long word
         lines = wrap_text(
@@ -244,9 +222,7 @@ class TestWrapText:
 
     def test_wrap_text_returns_list_of_lines(self):
         """Test that wrap_text returns a list of strings."""
-        import io
-        buffer = io.BytesIO()
-        c = canvas.Canvas(buffer, pagesize=letter)
+        c = ReportLabTextMeasurer()
 
         lines = wrap_text(
             c,

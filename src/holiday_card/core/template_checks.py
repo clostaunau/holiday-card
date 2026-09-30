@@ -30,8 +30,8 @@ from holiday_card.core.models import (
     Triangle,
 )
 from holiday_card.core.render_ir import BeginGroup, DrawShape, PathGeom
+from holiday_card.core.text_measure import default_text_measurer
 from holiday_card.core.themes import ThemeNotFoundError, load_theme
-from holiday_card.renderers.font_registry import known_font_ids
 from holiday_card.utils.measurements import points_to_inches
 
 # Bounds slack in inches, so authored values like 4.25 aren't refused by float noise.
@@ -77,7 +77,7 @@ def _element_path(panel: Panel, kind: str, index: int, element: BaseModel) -> st
 
 
 def _check_fonts(template: Template) -> Iterable[TemplateProblem]:
-    known = known_font_ids()
+    known = default_text_measurer().known_font_ids()
     for panel in template.panels:
         for index, text in enumerate(panel.text_elements):
             if text.font_file is None and text.font_family not in known:

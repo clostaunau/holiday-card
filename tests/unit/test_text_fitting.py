@@ -7,11 +7,7 @@ existing PDF-rendering test still passes); these unit tests lock in the
 free-function contract so the compiler PR can build against it safely.
 """
 
-import io
-
 import pytest
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas as _canvas
 
 from holiday_card.core.models import (
     Color,
@@ -28,12 +24,14 @@ from holiday_card.core.text_fitting import (
     select_auto_strategy,
     truncate_to_fit,
 )
+from holiday_card.core.text_measure import TextMeasurer
+from holiday_card.renderers.reportlab_measurer import ReportLabTextMeasurer
 
 
 @pytest.fixture
-def pdf_canvas() -> _canvas.Canvas:
-    """A throwaway in-memory canvas; we only call stringWidth-style methods."""
-    return _canvas.Canvas(io.BytesIO(), pagesize=letter)
+def measurer() -> TextMeasurer:
+    """The production ReportLab measurer, so widths are the real ones."""
+    return ReportLabTextMeasurer()
 
 
 @pytest.fixture
@@ -87,12 +85,12 @@ class TestSelectAutoStrategy:
 
 
 class TestTruncateToFit:
-    def test_returns_content_unchanged_when_it_already_fits(self, pdf_canvas: _canvas.Canvas) -> None:
-        out = truncate_to_fit(pdf_canvas, "hi", "Helvetica", 12, max_width=500.0)
+    def test_returns_content_unchanged_when_it_already_fits(self, measurer: TextMeasurer) -> None:
+        out = truncate_to_fit(measurer, "hi", "Helvetica", 12, max_width=500.0)
         assert out == "hi"
 
-    def test_appends_ellipsis_when_overflowing(self, pdf_canvas: _canvas.Canvas) -> None:
-        out = truncate_to_fit(pdf_canvas, "this is far too long for a tiny box",
+    def test_appends_ellipsis_when_overflowing(self, measurer: TextMeasurer) -> None:
+        out = truncate_to_fit(measurer, "this is far too long for a tiny box",
                               "Helvetica", 14, max_width=20.0)
         assert out.endswith("...")
         assert len(out) < len("this is far too long for a tiny box")
@@ -104,16 +102,16 @@ class TestTruncateToFit:
 
 
 class TestApplyShrinkStrategy:
-    def test_returns_unchanged_when_no_width_constraint(self, pdf_canvas: _canvas.Canvas) -> None:
+    def test_returns_unchanged_when_no_width_constraint(self, measurer: TextMeasurer) -> None:
         text = _make_text("Hello", width=None)
-        size, content = apply_shrink_strategy(pdf_canvas, text, "Helvetica")
+        size, content = apply_shrink_strategy(measurer, text, "Helvetica")
         assert size == text.font_size
         assert content == "Hello"
 
-    def test_returns_smaller_size_for_overflowing_text(self, pdf_canvas: _canvas.Canvas) -> None:
+    def test_returns_smaller_size_for_overflowing_text(self, measurer: TextMeasurer) -> None:
         # Force overflow: 60-char string in a 1-inch box at 24pt is too wide.
         text = _make_text("a" * 60, width=1.0, font_size=24, min_font_size=8)
-        size, content = apply_shrink_strategy(pdf_canvas, text, "Helvetica")
+        size, content = apply_shrink_strategy(measurer, text, "Helvetica")
         assert size <= 24
 
 
@@ -123,16 +121,16 @@ class TestApplyShrinkStrategy:
 
 
 class TestApplyWrapStrategy:
-    def test_short_text_returns_single_line(self, pdf_canvas: _canvas.Canvas, panel: Panel) -> None:
+    def test_short_text_returns_single_line(self, measurer: TextMeasurer, panel: Panel) -> None:
         text = _make_text("Brief.")
-        size, lines = apply_wrap_strategy(pdf_canvas, text, panel, "Helvetica")
+        size, lines = apply_wrap_strategy(measurer, text, panel, "Helvetica")
         assert lines == ["Brief."]
         assert size == text.font_size
 
-    def test_long_text_wraps_to_multiple_lines(self, pdf_canvas: _canvas.Canvas, panel: Panel) -> None:
+    def test_long_text_wraps_to_multiple_lines(self, measurer: TextMeasurer, panel: Panel) -> None:
         long = " ".join(["lorem ipsum dolor sit amet"] * 8)
         text = _make_text(long, width=2.0, font_size=14)
-        _, lines = apply_wrap_strategy(pdf_canvas, text, panel, "Helvetica")
+        _, lines = apply_wrap_strategy(measurer, text, panel, "Helvetica")
         assert len(lines) > 1
 
 
@@ -142,15 +140,15 @@ class TestApplyWrapStrategy:
 
 
 class TestApplyTruncateStrategy:
-    def test_short_text_returned_unchanged(self, pdf_canvas: _canvas.Canvas) -> None:
+    def test_short_text_returned_unchanged(self, measurer: TextMeasurer) -> None:
         text = _make_text("ok", font_size=12)
-        size, content = apply_truncate_strategy(pdf_canvas, text, "Helvetica")
+        size, content = apply_truncate_strategy(measurer, text, "Helvetica")
         assert size == 12
         assert content == "ok"
 
-    def test_long_text_truncated_with_ellipsis(self, pdf_canvas: _canvas.Canvas) -> None:
+    def test_long_text_truncated_with_ellipsis(self, measurer: TextMeasurer) -> None:
         text = _make_text("this content is far too wide to fit", width=0.5, font_size=14)
-        _, content = apply_truncate_strategy(pdf_canvas, text, "Helvetica")
+        _, content = apply_truncate_strategy(measurer, text, "Helvetica")
         assert content.endswith("...")
 
 
@@ -162,20 +160,20 @@ class TestApplyTruncateStrategy:
 
 class TestFitTextElement:
     def test_returns_unchanged_for_text_that_already_fits(
-        self, pdf_canvas: _canvas.Canvas, panel: Panel
+        self, measurer: TextMeasurer, panel: Panel
     ) -> None:
         text = _make_text("Hi", font_size=12, overflow_strategy=OverflowStrategy.SHRINK)
-        size, lines, result = fit_text_element(pdf_canvas, text, panel, "Helvetica")
+        size, lines, result = fit_text_element(measurer, text, panel, "Helvetica")
         assert size == 12
         assert lines == ["Hi"]
         assert result.was_adjusted is False
         assert result.strategy_applied == OverflowStrategy.SHRINK
 
     def test_auto_strategy_resolves_to_concrete_choice(
-        self, pdf_canvas: _canvas.Canvas, panel: Panel
+        self, measurer: TextMeasurer, panel: Panel
     ) -> None:
         text = _make_text("Hi", overflow_strategy=OverflowStrategy.AUTO)
-        _, _, result = fit_text_element(pdf_canvas, text, panel, "Helvetica")
+        _, _, result = fit_text_element(measurer, text, panel, "Helvetica")
         # AUTO must always resolve to a concrete strategy in the report.
         assert result.strategy_applied != OverflowStrategy.AUTO
         assert result.strategy_applied in (
@@ -185,11 +183,11 @@ class TestFitTextElement:
         )
 
     def test_wrap_strategy_reports_multiple_lines(
-        self, pdf_canvas: _canvas.Canvas, panel: Panel
+        self, measurer: TextMeasurer, panel: Panel
     ) -> None:
         long = " ".join(["lorem ipsum dolor sit amet consectetur"] * 5)
         text = _make_text(long, width=2.0, overflow_strategy=OverflowStrategy.WRAP)
-        _, lines, result = fit_text_element(pdf_canvas, text, panel, "Helvetica")
+        _, lines, result = fit_text_element(measurer, text, panel, "Helvetica")
         assert len(lines) >= 2
         assert result.lines_used == len(lines)
         assert result.was_adjusted is True
