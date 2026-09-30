@@ -3,7 +3,8 @@
 This is the only module that imports ``openai``. It is loaded lazily so
 the project remains fully functional without the ``[ai]`` extra — the
 panel's "refuse to be a default code path" requirement (risk #8). Tests
-never touch this module; they inject a fake :class:`ImageClient`.
+drive it with a fake ``openai`` client object (no network); it refuses a
+``size`` its model does not accept before calling the API (#87).
 """
 
 from __future__ import annotations
@@ -11,7 +12,11 @@ from __future__ import annotations
 import base64
 import os
 
-from holiday_card.core.ai_assets import GeneratedImage
+from holiday_card.core.ai_assets import (
+    DEFAULT_AI_MODEL,
+    GeneratedImage,
+    size_is_allowed,
+)
 
 __all__ = ["OpenAIImageClient", "make_image_client", "AIDependencyError"]
 
@@ -31,9 +36,15 @@ class OpenAIImageClient:
     the ``openai`` package and ``OPENAI_API_KEY`` are present first.
     """
 
-    def __init__(self, client: object, model: str = "gpt-image-1") -> None:
+    def __init__(self, client: object, model: str = DEFAULT_AI_MODEL) -> None:
+        size_is_allowed(model, 1024, 1024)  # unknown model -> ValueError (D4)
         self._client = client
         self._model = model
+
+    @property
+    def model(self) -> str:
+        """The model every request is sent to."""
+        return self._model
 
     def generate(
         self,
@@ -46,6 +57,8 @@ class OpenAIImageClient:
         seed: int | None,  # noqa: ARG002 — OpenAI images API has no seed param today
     ) -> GeneratedImage:
         size = f"{width_px}x{height_px}"
+        if not size_is_allowed(self._model, width_px, height_px):
+            raise ValueError(f"{self._model} does not accept size {size}")
         kwargs = {
             "model": self._model,
             "prompt": prompt,
@@ -69,7 +82,7 @@ class OpenAIImageClient:
         )
 
 
-def make_image_client() -> OpenAIImageClient:
+def make_image_client(model: str = DEFAULT_AI_MODEL) -> OpenAIImageClient:
     """Construct a live OpenAI client, validating extras + key first.
 
     Raises :class:`AIDependencyError` with an actionable message when the
@@ -87,4 +100,4 @@ def make_image_client() -> OpenAIImageClient:
         raise AIDependencyError(
             "the AI extra is not installed. Run `pip install holiday-card[ai]`."
         ) from e
-    return OpenAIImageClient(OpenAI(api_key=api_key))
+    return OpenAIImageClient(OpenAI(api_key=api_key), model=model)

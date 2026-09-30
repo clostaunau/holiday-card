@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 2678 tests, mypy-clean, ruff-clean, coverage ≥ 92%
+uv run pytest                       # all 2712 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -109,7 +109,7 @@ src/holiday_card/
     data_paths.py       # data_path(kind): the ONE resolver for bundled data (+ env overrides)
     ai_rails.py         # L3 hard category rails (occasion + prompt blocklists)
     ai_provenance.py    # L3 LicenseRecord sidecar + first-use consent gate
-    ai_assets.py        # L3 POD-aware sizing + generate orchestration (injectable client)
+    ai_assets.py        # L3 POD-aware sizing, DEFAULT_AI_MODEL + MODEL_SIZE_POLICIES (#87), generate orchestration
     ai_openai.py        # L3 OpenAI image-client adapter (only module importing openai)
     images.py           # Template image path containment + PNG/JPEG content probe (D5)
     template_checks.py  # check_template: fonts, bounds, default theme, compile smoke (#57)
@@ -155,7 +155,8 @@ tests/
                         #   test_measurements, test_font_registry
                         # Curation/POD/markdown additions: test_sentiments, test_export_targets,
                         #   test_per_panel, test_markdown, test_render_changed
-                        # L3 AI imagery: test_ai_rails, test_ai_provenance, test_ai_assets
+                        # L3 AI imagery: test_ai_rails, test_ai_provenance, test_ai_assets,
+                        #   test_ai_openai (fake openai client, no network, #87)
                         # SVG font subsets: test_svg_fonts (#76)
                         # Loader: test_templates_loading (extra="forbid", fail-loud keys)
                         # CLI preview / init end to end: test_cli_preview_init (#84)
@@ -216,7 +217,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 2678 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 2712 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
@@ -404,6 +405,45 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — AI imagery requests only model-supported sizes and bakes
+  exactly trim+bleed at 300 PPI (expert-panel §P15 / D4, issue #87)**:
+  the live client called `gpt-image-1` (fixed 1024², 1536×1024,
+  1024×1536) with `size="1312x1824"` for moo-a6, which the API rejects,
+  while the sidecar recorded `gpt-image-2`; the returned image was
+  written as-is and the CLI printed the *requested* size. OpenAI docs
+  re-verified 2026-09-29 (recorded in
+  `docs/industry-review/openai-image-api-snapshot.md`). New in
+  `core/ai_assets.py`: `DEFAULT_AI_MODEL = "gpt-image-2"` (the only
+  default: `OpenAIImageClient`, `make_image_client(model=…)`,
+  `build_ai_request(model=…)`; `LicenseRecord.model` has no default and
+  `generate_ai_asset` records `client.model`, now part of the
+  `ImageClient` Protocol), frozen `ModelSizePolicy` and
+  `MODEL_SIZE_POLICIES` (gpt-image-1 / -1-mini / -1.5 fixed; gpt-image-2 /
+  2.5-sunburst / 2.5-flare flexible: /16, aspect ≤ 3, edge ≤ 3840,
+  655,360–8,294,400 px), `size_is_allowed(model, w, h)` and
+  `choose_request_size(model, w, h)` (fixed: closest log-aspect, ties to
+  the larger area; flexible: the target if valid, else aspect-clamped,
+  scaled into limits and snapped to /16 preferring round-up so no axis
+  under-resolves). An unknown model raises `ValueError` (D4), and
+  `OpenAIImageClient` refuses a disallowed `size` before calling the API.
+  `AIRequest` gains `request_width_px` / `request_height_px` / `model`;
+  `width_px` / `height_px` are now exactly `round(in × dpi)` (moo-a6
+  1314×1824, was 1312). The bake centre-crops to the target aspect and
+  LANCZOS-resizes to the target, saving with `dpi=(300, 300)` + sRGB
+  ICC; `LicenseRecord` gains `generated_width_px` / `generated_height_px`
+  / `native_ppi` (`min(returned / target px) × 300`) and
+  `GenerationResult` gains `width_px` / `height_px` / `native_ppi`. The
+  CLI builds the request after creating the client (so it sizes for
+  `client.model`), prints the written size and native PPI, and a yellow
+  warning below 300 (the asset is still written). moo-a6 on gpt-image-2
+  requests 1328×1824 and bakes at 300.0 native PPI; on gpt-image-1 it
+  requests 1024×1536 (233.8 PPI, warned). `round_to_multiple` is deleted
+  (D17). Guarded by `TestBuildAIRequest` / `TestModelSizePolicy` /
+  `TestResampleToTarget` in `tests/unit/test_ai_assets.py`, the new
+  `tests/unit/test_ai_openai.py` (every policy model × generate / edit
+  sends an allowed `size`; refusals) and the written-size / low-PPI cases
+  in `tests/integration/test_ai_asset_cli.py`. Tests 2678 → 2712.
 
 - **2026-09-29 — Tag-driven PyPI release via trusted publishing; trimmed
   sdist; complete metadata (expert-panel §P15 / D1 / D2, issue #86)**:
@@ -1570,8 +1610,9 @@ template editing; a JSON "render plan" backend for downstream tooling.
   likeness prompt blocklists; `evaluate_rails` returns `RailViolation`s),
   `ai_provenance.py` (`LicenseRecord` → `<asset>.license.yaml` sidecar +
   first-use consent gate under `$XDG_CONFIG_HOME/holiday-card/`),
-  `ai_assets.py` (POD-aware `build_ai_request` — trim+2×bleed at 300 DPI
-  rounded to /16; `generate_ai_asset` orchestration over an **injectable**
+  `ai_assets.py` (POD-aware `build_ai_request` — trim+2×bleed at 300 DPI;
+  since #87 the bake is exact and only the API request is /16-rounded
+  per `MODEL_SIZE_POLICIES`; `generate_ai_asset` orchestration over an **injectable**
   `ImageClient` Protocol, so the whole feature is testable with no network
   / no `OPENAI_API_KEY`; writes sRGB-tagged PNGs), and `ai_openai.py` (the
   only module importing `openai`, lazily, behind the `[ai]` extra).

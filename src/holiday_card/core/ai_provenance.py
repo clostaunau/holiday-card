@@ -69,13 +69,18 @@ class LicenseRecord(BaseModel):
     prompt: str
     style: str | None = None
     reference: str | None = None
-    model: str = "gpt-image-2"
+    model: str
     model_version: str | None = None
     seed: int | None = None
     timestamp: str
     cost_usd: float | None = None
+    # The baked file's size; ``generated_*`` is what the model returned,
+    # and ``native_ppi`` the resolution that carries into the bake.
     width_px: int | None = None
     height_px: int | None = None
+    generated_width_px: int | None = None
+    generated_height_px: int | None = None
+    native_ppi: float | None = None
     color_profile: str = "sRGB IEC61966-2.1"
     openai_policy_url: str = OPENAI_USAGE_POLICY_URL
     # The user fills this in themselves; we never decide it for them.

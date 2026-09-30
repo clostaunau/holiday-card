@@ -25,6 +25,8 @@ from holiday_card.core.ai_openai import AIDependencyError
 @dataclass
 class FakeImageClient:
     calls: list[dict] = field(default_factory=list)
+    model: str = "gpt-image-2"
+    returns: tuple[int, int] | None = None
 
     def generate(
         self,
@@ -47,8 +49,8 @@ class FakeImageClient:
             }
         )
         buf = io.BytesIO()
-        # Tiny stand-in; orchestration re-encodes and records real dims.
-        Image.new("RGB", (16, 16), (10, 120, 60)).save(buf, format="PNG")
+        size = self.returns or (width_px, height_px)
+        Image.new("RGB", size, (10, 120, 60)).save(buf, format="PNG")
         return GeneratedImage(png_bytes=buf.getvalue(), cost_usd=0.04, model_version="2027-01")
 
 
@@ -115,6 +117,42 @@ class TestHappyPath:
         assert fake_client.calls[0]["moderation"] == "auto"
         # Cost surfaced to the user.
         assert "0.04" in result.output
+        # The written size, not the request size, is reported.
+        assert "1314x1824px" in result.output
+        assert "300.0 PPI native" in result.output
+        assert "below 300" not in result.output
+        with Image.open(out) as img:
+            assert img.size == (1314, 1824)
+
+    def test_low_native_ppi_is_warned_and_written_size_reported(
+        self,
+        runner: CliRunner,
+        tmp_path: Path,
+        reference_png: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        client = FakeImageClient(model="gpt-image-1", returns=(1024, 1536))
+        monkeypatch.setattr(commands, "make_image_client", lambda: client)
+        out = tmp_path / "low.png"
+        result = runner.invoke(
+            app,
+            _generate_args(
+                reference_png,
+                out,
+                subject="watercolor balloons",
+                occasion="birthday",
+                extra=["--export-for", "moo-a6", "--accept-ai-terms"],
+            ),
+        )
+        assert result.exit_code == 0, result.output
+        assert (client.calls[0]["width_px"], client.calls[0]["height_px"]) == (1024, 1536)
+        assert "1314x1824px" in result.output
+        assert "1024x1536" not in result.output.split("Size:")[1].splitlines()[0]
+        assert "233.8 PPI" in result.output
+        assert "below 300" in result.output
+        # The asset is still written.
+        with Image.open(out) as img:
+            assert img.size == (1314, 1824)
 
 
 @pytest.mark.usefixtures("isolated_config", "fake_client")
