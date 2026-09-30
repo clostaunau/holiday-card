@@ -9,17 +9,25 @@ network or ``OPENAI_API_KEY`` is needed. Consent is isolated by pointing
 from __future__ import annotations
 
 import io
+import re
+import sys
+import traceback
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
-from typer.testing import CliRunner
+from pydantic import SecretStr
+from typer.testing import CliRunner, Result
 
 import holiday_card.cli.commands as commands
+import openai_sdk_stub as sdk
 from holiday_card.cli.commands import app
 from holiday_card.core.ai_assets import GeneratedImage
-from holiday_card.core.ai_openai import AIDependencyError
+from holiday_card.core.ai_errors import ProviderError
+from holiday_card.core.ai_openai import AIDependencyError, OpenAIImageClient
 
 
 @dataclass
@@ -276,3 +284,195 @@ class TestHardRails:
         )
         assert result.exit_code != 0
         assert "trademark" in result.output.lower()
+
+
+# ---------------------------------------------------------------------------
+# Provider errors: exit 6 / 7 / 4 / 2 by kind, redacted, no traceback (#142)
+# ---------------------------------------------------------------------------
+
+
+def _plain(output: str) -> str:
+    # Rich forces colour under GITHUB_ACTIONS; compare the text without ANSI styles.
+    return re.sub(r"\x1b\[[0-9;]*m", "", output)
+
+
+def _chain_text(exc: BaseException | None) -> str:
+    """Every message and formatted traceback along __cause__ / __context__."""
+    parts: list[str] = []
+    seen: set[int] = set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        parts += [str(exc), repr(exc), "".join(traceback.format_exception(exc))]
+        exc = exc.__cause__ or exc.__context__
+    return "\n".join(parts)
+
+
+@dataclass
+class RaisingImageClient:
+    exc: BaseException
+    model: str = "gpt-image-2"
+
+    def generate(self, **_kwargs: object) -> GeneratedImage:
+        raise self.exc
+
+
+def _run(
+    runner: CliRunner,
+    monkeypatch: pytest.MonkeyPatch,
+    client: object,
+    tmp_path: Path,
+    reference: Path,
+    *,
+    debug: bool = False,
+) -> Result:
+    monkeypatch.setattr(commands, "make_image_client", lambda: client)
+    args = _generate_args(
+        reference,
+        tmp_path / "x.png",
+        subject="watercolor balloons",
+        occasion="birthday",
+        extra=["--accept-ai-terms"],
+    )
+    return runner.invoke(app, (["--debug"] if debug else []) + args)
+
+
+@pytest.mark.usefixtures("isolated_config")
+class TestProviderErrors:
+    @pytest.mark.parametrize("debug", [False, True], ids=["plain", "debug"])
+    @pytest.mark.parametrize(
+        ("kind", "code"),
+        [("refused", 6), ("transient", 7), ("environment", 4), ("usage", 2)],
+    )
+    def test_exit_code_by_kind(
+        self,
+        runner: CliRunner,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        reference_png: Path,
+        kind: str,
+        code: int,
+        debug: bool,
+    ) -> None:
+        client = RaisingImageClient(ProviderError("nope", kind=kind, status=400))  # type: ignore[arg-type]
+        result = _run(runner, monkeypatch, client, tmp_path, reference_png, debug=debug)
+        assert result.exit_code == code, result.output
+        text = _plain(result.output)
+        assert "Traceback" not in text
+        assert "Error:" in text
+        assert "(HTTP 400): nope" in text
+        assert not (tmp_path / "x.png").exists()
+
+    def test_retry_after_is_printed(
+        self,
+        runner: CliRunner,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        reference_png: Path,
+    ) -> None:
+        err = ProviderError("slow down", kind="transient", status=429, retry_after_s=20.0)
+        result = _run(runner, monkeypatch, RaisingImageClient(err), tmp_path, reference_png)
+        assert result.exit_code == 7
+        assert "Retry after 20 s." in _plain(result.output)
+
+    def test_no_status_no_http_suffix(
+        self,
+        runner: CliRunner,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        reference_png: Path,
+    ) -> None:
+        err = ProviderError("Request timed out.", kind="transient")
+        result = _run(runner, monkeypatch, RaisingImageClient(err), tmp_path, reference_png)
+        assert result.exit_code == 7
+        text = _plain(result.output)
+        assert "HTTP" not in text
+        assert "Retry after" not in text
+        assert "Request timed out." in text
+
+    def test_unexpected_error_exits_1_with_debug_hint(
+        self,
+        runner: CliRunner,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        reference_png: Path,
+    ) -> None:
+        client = RaisingImageClient(RuntimeError("kaboom"))
+        result = _run(runner, monkeypatch, client, tmp_path, reference_png)
+        assert result.exit_code == 1
+        text = _plain(result.output)
+        assert "kaboom" in text
+        assert "re-run with --debug" in text
+        assert "Traceback" not in text
+
+    def test_unexpected_error_reraises_under_debug(
+        self,
+        runner: CliRunner,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        reference_png: Path,
+    ) -> None:
+        client = RaisingImageClient(RuntimeError("kaboom"))
+        result = _run(runner, monkeypatch, client, tmp_path, reference_png, debug=True)
+        assert isinstance(result.exception, RuntimeError)
+        assert result.exit_code == 1
+
+
+def test_tracebacks_never_show_locals() -> None:
+    assert app.pretty_exceptions_show_locals is False
+    assert commands.ai_asset_app.pretty_exceptions_show_locals is False
+    # Explicit on both apps: typer>=0.12 admits versions that default it on.
+    source = Path(commands.__file__).read_text()
+    assert source.count("typer.Typer(") == 2
+    assert source.count("pretty_exceptions_show_locals=False") == 2
+
+
+_SENTINEL = "sk-proj-" + "S3nt1nelKey" * 3 + "Zz9_-abc"  # 8 + 41 chars
+
+
+@pytest.mark.usefixtures("stub_openai")
+class TestSecretSentinel:
+    """The env key never reaches output, exceptions, tracebacks or config files."""
+
+    @pytest.fixture
+    def stub_openai(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(sys.modules, "openai", sdk.make_module())
+
+    @pytest.mark.parametrize("debug", [False, True], ids=["plain", "debug"])
+    @pytest.mark.parametrize(
+        ("make_exc", "code"),
+        [
+            (lambda m: sdk.status_error(401, m, code="invalid_api_key"), 4),
+            (lambda m: sdk.status_error(429, m, code="rate_limit_exceeded"), 7),
+            (lambda m: sdk.status_error(400, m, code="moderation_blocked"), 6),
+        ],
+        ids=["auth", "rate-limit", "moderation"],
+    )
+    def test_sentinel_absent(
+        self,
+        runner: CliRunner,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        reference_png: Path,
+        isolated_config: Path,
+        make_exc: object,
+        code: int,
+        debug: bool,
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", _SENTINEL)
+        message = f"\x1b[31mIncorrect API key provided: {_SENTINEL}\x1b[0m"
+        exc = make_exc(message)  # type: ignore[operator]
+        sdk_client = SimpleNamespace(images=SimpleNamespace(edit=_raiser(exc), generate=_raiser(exc)))
+        client = OpenAIImageClient(sdk_client, api_key=SecretStr(_SENTINEL))
+        result = _run(runner, monkeypatch, client, tmp_path, reference_png, debug=debug)
+        assert result.exit_code == code, result.output
+        surfaces = [result.output, _chain_text(result.exception)]
+        surfaces += [p.read_text(errors="replace") for p in isolated_config.rglob("*") if p.is_file()]
+        for text in surfaces:
+            assert _SENTINEL not in text
+
+
+def _raiser(exc: BaseException) -> Callable[..., object]:
+    def raise_(**_kwargs: object) -> object:
+        raise exc
+
+    return raise_

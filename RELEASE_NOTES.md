@@ -13,6 +13,23 @@ Package metadata now has project URLs, a Python 3.13 classifier, the
 bundled font / ICC licence files, and an `openai<4` cap on the `[ai]`
 extra. The sdist no longer carries unrelated repository files.
 
+### `ai-asset` provider errors exit cleanly (new exit codes 6 and 7)
+
+An AI provider or network error from `ai-asset generate` used to escape
+as a raw traceback with exit 1, and the SDK's message could echo a
+(masked) API key. Now every provider error prints one redacted line and
+exits by kind: **6** the provider refused the request (content policy),
+**7** a provider or network error, timeout or invalid response (retry
+later; `Retry after N s.` is printed when the provider says), **4** a
+bad key, account, quota or region, **2** an invalid request. Existing
+exit codes keep their meaning.
+
+**Behaviour change:** OpenAI calls no longer retry automatically (an
+image generation is billed on every attempt), time out after 300 s, and
+always go to `https://api.openai.com/v1`: the `OPENAI_BASE_URL`
+environment variable is ignored. If you relied on either, retry from
+your script on exit 7.
+
 ## v1.3.0 — "AI as plumbing, hard-railed" — 2026-06-02
 
 L3 ships — the last named leapfrog the panel endorsed, in the narrow
