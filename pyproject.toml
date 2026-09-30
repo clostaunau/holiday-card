@@ -124,6 +124,7 @@ markers = [
     "visual: Visual regression tests",
     "slow: Slow-running tests",
     "pdfx: PDF/X-1a preflight (run by the pdfx-preflight CI job with poppler + Ghostscript)",
+    "live_ai: calls a real, paid AI provider API; opt-in only, never run in CI (tests/live/)",
 ]
 
 [tool.ruff]
