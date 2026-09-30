@@ -3,7 +3,7 @@
 from holiday_card.core.text_measure import TextMeasurer, set_default_text_measurer
 
 __version__ = "1.3.0"
-__author__ = "Holiday Card Team"
+__author__ = "Chris Lostaunau"
 
 
 def _reportlab_text_measurer() -> TextMeasurer:

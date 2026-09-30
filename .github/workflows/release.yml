@@ -1,0 +1,121 @@
+name: Release
+
+# Tag-driven PyPI release (#86). Push `vX.Y.Z` matching
+# `holiday_card.__version__`: `build` checks, smokes and uploads the artifacts,
+# `publish` sends them to PyPI over OIDC trusted publishing (no stored token;
+# the `pypi` environment requires an approval), and `github-release` attaches
+# them to a GitHub Release whose notes are the matching RELEASE_NOTES.md
+# section. On a pull request that touches the release machinery only `build`
+# runs; the tag/version check, `publish` and `github-release` are skipped.
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/release.yml
+      - scripts/check_release_version.py
+      - pyproject.toml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, check and smoke the release artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          python-version: "3.12"
+      - name: uv build
+        run: uv build
+      - name: sdist carries none of the repo clutter
+        run: |
+          set -euo pipefail
+          tar tzf dist/*.tar.gz > sdist.txt
+          # Anchored at the sdist root: src/holiday_card/data/ is package data.
+          if grep -E '^[^/]+/(data|docs|\.claude|\.specify|\.devcontainer|specs|output)/' sdist.txt; then
+            echo "sdist contains excluded paths"; exit 1
+          fi
+          ls -l dist/
+      - name: twine check --strict
+        run: uvx twine==7.0.0 check --strict dist/*
+      - name: install the wheel into a clean venv
+        run: |
+          set -euo pipefail
+          uv venv --no-config "$RUNNER_TEMP/v"
+          uv pip install --no-config --python "$RUNNER_TEMP/v/bin/python" dist/*.whl
+          echo "$RUNNER_TEMP/v/bin" >> "$GITHUB_PATH"
+      - name: tag matches the package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          version=$(holiday-card --version | awk '{print $NF}')
+          python3 scripts/check_release_version.py check "$GITHUB_REF_NAME" "$version"
+      - name: release notes have a section for the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: python3 scripts/check_release_version.py notes "$GITHUB_REF_NAME" > /dev/null
+      - name: render from the installed wheel outside the checkout
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          mkdir smoke && cd smoke
+          if env | grep '^HOLIDAY_CARD_'; then exit 1; fi
+          holiday-card --version
+          holiday-card create christmas-classic -o christmas-classic.pdf
+          test -s christmas-classic.pdf
+          holiday-card create christmas-classic --export-for moo-a6 -o moo/
+          head -c 8 moo/front.pdf | grep -q '%PDF-1.4'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI (trusted publishing)
+    needs: [build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/holiday-card/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist
+          path: dist
+      # OIDC only: no password/token input; PEP 740 attestations stay on (default).
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+
+  github-release:
+    name: GitHub Release
+    needs: [publish]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist
+          path: dist
+      - name: gh release create
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 scripts/check_release_version.py notes "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" dist/* --verify-tag \
+            --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
