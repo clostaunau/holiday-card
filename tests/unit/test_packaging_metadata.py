@@ -256,3 +256,12 @@ def test_notes_subcommand_prints_the_section(
 def test_shipped_release_notes_have_a_section_for_the_current_version() -> None:
     text = (REPO_ROOT / "RELEASE_NOTES.md").read_text(encoding="utf-8")
     assert extract_release_notes(text, f"v{holiday_card.__version__}").strip()
+
+
+def test_build_backend_supports_pep639_license_files(pyproject: dict[str, Any]) -> None:
+    # SPDX `license = "MIT"` + `license-files` globs need hatchling >= 1.27.
+    (hatchling,) = [
+        Requirement(r) for r in pyproject["build-system"]["requires"] if r.startswith("hatchling")
+    ]
+    assert hatchling.specifier.contains("1.27.0")
+    assert not hatchling.specifier.contains("1.26.3")
