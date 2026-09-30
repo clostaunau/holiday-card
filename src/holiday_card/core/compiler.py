@@ -616,21 +616,45 @@ def _flatten_and_sort(
 
 
 def _compile_shape(shape: object, panel: Panel) -> list[RenderCommand]:
-    if isinstance(shape, Rectangle):
-        return _compile_rectangle(shape, panel)
-    if isinstance(shape, Circle):
-        return _compile_circle(shape, panel)
-    if isinstance(shape, Triangle):
-        return _compile_triangle(shape, panel)
-    if isinstance(shape, Star):
-        return _compile_star(shape, panel)
-    if isinstance(shape, Line):
-        return [_compile_line(shape, panel)]
     if isinstance(shape, SVGPath):
-        return _compile_svg_path(shape, panel)
-    raise UnsupportedFeatureError(
-        f"Shape type {type(shape).__name__} is not yet supported by the compiler."
-    )
+        return _compile_svg_path(shape, panel)  # rotates about its own path bbox
+    if isinstance(shape, Rectangle):
+        commands = _compile_rectangle(shape, panel)
+    elif isinstance(shape, Circle):
+        commands = _compile_circle(shape, panel)
+    elif isinstance(shape, Triangle):
+        commands = _compile_triangle(shape, panel)
+    elif isinstance(shape, Star):
+        commands = _compile_star(shape, panel)
+    elif isinstance(shape, Line):
+        commands = [_compile_line(shape, panel)]
+    else:
+        raise UnsupportedFeatureError(
+            f"Shape type {type(shape).__name__} is not yet supported by the compiler."
+        )
+    return _rotate_about_bbox_centre(shape, panel, commands)
+
+
+def _rotate_about_bbox_centre(
+    shape: Rectangle | Circle | Triangle | Star | Line,
+    panel: Panel,
+    commands: list[RenderCommand],
+) -> list[RenderCommand]:
+    """Wrap ``commands`` in a pivot-rotate group about the shape's bbox centre (#135).
+
+    A line pivots on its midpoint (``_shape_bbox_pts`` pads a flat line's
+    bbox to 1 pt for gradient maths, which would move the pivot).
+    """
+    if shape.rotation == 0:
+        return commands
+    if isinstance(shape, Line):
+        cx = inches_to_points(panel.x + (shape.start_x + shape.end_x) / 2)
+        cy = inches_to_points(panel.y + (shape.start_y + shape.end_y) / 2)
+    else:
+        x, y, width, height = _shape_bbox_pts(shape, panel)
+        cx, cy = x + width / 2, y + height / 2
+    transform = Transform(pivot_x=cx, pivot_y=cy, rotate_deg=shape.rotation)
+    return [BeginGroup(transform=transform), *commands, EndGroup()]
 
 
 def _draw_filled(

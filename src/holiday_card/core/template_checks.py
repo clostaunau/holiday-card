@@ -10,6 +10,7 @@ that exists, and a compile smoke test. Every problem is reported at once
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -55,7 +56,7 @@ def check_template(template: Template) -> list[TemplateProblem]:
     Checks, in order: font names (``FONT_MAP`` ∪ ``CURATED_FONTS`` unless
     ``font_file`` is set), element bounds (text anchor, shape bbox, image
     rect inside ``[0, width] × [0, height]`` of the panel; SVG paths use
-    their compiled bbox, other shapes their unrotated geometry), the
+    their compiled bbox, other shapes their geometry turned by ``rotation``), the
     ``default_theme_id``, and a compile smoke test that turns a
     compile-time refusal into a problem. Pure apart from theme and font
     lookups; ``[]`` means the template is valid.
@@ -118,20 +119,37 @@ def _check_bounds(template: Template) -> Iterable[TemplateProblem]:
 
 
 def _shape_box(shape: Shape, panel: Panel) -> Box:
-    if isinstance(shape, Rectangle):
-        return (shape.x, shape.y, shape.x + shape.width, shape.y + shape.height)
+    # Circles and stars sit inside a circle about their centre, so their box
+    # is the same at any rotation; the rest rotate their corners (#135).
     if isinstance(shape, Circle):
         r = shape.radius
         return (shape.center_x - r, shape.center_y - r, shape.center_x + r, shape.center_y + r)
     if isinstance(shape, Star):
         r = shape.outer_radius
         return (shape.center_x - r, shape.center_y - r, shape.center_x + r, shape.center_y + r)
+    if isinstance(shape, Rectangle):
+        x0, y0 = shape.x, shape.y
+        x1, y1 = x0 + shape.width, y0 + shape.height
+        return _rotated_box([(x0, y0), (x1, y0), (x1, y1), (x0, y1)], shape.rotation)
     if isinstance(shape, Triangle):
-        return _points_box([(shape.x1, shape.y1), (shape.x2, shape.y2), (shape.x3, shape.y3)])
+        corners = [(shape.x1, shape.y1), (shape.x2, shape.y2), (shape.x3, shape.y3)]
+        return _rotated_box(corners, shape.rotation)
     if isinstance(shape, Line):
-        return _points_box([(shape.start_x, shape.start_y), (shape.end_x, shape.end_y)])
+        ends = [(shape.start_x, shape.start_y), (shape.end_x, shape.end_y)]
+        return _rotated_box(ends, shape.rotation)
     assert isinstance(shape, SVGPath)
     return _svg_path_box(shape, panel)
+
+
+def _rotated_box(points: list[tuple[float, float]], rotation: float) -> Box:
+    # The compiler turns these shapes CCW about their unrotated bbox centre.
+    x0, y0, x1, y1 = _points_box(points)
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    cos, sin = math.cos(math.radians(rotation)), math.sin(math.radians(rotation))
+    return _points_box(
+        [(cx + (x - cx) * cos - (y - cy) * sin, cy + (x - cx) * sin + (y - cy) * cos)
+         for x, y in points]
+    )
 
 
 def _svg_path_box(shape: SVGPath, panel: Panel) -> Box:

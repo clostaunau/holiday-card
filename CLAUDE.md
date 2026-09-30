@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 2848 tests, mypy-clean, ruff-clean, coverage ≥ 92%
+uv run pytest                       # all 2866 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -224,7 +224,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 2848 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 2866 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
@@ -414,6 +414,29 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-30 — Shape `rotation` is honoured for every shape type
+  (issue #135)**: `BaseShape.rotation` loaded for every shape, but only
+  `_compile_svg_path` read it, so five rotated rectangles printed
+  unrotated: the 30° / 60° confetti on birthday-balloons and birthday-photo
+  and the 15° pattern-filled gift box on christmas-holiday-masterpiece.
+  `_compile_shape` now passes rectangle / circle / triangle / star / line
+  commands through `_rotate_about_bbox_centre`, which wraps them (a
+  `DrawShape`, or a pattern fill's whole clip + group sequence) in
+  `BeginGroup(Transform(pivot = bbox centre, rotate_deg))` / `EndGroup`;
+  a line pivots on its midpoint (`_shape_bbox_pts` pads a flat line to
+  1 pt). SVG paths keep their own path-bbox pivot. `check_template`'s
+  bounds check turns rectangle / triangle / line corners by `rotation`
+  (circles and stars are rotation-invariant boxes). moo-a6 flattening and
+  every `pdfx` test are unaffected. Regenerated on purpose: the
+  birthday-balloons compile snapshot (two added groups, nothing else),
+  three `letter_content_sha256.json` entries and the PNG + PDF visual
+  baselines of the three templates (`visual-baselines` workflow,
+  eyeballed; only the rotated shapes' areas moved). Guarded by
+  `tests/unit/test_compiler_shape_rotation.py` (group per shape type,
+  none at 0°, a rotated pattern rotates whole, the list of rotated shipped
+  shapes, each compiles to its group, rotated bounds, PNG + PDF pixels).
+  Tests 2848 → 2866.
 
 - **2026-09-30 — Photo slots cover-fit: a clip larger than the photo's
   contain box is filled, not cut flat (issue #98)**: mothers-day-photo
