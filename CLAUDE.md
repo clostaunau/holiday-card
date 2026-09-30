@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 2389 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 2571 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -48,7 +48,13 @@ The Wave 2 refactor (PRs #4-#10) replaced a 1063-LOC monolithic
    `compile_card(card) -> list[RenderCommand]`. Owns letter imposition
    (D6, `core/imposition.py`), z-sort, decorative
    expansion, text-overflow strategy, font resolution, the single
-   inches→points conversion. The decision layer.
+   inches→points conversion. The decision layer. It measures text
+   through an injected `TextMeasurer` Protocol (`core/text_measure.py`;
+   `CompileContext.measurer`, else the default the package `__init__`
+   registers lazily); the ReportLab measurer lives in
+   `renderers/reportlab_measurer.py`. No `core/*.py` imports ReportLab or
+   `holiday_card.renderers`, except `generators.py` (function-local only,
+   #75).
 3. **Backend layer** — `renderers/{reportlab,svg,png}_backend.py`. Each
    implements `render(commands, output_path)` — a visitor over the
    discriminated union of 11 commands. No semantic decisions; every
@@ -87,6 +93,7 @@ src/holiday_card/
     themes.py           # Theme definitions
     text_utils.py       # Text measurement primitives
     text_fitting.py     # Overflow strategies (extracted Wave 2 Step 2a)
+    text_measure.py     # TextMeasurer Protocol + default registry: the compiler's only font-metrics seam (#75)
     render_ir.py        # The 11-command IR (Wave 2 Step 1)
     compiler.py         # Card → list[RenderCommand] (Wave 2 Step 2b)
     export_targets.py   # Named print targets for --export-for
@@ -111,6 +118,7 @@ src/holiday_card/
     validators.py       # Domain validation helpers
   renderers/
     reportlab_backend.py  # IR → PDF (default; sRGB or CMYK mode)
+    reportlab_measurer.py # ReportLabTextMeasurer: pdfmetrics widths/ascent + the font catalog (#75)
     svg_backend.py        # IR → SVG (browser-openable, self-contained: fonts embedded as glyph subsets)
     svg_fonts.py          # fontTools subset → `@font-face` data URI per font_id + GENERIC_FAMILY (#76)
     png_backend.py        # IR → PNG (powers `preview`); clips/dashes/text alpha honoured, bundled TTFs only
@@ -202,7 +210,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 2389 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 2571 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
 
@@ -359,6 +367,53 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — Core measures text through an injected `TextMeasurer`;
+  no core module imports ReportLab or the renderers (expert-panel §P13 /
+  §4 / D4 / D17, issue #75)**: the compiler measured through a throwaway
+  ReportLab `Canvas` and imported `renderers.font_registry`, `flatten`
+  and `template_checks` did the same, and `generators.py` imported all
+  three backends at module level, so the decision layer depended on the
+  PDF backend and tests could not inject deterministic metrics. New
+  stdlib-only `core/text_measure.py`: `TextMeasurer` Protocol
+  (`string_width(text, font_id, size_pt)`, `ascent_descent(font_id,
+  size_pt)` for the #73 safe-zone check, `known_font_ids()` for the #60
+  font refusal and `validate`'s font check; the issue named only
+  `string_width`, but those two call sites landed after it was written),
+  `set_default_text_measurer(factory)` and `default_text_measurer()`
+  (`RuntimeError("no TextMeasurer registered…")` when unset, D4). New
+  `renderers/reportlab_measurer.ReportLabTextMeasurer` registers the
+  fonts and calls `pdfmetrics.stringWidth` / `getAscentDescent` on the IR
+  `font_id`, exactly what `Canvas.stringWidth` did. `holiday_card/
+  __init__.py` is the composition root: it registers a factory that
+  imports that module on first call, so `import holiday_card` loads no
+  ReportLab. `CompileContext.measurer: TextMeasurer | None`; `compile_card`
+  uses `ctx.measurer or default_text_measurer()`; `_make_measurer` is
+  deleted (D17). `text_utils` / `text_fitting` take a `measurer:
+  TextMeasurer` where they took a canvas (same positions).
+  `Flattener(measurer=None)` / `flatten_transparency(..., measurer=None)`
+  measure text boxes on the IR `font_id` (it used the resolved Liberation
+  name, up to 0.03% wider; no flatten decision changed).
+  `generators.Renderer` is now a `runtime_checkable` Protocol
+  (`file_extension`, `color_space`, `render`); the default PDF renderer is
+  built by `_pdf_renderer()` with a function-local import, and the CMYK
+  swap checks `file_extension == ".pdf"` instead of `isinstance`. SVG and
+  PNG backends gained `color_space = "srgb"`. A regression oracle hashed
+  the compiled IR of all 21 templates × 4 content modes (default, long,
+  Markdown, structured letter) × {letter, letter + flatten, per-panel-pdf,
+  moo-a6 fill, moo-a6 letterbox} × every panel (1176 entries) before and
+  after: byte-identical. Snapshots and visual baselines unchanged; the
+  christmas-classic PDF rasterizes pixel-identically to `main`. Guarded
+  by `tests/unit/test_core_purity.py` (AST scan of every `core/*.py`,
+  nested imports included, and subprocess checks that importing the
+  package, the compiler and every core module loads neither `reportlab`
+  nor `holiday_card.renderers`), `tests/unit/test_text_measure.py` (a
+  `FixedWidthMeasurer` drives wrap points, known fonts, safe-zone and
+  flatten boxes; the unregistered default raises),
+  `tests/unit/test_reportlab_measurer.py` (== `Canvas.stringWidth` for
+  every `FONT_MAP` + `CURATED_FONTS` id at 3 sizes) and
+  `tests/unit/test_generators_renderer.py` (every backend satisfies the
+  Protocol; a Protocol-only renderer generates; the CMYK swap).
 
 - **2026-09-29 — SVG output embeds glyph subsets of the fonts the
   compiler measured (expert-panel §P13 / D4 / D12, issue #76)**: the SVG

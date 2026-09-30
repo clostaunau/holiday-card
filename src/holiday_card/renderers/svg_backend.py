@@ -85,6 +85,8 @@ class SVGRenderer:
 
     name: str = "svg"
     file_extension: str = ".svg"
+    # sRGB only: a CMYK target never swaps this backend (core Renderer Protocol).
+    color_space: str = "srgb"
 
     def render(self, commands: Iterable[RenderCommand], output: Path) -> None:
         """Consume ``commands`` and write an SVG at ``output``."""

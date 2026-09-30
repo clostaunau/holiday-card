@@ -1,5 +1,4 @@
-"""Text overflow strategies — pure functions, no canvas state outside the
-explicit ``canvas`` parameter.
+"""Text overflow strategies — pure functions over an explicit ``TextMeasurer``.
 
 These functions decide *what* gets drawn (final font size, the resulting
 lines, whether content was truncated), not *how*. They were extracted from
@@ -7,15 +6,11 @@ lines, whether content was truncated), not *how*. They were extracted from
 (``core/compiler.py``) can call the same logic without going through a
 half-initialized renderer.
 
-The functions still depend on ReportLab's ``canvas.Canvas`` for text
-measurement — the same dependency ``text_utils.py`` already has. Replacing
-that with a backend-neutral ``TextMeasurer`` Protocol is a Wave 3 typography
-concern; doing it here would scope-creep.
+Widths come from the injected ``core.text_measure.TextMeasurer`` (#75), so
+this module does not depend on any rendering backend.
 """
 
 from __future__ import annotations
-
-from reportlab.pdfgen import canvas
 
 from holiday_card.core.models import (
     AdjustmentResult,
@@ -23,6 +18,7 @@ from holiday_card.core.models import (
     Panel,
     TextElement,
 )
+from holiday_card.core.text_measure import TextMeasurer
 from holiday_card.core.text_utils import measure_text, shrink_to_fit, wrap_text
 from holiday_card.utils.measurements import inches_to_points
 
@@ -37,7 +33,7 @@ __all__ = [
 
 
 def truncate_to_fit(
-    pdf_canvas: canvas.Canvas,
+    measurer: TextMeasurer,
     content: str,
     font_name: str,
     font_size: int,
@@ -48,17 +44,17 @@ def truncate_to_fit(
     If the original text already fits, returns it unchanged. Otherwise
     progressively drops trailing characters until ``content + "..."`` fits.
     """
-    text_width = pdf_canvas.stringWidth(content, font_name, font_size)
+    text_width = measurer.string_width(content, font_name, font_size)
     if text_width <= max_width:
         return content
 
     ellipsis = "..."
-    ellipsis_width = pdf_canvas.stringWidth(ellipsis, font_name, font_size)
+    ellipsis_width = measurer.string_width(ellipsis, font_name, font_size)
     available_width = max_width - ellipsis_width
 
     truncated = content
     while (
-        pdf_canvas.stringWidth(truncated, font_name, font_size) > available_width
+        measurer.string_width(truncated, font_name, font_size) > available_width
         and len(truncated) > 0
     ):
         truncated = truncated[:-1]
@@ -85,7 +81,7 @@ def select_auto_strategy(text: TextElement) -> OverflowStrategy:
 
 
 def apply_shrink_strategy(
-    pdf_canvas: canvas.Canvas,
+    measurer: TextMeasurer,
     text: TextElement,
     font_name: str,
 ) -> tuple[int, str]:
@@ -97,7 +93,7 @@ def apply_shrink_strategy(
 
     max_width_pts = inches_to_points(text.width)
     final_size = shrink_to_fit(
-        pdf_canvas,
+        measurer,
         text.content,
         font_name,
         text.font_size,
@@ -107,7 +103,7 @@ def apply_shrink_strategy(
 
     if final_size == text.min_font_size:
         metrics = measure_text(
-            pdf_canvas,
+            measurer,
             text.content,
             font_name,
             final_size,
@@ -115,7 +111,7 @@ def apply_shrink_strategy(
         )
         if not metrics.fits_within_bounds:
             content = truncate_to_fit(
-                pdf_canvas,
+                measurer,
                 text.content,
                 font_name,
                 final_size,
@@ -127,7 +123,7 @@ def apply_shrink_strategy(
 
 
 def apply_wrap_strategy(
-    pdf_canvas: canvas.Canvas,
+    measurer: TextMeasurer,
     text: TextElement,
     panel: Panel,
     font_name: str,
@@ -142,7 +138,7 @@ def apply_wrap_strategy(
     font_size = text.font_size
 
     lines = wrap_text(
-        pdf_canvas,
+        measurer,
         text.content,
         font_name,
         font_size,
@@ -154,7 +150,7 @@ def apply_wrap_strategy(
         max_height_pts = inches_to_points(panel.height) if panel.height else None
         if max_height_pts:
             metrics = measure_text(
-                pdf_canvas,
+                measurer,
                 text.content,
                 font_name,
                 font_size,
@@ -172,7 +168,7 @@ def apply_wrap_strategy(
                 while low <= high:
                     mid = (low + high) // 2
                     test_lines = wrap_text(
-                        pdf_canvas,
+                        measurer,
                         text.content,
                         font_name,
                         mid,
@@ -180,7 +176,7 @@ def apply_wrap_strategy(
                         text.max_lines,
                     )
                     test_metrics = measure_text(
-                        pdf_canvas,
+                        measurer,
                         text.content,
                         font_name,
                         mid,
@@ -202,7 +198,7 @@ def apply_wrap_strategy(
 
 
 def apply_truncate_strategy(
-    pdf_canvas: canvas.Canvas,
+    measurer: TextMeasurer,
     text: TextElement,
     font_name: str,
 ) -> tuple[int, str]:
@@ -212,7 +208,7 @@ def apply_truncate_strategy(
 
     max_width_pts = inches_to_points(text.width)
     content = truncate_to_fit(
-        pdf_canvas,
+        measurer,
         text.content,
         font_name,
         text.font_size,
@@ -222,7 +218,7 @@ def apply_truncate_strategy(
 
 
 def fit_text_element(
-    pdf_canvas: canvas.Canvas,
+    measurer: TextMeasurer,
     text: TextElement,
     panel: Panel,
     font_name: str,
@@ -241,14 +237,14 @@ def fit_text_element(
     original_font_size = text.font_size
 
     if strategy == OverflowStrategy.SHRINK:
-        final_size, content = apply_shrink_strategy(pdf_canvas, text, font_name)
+        final_size, content = apply_shrink_strategy(measurer, text, font_name)
         lines = [content]
         truncated = content != text.content and content.endswith("...")
     elif strategy == OverflowStrategy.WRAP:
-        final_size, lines = apply_wrap_strategy(pdf_canvas, text, panel, font_name)
+        final_size, lines = apply_wrap_strategy(measurer, text, panel, font_name)
         truncated = False
     elif strategy == OverflowStrategy.TRUNCATE:
-        final_size, content = apply_truncate_strategy(pdf_canvas, text, font_name)
+        final_size, content = apply_truncate_strategy(measurer, text, font_name)
         lines = [content]
         truncated = content != text.content
     else:

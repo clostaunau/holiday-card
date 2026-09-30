@@ -191,6 +191,8 @@ class PNGRenderer:
 
     name: str = "png"
     file_extension: str = ".png"
+    # sRGB only: a CMYK target never swaps this backend (core Renderer Protocol).
+    color_space: str = "srgb"
 
     def __init__(self, dpi: int = 144) -> None:
         """Initialize the renderer.

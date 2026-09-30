@@ -10,34 +10,23 @@ This is the *decision* layer of the rendering pipeline (Wave 2 Step 2b in
 * invariant checking via ``assert_balanced``
 
 It is intentionally pure: ``compile_card(card)`` is a function from a
-domain object to a deterministic command list, with no I/O except text
-measurement (which uses a throwaway in-memory ReportLab Canvas — the same
-dependency ``core.text_fitting`` already has).
+domain object to a deterministic command list. Text is measured through an
+injected ``core.text_measure.TextMeasurer`` (``CompileContext.measurer``,
+else the registered default; the ReportLab one lives in
+``renderers/reportlab_measurer.py``), so the compiler imports no backend
+(#75). The only I/O is probing image files.
 
-**Scope of this PR (Wave 2 Step 2b):** only the structural shell plus
-basic shapes and text. Image elements, gradients, patterns, clip masks,
-and SVG paths are out of scope and will
-raise ``NotImplementedError`` if encountered. This is deliberate — silent
-feature drop would let half-supported templates ship as broken PDFs in
-Step 4. Subsequent PRs lift each feature into the compiler, gated behind
-its own snapshot test.
-
-The compiler has **no production callers** in this PR. It is reachable
-only from ``tests/unit/test_compiler.py`` and the hidden CLI flag
-``holiday-card create --debug-emit-ir``. Step 4 of the migration plan
-flips ``CardGenerator`` over.
+Features the compiler cannot lower raise ``UnsupportedFeatureError`` rather
+than being dropped (fail loud). ``CardGenerator`` compiles every card through
+here; the hidden ``create --debug-emit-ir`` flag prints the result.
 """
 
 from __future__ import annotations
 
-import io
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
-
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas as _reportlab_canvas
 
 from holiday_card.core.errors import UnsupportedFeatureError
 from holiday_card.core.flatten import Flattener, flatten_transparency
@@ -100,6 +89,7 @@ from holiday_card.core.render_ir import (
     assert_balanced,
 )
 from holiday_card.core.text_fitting import fit_text_element
+from holiday_card.core.text_measure import TextMeasurer, default_text_measurer
 from holiday_card.utils.measurements import (
     PageGeometry,
     inches_to_points,
@@ -158,6 +148,9 @@ class CompileContext:
     # the trim with a single scale group. "fill" scales by max (crops the
     # overflow) and warns when text crosses the safe zone; "letterbox" by min.
     panel_fit: Literal["native", "fill", "letterbox"] = "native"
+    # Text metrics (#75). None: ``default_text_measurer()`` (ReportLab unless
+    # the composition root registered another); tests inject fakes.
+    measurer: TextMeasurer | None = None
 
     @property
     def page_width_inches(self) -> float:
@@ -188,7 +181,7 @@ def compile_card(card: Card, ctx: CompileContext | None = None) -> list[RenderCo
     refuses rather than silently dropping content.
     """
     ctx = ctx or CompileContext()
-    measurer = _make_measurer()
+    measurer = ctx.measurer or default_text_measurer()
     geometry = ctx.geometry
 
     commands: list[RenderCommand] = []
@@ -269,7 +262,7 @@ def _compile_panel(
     panel: Panel,
     card: Card,
     ctx: CompileContext,
-    measurer: _reportlab_canvas.Canvas,
+    measurer: TextMeasurer,
     fit: Transform | None = None,
 ) -> list[RenderCommand]:
     if panel.background_image:
@@ -277,10 +270,12 @@ def _compile_panel(
             f"panel background_image is not supported (panel {panel.position.value})"
         )
     for text in panel.text_elements:
-        _check_text_fonts(text, f"{card.template_id}/{panel.position.value}/{text.id}")
+        _check_text_fonts(
+            text, f"{card.template_id}/{panel.position.value}/{text.id}", measurer
+        )
 
     # PDF/X targets resolve alpha against the backdrop drawn so far (D10).
-    flattener = Flattener() if ctx.flatten_transparency else None
+    flattener = Flattener(measurer) if ctx.flatten_transparency else None
     where_panel = f"{card.template_id}/{panel.position.value}"
 
     def emit(commands: list[RenderCommand], label: str) -> list[RenderCommand]:
@@ -331,21 +326,19 @@ def _element_label(panel: Panel, element: object) -> str:
     return type(element).__name__
 
 
-def _check_text_fonts(text: TextElement, where: str) -> None:
+def _check_text_fonts(text: TextElement, where: str, measurer: TextMeasurer) -> None:
     # Runs before any measurement: ReportLab raises a bare KeyError otherwise.
     if text.font_file:
         raise UnsupportedFeatureError(
             f"font_file is not supported ({where}); use a font_family from the bundled set"
         )
-    _require_known_font(text.font_family or "Helvetica", where)
+    _require_known_font(text.font_family or "Helvetica", where, measurer)
     if text.letter_content is not None and text.letter_content.signature_font_family:
-        _require_known_font(text.letter_content.signature_font_family, where)
+        _require_known_font(text.letter_content.signature_font_family, where, measurer)
 
 
-def _require_known_font(font_id: str, where: str) -> None:
-    from holiday_card.renderers.font_registry import known_font_ids
-
-    known = known_font_ids()
+def _require_known_font(font_id: str, where: str, measurer: TextMeasurer) -> None:
+    known = measurer.known_font_ids()
     if font_id not in known:
         raise UnknownFontError(
             f"unknown font {font_id!r} in {where}. Available: {', '.join(sorted(known))}"
@@ -485,7 +478,7 @@ def _warn_outside_safe_zone(
     commands: list[RenderCommand],
     fit: Transform,
     geometry: PageGeometry,
-    measurer: _reportlab_canvas.Canvas,
+    measurer: TextMeasurer,
     *,
     where: str,
 ) -> None:
@@ -495,8 +488,6 @@ def _warn_outside_safe_zone(
     transform and any group inside the element (text rotation), then is
     compared with the trim inset by ``safe_margin_in``.
     """
-    from reportlab.pdfbase.pdfmetrics import getAscentDescent
-
     margin = geometry.safe_margin_pts
     art = (margin, margin, geometry.trim_width_pts - margin, geometry.trim_height_pts - margin)
     stack = [fit.to_matrix()]
@@ -508,8 +499,8 @@ def _warn_outside_safe_zone(
             stack.pop()
         elif isinstance(cmd, DrawText) and cmd.run.text.strip():
             run = cmd.run
-            width = measurer.stringWidth(run.text, run.font_id, run.size_pt)
-            ascent, descent = getAscentDescent(run.font_id, run.size_pt)
+            width = measurer.string_width(run.text, run.font_id, run.size_pt)
+            ascent, descent = measurer.ascent_descent(run.font_id, run.size_pt)
             x0 = run.origin.x - {"left": 0.0, "center": width / 2, "right": width}[run.align]
             corners = [
                 _apply(stack[-1], x, y)
@@ -1313,7 +1304,7 @@ def _shape_bbox_pts(
 def _compile_text(
     text: TextElement,
     panel: Panel,
-    measurer: _reportlab_canvas.Canvas,
+    measurer: TextMeasurer,
 ) -> list[RenderCommand]:
     """Compile one text element, wrapping it in a rotation group if needed.
 
@@ -1348,7 +1339,7 @@ def _styled_font_id(text: TextElement) -> str:
 def _compile_text_body(
     text: TextElement,
     panel: Panel,
-    measurer: _reportlab_canvas.Canvas,
+    measurer: TextMeasurer,
 ) -> list[RenderCommand]:
     """Run the overflow strategy and emit one ``DrawText`` per resulting line.
 
@@ -1441,7 +1432,7 @@ def _compile_text_body(
 def _compile_rich_text(
     text: TextElement,
     panel: Panel,
-    measurer: _reportlab_canvas.Canvas,
+    measurer: TextMeasurer,
 ) -> list[RenderCommand]:
     """Lay out a ``RichTextContent`` block into ``DrawText`` commands.
 
@@ -1489,7 +1480,7 @@ def _compile_rich_text(
                     font_id = font_id_for_run(
                         font_family, bold=run.bold, italic=run.italic,
                     )
-                    seg_width = measurer.stringWidth(
+                    seg_width = measurer.string_width(
                         run.text, font_id, font_size,
                     )
                     commands.append(
@@ -1514,7 +1505,7 @@ def _wrap_styled_runs(
     max_width_pt: float,
     font_family: str,
     font_size: int,
-    measurer: _reportlab_canvas.Canvas,
+    measurer: TextMeasurer,
 ) -> list[list]:
     """Greedy word-wrap a sequence of styled runs into lines.
 
@@ -1553,7 +1544,7 @@ def _wrap_styled_runs(
             # if this isn't the very first thing on the line.
             needs_leading_space = bool(current_line) or i > 0
             candidate = (" " + word) if needs_leading_space else word
-            candidate_width = measurer.stringWidth(candidate, font_id, font_size)
+            candidate_width = measurer.string_width(candidate, font_id, font_size)
 
             if current_width + candidate_width > max_width_pt and current_line:
                 # Wrap: flush the current line and start a new one
@@ -1562,7 +1553,7 @@ def _wrap_styled_runs(
                 current_line = []
                 current_width = 0.0
                 candidate = word
-                candidate_width = measurer.stringWidth(candidate, font_id, font_size)
+                candidate_width = measurer.string_width(candidate, font_id, font_size)
 
             # Append: merge with the previous run if same style, else
             # start a new styled segment on this line.
@@ -1617,7 +1608,7 @@ _POSTSCRIPT_SIZE_RATIO = 0.85
 def _compile_letter_content(
     text: TextElement,
     panel: Panel,
-    measurer: _reportlab_canvas.Canvas,
+    measurer: TextMeasurer,
 ) -> list[RenderCommand]:
     """Lay out a ``LetterContent`` instance into ``DrawText`` commands.
 
@@ -1949,23 +1940,3 @@ def _color_to_rgba(color: Color) -> RGBA:
 def _hex_to_rgba(hex_color: str) -> RGBA:
     color = Color.from_hex(hex_color)
     return _color_to_rgba(color)
-
-
-def _make_measurer() -> _reportlab_canvas.Canvas:
-    """Return a throwaway in-memory ReportLab canvas for text measurement.
-
-    Registers the embedded default + curated font chains so
-    ``canvas.stringWidth`` works on any font_id those chains expose
-    (Helvetica/Times/Courier for backwards-compat, plus the curated
-    PlayfairDisplay/Cormorant/Lato/Inter/Caveat/Comfortaa). The text-
-    fitting code calls ``stringWidth`` to size lines; without
-    registration, ReportLab raises ``KeyError`` on any unrecognized
-    font name.
-
-    Reusing this single canvas across one ``compile_card`` call is
-    safe because the canvas is stateless w.r.t. measurement, and font
-    registration is process-global and idempotent.
-    """
-    from holiday_card.renderers.font_registry import ensure_default_fonts_registered
-    ensure_default_fonts_registered()
-    return _reportlab_canvas.Canvas(io.BytesIO(), pagesize=letter)

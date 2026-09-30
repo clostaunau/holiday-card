@@ -7,9 +7,10 @@ template loading, content customization, and PDF rendering.
 import warnings
 from collections.abc import Sequence
 from datetime import datetime
-
-__all__ = ["CardGenerator", "PhotoSlotError", "fill_photo_slots"]
 from pathlib import Path
+from typing import Literal, Protocol, runtime_checkable
+
+__all__ = ["CardGenerator", "PhotoSlotError", "Renderer", "fill_photo_slots"]
 
 from holiday_card.core.compiler import compile_card
 from holiday_card.core.export_targets import ExportTarget, get_target
@@ -37,14 +38,37 @@ from holiday_card.core.per_panel import (
 from holiday_card.core.render_ir import RenderCommand
 from holiday_card.core.templates import load_template
 from holiday_card.core.themes import load_theme
-from holiday_card.renderers.png_backend import PNGRenderer
-from holiday_card.renderers.reportlab_backend import IRReportLabRenderer
-from holiday_card.renderers.svg_backend import SVGRenderer
 
-# Type alias for any renderer the generator can dispatch to. All three
-# implementations expose the same minimal interface
-# (``render(commands, output_path)``).
-Renderer = IRReportLabRenderer | SVGRenderer | PNGRenderer
+
+@runtime_checkable
+class Renderer(Protocol):
+    """Any backend the generator can dispatch to (PDF, SVG, PNG, …).
+
+    Core knows backends only through this Protocol (#75); the concrete
+    classes are imported lazily where the generator builds a default.
+    """
+
+    @property
+    def file_extension(self) -> str:
+        """Suffix of the files it writes, e.g. ``".pdf"``."""
+        ...
+
+    @property
+    def color_space(self) -> str:
+        """``"srgb"`` or ``"cmyk"``."""
+        ...
+
+    def render(self, commands: list[RenderCommand], output_path: Path) -> None:
+        """Write ``commands`` to ``output_path``."""
+        ...
+
+
+def _pdf_renderer(color_space: Literal["srgb", "cmyk"] = "srgb") -> Renderer:
+    # Composition root (#75): the one core module that may import a backend,
+    # and only here, lazily.
+    from holiday_card.renderers.reportlab_backend import IRReportLabRenderer
+
+    return IRReportLabRenderer(color_space=color_space)
 
 # The four canonical panel filenames for per-panel layout. Order matches
 # the natural panel reading order on a half-fold card (front, back,
@@ -191,7 +215,7 @@ class CardGenerator:
                 (``IRReportLabRenderer``); pass ``SVGRenderer()`` for SVG.
         """
         self.templates_dir = templates_dir
-        self.renderer = renderer or IRReportLabRenderer()
+        self.renderer = renderer or _pdf_renderer()
 
     def create_card(
         self,
@@ -489,11 +513,11 @@ class CardGenerator:
         the caller having to track it.
         """
         if (
-            isinstance(self.renderer, IRReportLabRenderer)
+            self.renderer.file_extension == ".pdf"
             and target.color_space == "cmyk"
             and self.renderer.color_space != "cmyk"
         ):
-            return IRReportLabRenderer(color_space="cmyk")
+            return _pdf_renderer(color_space="cmyk")
         return self.renderer
 
     def _maybe_apply_pdfx(self, path: Path, target: ExportTarget) -> None:
