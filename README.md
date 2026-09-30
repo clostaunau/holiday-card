@@ -325,9 +325,14 @@ Guardrails that ship on by default (see
   config dir; pass `--accept-ai-terms` to record it non-interactively.
 * **Image-reference mode default** — `--reference` is required (the
   style anchor); `--unsafe-no-style-anchor` opts out (discouraged).
-* **POD-aware sizing** — the `--export-for` target's trim+bleed sets the
-  pixel dimensions at 300 DPI, rounded to 16-px multiples. Output is
-  tagged sRGB IEC61966-2.1.
+* **POD-aware sizing** — the baked PNG is exactly the `--export-for`
+  target's trim + 2×bleed at 300 PPI (1314×1824 px for `moo-a6`), tagged
+  sRGB IEC61966-2.1 with `dpi=300`. The API is asked for a size the
+  model accepts (`gpt-image-2` by default: the target rounded up to
+  16-px multiples; legacy fixed-size models get their closest aspect),
+  and the result is centre-cropped and resampled to the target. If the
+  model's output is below 300 PPI at print size the CLI warns and the
+  sidecar records `native_ppi`.
 * **Hard category rails** — sympathy / condolence / miscarriage /
   pet_loss occasions, religious iconography, trademarked brands, and
   recognizable-likeness / photo-replacement prompts **refuse by
@@ -381,7 +386,7 @@ critic breakdowns. Recent work targets the panel's "1-month" and
 * ✅ Bold Markdown for curated editorial serifs — `**bold**` and `***bold-italic***` on `Cormorant` / `PlayfairDisplay` resolve to bundled static Bold + BoldItalic TTFs (instanced from the variable masters at weight=700). Closes the bold-fallback documented limitation for the two editorial-serif families
 * ⏳ Multi-panel spill for long Markdown letters
 * ⏳ Father's Day templates (calendar-driven SKU expansion)
-* ✅ AI imagery (Leapfrog 3) — authoring-time `ai-asset generate` subcommand that bakes one image to disk with a provenance sidecar (never runs at render time). Image-reference-mode default, POD-aware sizing (300 DPI / 16-px multiples), sRGB-tagged, first-use consent, trademark blocklist, and hard category rails (sympathy / religious iconography / likeness / photo replacement refuse by default). Opt-in via `pip install holiday-card[ai]` + `OPENAI_API_KEY`. See "AI imagery" below
+* ✅ AI imagery (Leapfrog 3) — authoring-time `ai-asset generate` subcommand that bakes one image to disk with a provenance sidecar (never runs at render time). Image-reference-mode default, POD-aware sizing (exact trim+bleed at 300 PPI, model-supported request sizes), sRGB-tagged, first-use consent, trademark blocklist, and hard category rails (sympathy / religious iconography / likeness / photo replacement refuse by default). Opt-in via `pip install holiday-card[ai]` + `OPENAI_API_KEY`. See "AI imagery" below
 * ❌ Render-time AI fill, AI-generated copy, panel/photo replacement — deliberately out of scope per the AI-feature consensus doc
 
 ## Architecture

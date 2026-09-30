@@ -1036,14 +1036,6 @@ def ai_asset_generate(
         )
         raise typer.Exit(ExitCode.USAGE)
 
-    request = build_ai_request(
-        prompt=subject,
-        trim_width_in=geom.trim_width_in,
-        trim_height_in=geom.trim_height_in,
-        bleed_in=geom.bleed_in,
-        reference_path=str(reference) if reference else None,
-    )
-
     if i_know_what_im_doing:
         from holiday_card.core.ai_rails import evaluate_rails
 
@@ -1062,6 +1054,16 @@ def ai_asset_generate(
     except AIDependencyError as e:
         typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(ExitCode.ENVIRONMENT) from e
+
+    # Size for the model the client actually calls (#87).
+    request = build_ai_request(
+        prompt=subject,
+        trim_width_in=geom.trim_width_in,
+        trim_height_in=geom.trim_height_in,
+        bleed_in=geom.bleed_in,
+        reference_path=str(reference) if reference else None,
+        model=client.model,
+    )
 
     try:
         result = generate_ai_asset(
@@ -1092,7 +1094,16 @@ def ai_asset_generate(
 
     typer.secho(f"AI asset written: {result.asset_path}", fg=typer.colors.GREEN)
     typer.echo(f"  Provenance: {result.sidecar_path.name}")
-    typer.echo(f"  Size: {request.width_px}x{request.height_px}px @ {request.dpi} DPI (sRGB)")
+    typer.echo(
+        f"  Size: {result.width_px}x{result.height_px}px @ {request.dpi} DPI (sRGB), "
+        f"{result.native_ppi:.1f} PPI native from {client.model}"
+    )
+    if result.native_ppi < request.dpi:
+        typer.secho(
+            f"  Warning: the model's output is {result.native_ppi:.1f} PPI at the "
+            f"print size, below {request.dpi}; it was upscaled and may print soft.",
+            fg=typer.colors.YELLOW,
+        )
     typer.echo(f"  Cost: ${result.cost_usd:.2f}")
     typer.echo("  OpenAI policy: https://openai.com/policies/usage-policies")
     typer.echo(

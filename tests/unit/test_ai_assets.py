@@ -1,7 +1,7 @@
 """POD-aware sizing + generate-orchestration tests for AI imagery.
 
-Covers ``build_ai_request`` (resolve print geometry to pixel dims at
-300 DPI rounded to /16) and ``generate_ai_asset`` (the authoring-time
+Covers ``build_ai_request`` (resolve print geometry to the exact baked
+size at 300 PPI plus a model-supported request size, issue #87) and ``generate_ai_asset`` (the authoring-time
 orchestration: consent → rails → client call → sRGB-tagged PNG +
 provenance sidecar). The model call is injected as a fake client, so no
 network and no ``OPENAI_API_KEY`` are needed — the panel's
@@ -18,13 +18,17 @@ import pytest
 from PIL import Image
 
 from holiday_card.core.ai_assets import (
+    DEFAULT_AI_MODEL,
+    MODEL_SIZE_POLICIES,
     AIRequest,
     ConsentRequiredError,
     GeneratedImage,
+    ModelSizePolicy,
     RailRefusedError,
     build_ai_request,
+    choose_request_size,
     generate_ai_asset,
-    round_to_multiple,
+    size_is_allowed,
 )
 from holiday_card.core.ai_provenance import read_sidecar, record_consent
 from holiday_card.core.models import OccasionType
@@ -34,9 +38,12 @@ from holiday_card.core.models import OccasionType
 
 @dataclass
 class FakeImageClient:
-    """Records the request and returns a solid PNG of the requested size."""
+    """Records the size it was sent; returns a solid PNG of ``returns`` or that size."""
 
     calls: list[dict] | None = None
+    model: str = "gpt-image-2"
+    returns: tuple[int, int] | None = None
+    image: Image.Image | None = None
 
     def generate(
         self,
@@ -61,7 +68,9 @@ class FakeImageClient:
             }
         )
         buf = io.BytesIO()
-        Image.new("RGB", (width_px, height_px), (10, 120, 60)).save(buf, format="PNG")
+        size = self.returns or (width_px, height_px)
+        img = self.image or Image.new("RGB", size, (10, 120, 60))
+        img.save(buf, format="PNG")
         return GeneratedImage(png_bytes=buf.getvalue(), cost_usd=0.04, model_version="2027-01")
 
 
@@ -76,6 +85,8 @@ def _small_request() -> AIRequest:
         prompt="watercolor pine bough border",
         width_px=64,
         height_px=96,
+        request_width_px=64,
+        request_height_px=96,
         dpi=300,
         reference_path="ref.png",
         moderation="auto",
@@ -85,15 +96,8 @@ def _small_request() -> AIRequest:
 # --- Sizing -----------------------------------------------------------------
 
 
-class TestRounding:
-    def test_rounds_to_nearest_multiple_of_16(self) -> None:
-        assert round_to_multiple(1000) == 1008  # 62.5 -> 63 * 16
-        assert round_to_multiple(1024) == 1024
-        assert round_to_multiple(8) == 16  # never round to zero
-
-
 class TestBuildAIRequest:
-    def test_resolves_trim_plus_bleed_at_300_dpi_rounded_to_16(self) -> None:
+    def test_target_is_exact_trim_plus_bleed_at_300_dpi(self) -> None:
         # MOO A6: trim 4.13x5.83 + 0.125 bleed each side, generate at
         # trim + 2*bleed so the model paints into the bleed band.
         req = build_ai_request(
@@ -103,16 +107,94 @@ class TestBuildAIRequest:
             bleed_in=0.125,
             dpi=300,
         )
-        # 4.38in * 300 = 1314 -> /16 nearest = 1312
-        assert req.width_px == 1312
-        # 6.08in * 300 = 1824 -> already /16
-        assert req.height_px == 1824
+        # 4.38in * 300 = 1314 and 6.08in * 300 = 1824: the baked file is
+        # exactly this, not /16-rounded (1312 would be 299.5 PPI).
+        assert (req.width_px, req.height_px) == (1314, 1824)
         assert req.dpi == 300
         assert req.moderation == "auto"
+
+    def test_request_size_is_valid_for_the_default_model(self) -> None:
+        req = build_ai_request(prompt="x", trim_width_in=4.13, trim_height_in=5.83, bleed_in=0.125)
+        assert req.model == DEFAULT_AI_MODEL
+        assert size_is_allowed(DEFAULT_AI_MODEL, req.request_width_px, req.request_height_px)
+        # Rounded up to /16 so the request never under-resolves the target.
+        assert (req.request_width_px, req.request_height_px) == (1328, 1824)
+
+    def test_fixed_size_model_gets_its_closest_aspect(self) -> None:
+        req = build_ai_request(
+            prompt="x", trim_width_in=4.13, trim_height_in=5.83, bleed_in=0.125, model="gpt-image-1"
+        )
+        assert (req.request_width_px, req.request_height_px) == (1024, 1536)
+        assert (req.width_px, req.height_px) == (1314, 1824)
 
     def test_is_deterministic(self) -> None:
         kwargs = {"prompt": "x", "trim_width_in": 4.13, "trim_height_in": 5.83, "bleed_in": 0.125}
         assert build_ai_request(**kwargs) == build_ai_request(**kwargs)
+
+
+class TestModelSizePolicy:
+    def test_default_model_has_a_policy(self) -> None:
+        assert DEFAULT_AI_MODEL in MODEL_SIZE_POLICIES
+
+    @pytest.mark.parametrize("model", ["gpt-image-1", "gpt-image-1-mini", "gpt-image-1.5"])
+    def test_legacy_models_are_fixed_size(self, model: str) -> None:
+        assert MODEL_SIZE_POLICIES[model].fixed_sizes == (
+            (1024, 1024),
+            (1536, 1024),
+            (1024, 1536),
+        )
+
+    def test_fixed_model_picks_closest_aspect(self) -> None:
+        assert choose_request_size("gpt-image-1", 1314, 1824) == (1024, 1536)
+        assert choose_request_size("gpt-image-1", 1824, 1314) == (1536, 1024)
+        assert choose_request_size("gpt-image-1", 900, 1000) == (1024, 1024)
+
+    def test_fixed_model_tie_goes_to_larger_area(self) -> None:
+        policy = ModelSizePolicy(model="m", fixed_sizes=((100, 100), (200, 200)))
+        MODEL_SIZE_POLICIES["test-tie"] = policy
+        try:
+            assert choose_request_size("test-tie", 50, 50) == (200, 200)
+        finally:
+            del MODEL_SIZE_POLICIES["test-tie"]
+
+    def test_flexible_valid_size_passes_through(self) -> None:
+        assert choose_request_size("gpt-image-2", 1312, 1824) == (1312, 1824)
+
+    def test_flexible_off_grid_size_rounds_up_to_multiple(self) -> None:
+        assert choose_request_size("gpt-image-2", 1314, 1824) == (1328, 1824)
+
+    def test_flexible_oversize_is_scaled_into_limits(self) -> None:
+        policy = MODEL_SIZE_POLICIES["gpt-image-2"]
+        w, h = choose_request_size("gpt-image-2", 4000, 1000)
+        assert policy.max_edge is not None and max(w, h) <= policy.max_edge
+        assert policy.max_aspect is not None and max(w, h) / min(w, h) <= policy.max_aspect
+        assert w % 16 == 0 and h % 16 == 0
+        assert size_is_allowed("gpt-image-2", w, h)
+
+    def test_flexible_too_many_pixels_is_scaled_down(self) -> None:
+        w, h = choose_request_size("gpt-image-2", 3600, 3600)
+        assert size_is_allowed("gpt-image-2", w, h)
+        assert abs(w - h) <= 16
+
+    def test_flexible_too_few_pixels_is_scaled_up(self) -> None:
+        w, h = choose_request_size("gpt-image-2", 64, 96)
+        assert size_is_allowed("gpt-image-2", w, h)
+        assert w * h >= 655_360
+
+    def test_unknown_model_raises(self) -> None:
+        with pytest.raises(ValueError, match="no-such-model"):
+            choose_request_size("no-such-model", 1314, 1824)
+        with pytest.raises(ValueError, match="no-such-model"):
+            size_is_allowed("no-such-model", 1024, 1024)
+
+    def test_size_is_allowed(self) -> None:
+        assert size_is_allowed("gpt-image-1", 1024, 1536)
+        assert not size_is_allowed("gpt-image-1", 1312, 1824)
+        assert size_is_allowed("gpt-image-2", 1312, 1824)
+        assert not size_is_allowed("gpt-image-2", 1314, 1824)  # not /16
+        assert not size_is_allowed("gpt-image-2", 3840, 1024)  # aspect > 3
+        assert not size_is_allowed("gpt-image-2", 4096, 2048)  # edge > 3840
+        assert not size_is_allowed("gpt-image-2", 512, 512)  # < min pixels
 
 
 # --- Orchestration ----------------------------------------------------------
@@ -165,6 +247,69 @@ class TestGenerateHappyPath:
         )
         assert client.calls is not None
         assert client.calls[0]["moderation"] == "auto"
+
+
+class TestResampleToTarget:
+    def _moo_a6_run(self, tmp_path: Path, client: FakeImageClient) -> Path:
+        out = tmp_path / "moo.png"
+        generate_ai_asset(
+            prompt="watercolor pine bough border",
+            occasion=OccasionType.CHRISTMAS,
+            out_path=out,
+            request=build_ai_request(
+                prompt="watercolor pine bough border",
+                trim_width_in=4.13,
+                trim_height_in=5.83,
+                bleed_in=0.125,
+                model=client.model,
+            ),
+            client=client,
+            timestamp="2027-01-15T10:00:00Z",
+            consent_path=_consented(tmp_path),
+        )
+        return out
+
+    def test_fixed_size_output_is_resampled_to_the_exact_target(self, tmp_path: Path) -> None:
+        client = FakeImageClient(model="gpt-image-1", returns=(1024, 1536))
+        out = self._moo_a6_run(tmp_path, client)
+
+        assert client.calls is not None
+        assert (client.calls[0]["width_px"], client.calls[0]["height_px"]) == (1024, 1536)
+        with Image.open(out) as img:
+            assert img.size == (1314, 1824)
+            assert img.info["dpi"] == pytest.approx((300, 300), abs=0.01)
+            assert img.info.get("icc_profile")
+
+        record = read_sidecar(out)
+        assert (record.width_px, record.height_px) == (1314, 1824)
+        assert (record.generated_width_px, record.generated_height_px) == (1024, 1536)
+        assert record.native_ppi == pytest.approx(233.8, abs=0.05)
+        assert record.model == "gpt-image-1"
+
+    def test_flexible_output_is_cropped_not_scaled(self, tmp_path: Path) -> None:
+        client = FakeImageClient(model="gpt-image-2")
+        out = self._moo_a6_run(tmp_path, client)
+
+        assert client.calls is not None
+        assert (client.calls[0]["width_px"], client.calls[0]["height_px"]) == (1328, 1824)
+        with Image.open(out) as img:
+            assert img.size == (1314, 1824)
+        record = read_sidecar(out)
+        assert record.native_ppi == pytest.approx(300.0)
+        assert record.model == "gpt-image-2"
+
+    def test_cover_crop_keeps_the_centre(self, tmp_path: Path) -> None:
+        # A 2:1 source with a red left half, green centre, blue right half:
+        # cropping to the portrait target keeps only the green centre.
+        img = Image.new("RGB", (1536, 1024), (0, 200, 0))
+        img.paste((200, 0, 0), (0, 0, 384, 1024))
+        img.paste((0, 0, 200), (1152, 0, 1536, 1024))
+
+        out = self._moo_a6_run(tmp_path, FakeImageClient(model="gpt-image-1", image=img))
+        with Image.open(out) as img:
+            rgb = img.convert("RGB")
+            assert rgb.getpixel((2, 900)) == (0, 200, 0)
+            assert rgb.getpixel((1311, 900)) == (0, 200, 0)
 
 
 class TestConsentEnforced:
