@@ -132,11 +132,11 @@ jobs:
       # summary instead and the job stays green (#85). Never switch this
       # workflow to pull_request_target (spec §4).
       - name: Write preview list to the job summary (fork PR)
-        if: steps.render.outputs.count != '0' && github.event.pull_request.head.repo.full_name != github.repository
+        if: steps.render.outputs.count != '0' && github.event.pull_request.head.repo.full_name != 'dry-run/forced-fork'
         run: cat comment-body.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Find existing sticky comment (if any)
-        if: steps.render.outputs.count != '0' && github.event.pull_request.head.repo.full_name == github.repository
+        if: steps.render.outputs.count != '0' && github.event.pull_request.head.repo.full_name == 'dry-run/forced-fork'
         id: find-comment
         uses: peter-evans/find-comment@3eae4d37986fb5a8592848f6a574fdf654e61f9e # v3.1.0
         with:
@@ -148,7 +148,7 @@ jobs:
           body-includes: "🎴 Card preview (auto-rendered)"
 
       - name: Post (or update) sticky PR comment
-        if: steps.render.outputs.count != '0' && github.event.pull_request.head.repo.full_name == github.repository
+        if: steps.render.outputs.count != '0' && github.event.pull_request.head.repo.full_name == 'dry-run/forced-fork'
         uses: peter-evans/create-or-update-comment@71345be0265236311c031f5c7866368bd1eff043 # v4.0.0
         with:
           # If find-comment returned an id, edit that comment in place.
