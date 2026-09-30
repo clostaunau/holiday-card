@@ -264,7 +264,7 @@ class TestChooseAspectShape:
             assert shape.resolution is None
 
     @pytest.mark.parametrize("model", sorted(OPENROUTER_IMAGE_MODELS))
-    @pytest.mark.parametrize("target", _GEOMETRY_TARGETS)
+    @pytest.mark.parametrize("target", ["letter", "moo-a6"])
     def test_every_curated_model_picks_3_4_for_portrait_targets(
         self, model: str, target: str
     ) -> None:
