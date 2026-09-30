@@ -87,6 +87,7 @@ app = typer.Typer(
     add_completion=False,
     cls=_CLIGroup,
     epilog=EXIT_CODES_HELP,
+    pretty_exceptions_show_locals=False,  # never print api keys / headers from frames
 )
 
 
@@ -899,8 +900,24 @@ ai_asset_app = typer.Typer(
         "to disk with a provenance sidecar; never runs at render time. "
         "Requires `pip install holiday-card\\[ai]` and OPENAI_API_KEY."
     ),
+    pretty_exceptions_show_locals=False,  # never print api keys / headers from frames
 )
 app.add_typer(ai_asset_app, name="ai-asset")
+
+
+# ProviderError.kind -> exit code and what to tell the user (#142).
+_PROVIDER_EXIT = {
+    "refused": ExitCode.PROVIDER_REFUSED,
+    "transient": ExitCode.PROVIDER_ERROR,
+    "environment": ExitCode.ENVIRONMENT,
+    "usage": ExitCode.USAGE,
+}
+_PROVIDER_WHAT = {
+    "refused": "the AI provider refused the request",
+    "transient": "the AI provider request failed (retryable)",
+    "environment": "the AI provider rejected the API key, account or region",
+    "usage": "the AI provider rejected the request as invalid",
+}
 
 
 @ai_asset_app.command("generate")
@@ -969,6 +986,7 @@ def ai_asset_generate(
         build_ai_request,
         generate_ai_asset,
     )
+    from holiday_card.core.ai_errors import ProviderError
     from holiday_card.core.ai_provenance import (
         CONSENT_NOTICE,
         default_consent_path,
@@ -1092,6 +1110,17 @@ def ai_asset_generate(
             err=True,
         )
         raise typer.Exit(ExitCode.RAIL_REFUSED) from e
+    except ProviderError as e:  # never re-raised, even under --debug: the exit code is the contract
+        what = _PROVIDER_WHAT[e.kind]
+        status = f" (HTTP {e.status})" if e.status is not None else ""
+        typer.secho(f"Error: {what}{status}: {e}", fg=typer.colors.RED, err=True)
+        if e.retry_after_s is not None:
+            typer.echo(f"Retry after {e.retry_after_s:g} s.", err=True)
+        raise typer.Exit(_PROVIDER_EXIT[e.kind]) from e
+    except (typer.Exit, BrokenPipeError):
+        raise
+    except Exception as e:
+        _unexpected_error("Error generating AI asset", e)
 
     typer.secho(f"AI asset written: {result.asset_path}", fg=typer.colors.GREEN)
     typer.echo(f"  Provenance: {result.sidecar_path.name}")

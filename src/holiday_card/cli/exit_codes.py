@@ -14,6 +14,8 @@ class ExitCode(IntEnum):
     CONSENT_REQUIRED = 3 # ai-asset first-use consent missing
     ENVIRONMENT = 4      # missing optional extra / API key, or output path not writable
     RAIL_REFUSED = 5     # ai-asset refused by hard category rails
+    PROVIDER_REFUSED = 6 # ai-asset: the AI provider refused the request (content policy / refusal)
+    PROVIDER_ERROR = 7   # ai-asset: provider/network error, timeout or invalid response (retryable)
 
 
 _MEANINGS = {
@@ -23,6 +25,8 @@ _MEANINGS = {
     ExitCode.CONSENT_REQUIRED: "ai-asset: first-use consent missing (--accept-ai-terms)",
     ExitCode.ENVIRONMENT: "missing optional extra or API key, or output path not writable",
     ExitCode.RAIL_REFUSED: "ai-asset: refused by the hard category rails",
+    ExitCode.PROVIDER_REFUSED: "ai-asset: the AI provider refused the request (content policy)",
+    ExitCode.PROVIDER_ERROR: "ai-asset: provider or network error, timeout or invalid response (retryable)",
 }
 
 EXIT_CODES_HELP = "Exit codes:\n\n" + "\n".join(
