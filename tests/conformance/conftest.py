@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 import resvg_py
+from capabilities import TOLERANCE
 from PIL import Image, ImageChops
 
 import rasterize
@@ -33,11 +34,7 @@ DPI = 144
 # geometry error moves channels by far more.
 CHANNEL_DELTA = 48
 
-# Maximum mismatched-pixel ratio for a ``match`` status. The PDF backend is
-# anti-aliased by pdfium just like resvg, so 1% only leaves room for edge
-# rounding. The PNG backend draws without anti-aliasing until #77, which
-# costs up to ~1% on curved edges; #77 tightens PNG to 1.0% in the same PR.
-TOLERANCE: dict[str, float] = {"pdf": 0.010, "png": 0.020}
+# Maximum mismatched-pixel ratio per backend: ``capabilities.TOLERANCE``.
 
 # A page-area ratio cannot see a thin feature: a 0.5 pt fold line is ~0.35%
 # of the page, so it could change colour entirely and stay under 1%. Every

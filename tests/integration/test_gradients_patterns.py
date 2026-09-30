@@ -308,7 +308,9 @@ def test_png_draws_pattern_primitives_on_one_layer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The pattern group isolates its primitives: a clipped draw would
-    otherwise composite a canvas-sized layer per primitive (#74)."""
+    otherwise composite a canvas-sized layer per primitive (#74). Since #77
+    every draw composites a bbox-sized layer, so page-sized allocations are
+    only the canvas, the clip mask, the group overlay and the RGB flatten."""
     from holiday_card.core.compiler import _lower_pattern_fill
     from holiday_card.core.render_ir import BeginPage, EndPage, RectGeom
 
@@ -320,18 +322,18 @@ def test_png_draws_pattern_primitives_on_one_layer(
         *_lower_pattern_fill(fill, geom, (10, 10, 200, 200), None, 1.0),
         EndPage(),
     ]
-    layers = 0
-    original = PNGRenderer._draw_in_layer
+    page_sized = 0
+    real_new = Image.new
 
-    def spy(self: PNGRenderer, *args: object, **kwargs: object) -> None:
-        nonlocal layers
-        layers += 1
-        original(self, *args, **kwargs)  # type: ignore[arg-type]
+    def spy(mode: str, size: tuple[int, int], *args: object, **kwargs: object) -> Image.Image:
+        nonlocal page_sized
+        page_sized += tuple(size) == (220, 220)
+        return real_new(mode, size, *args, **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(PNGRenderer, "_draw_in_layer", spy)
+    monkeypatch.setattr(Image, "new", spy)
     out = tmp_path / "checker.png"
     PNGRenderer(dpi=72).render(commands, out)
-    assert layers == 0
+    assert page_sized <= 4
     with Image.open(out) as img:
         rgb = img.convert("RGB")
         # First 7.2 pt tile hangs from (10, 210): cells top-left and
