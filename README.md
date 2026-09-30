@@ -89,10 +89,10 @@ holiday-card create birthday-balloons --inside-message-md letter.md
 | **Templates** | 21 ship-quality templates across Christmas (11, incl. 1 family photo), Birthday (2, incl. 1 photo), Hanukkah, Mother's Day (2, incl. 1 photo), Generic, and 4 sympathy-class (sympathy, condolence, miscarriage, pet loss) — all compile cleanly |
 | **Voices** | warm, witty, spare, devotional, irreverent — pick via `--voice` |
 | **Sentiments** | 303 hand-tagged copy lines across 9 occasions × up-to-5 voices × 2 roles. Sympathy-class occasions ship a curated voice subset ("absent rather than wrong" — witty + irreverent never appear for grief contexts) |
-| **Fonts** | 6 curated SIL OFL families (Cormorant Garamond, Playfair Display, Lato, Inter, Caveat, Comfortaa) embedded in every PDF |
+| **Fonts** | 6 curated SIL OFL families (Cormorant Garamond, Playfair Display, Lato, Inter, Caveat, Comfortaa) embedded in every PDF, and as glyph subsets in every SVG |
 | **Photo cards** | `ImageElement` + circle / rectangle / ellipse / star clip masks; render a portrait into a styled frame |
 | **POD targets** | `letter` (single imposed 8.5×11 sheet for home printing, no bleed), `per-panel-pdf` (native trim per panel + 0.125" bleed), `moo-a6` (A6 + 0.125" bleed, art scaled to fill the trim and cropped — `--panel-fit letterbox` to fit it whole — + DeviceCMYK PDF/X-1a:2003 + GRACoL2013 ICC) |
-| **Output formats** | PDF (default), SVG, PNG |
+| **Output formats** | PDF (default), SVG (self-contained: fonts are embedded as glyph subsets, photos as data URIs, so it renders the same on any machine), PNG |
 | **Quality gates** | ruff + mypy strict + 882 tests + per-panel 144 DPI visual-regression gate (PNG and PDF rasters) across all 21 templates + a smoke job that installs the built wheel and runs it outside any checkout, covering each voice and the CMYK export |
 
 ### Where data lives / env overrides

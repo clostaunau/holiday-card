@@ -28,6 +28,11 @@ currently emits — panel rotations are zero in every shipped template).
 paint, because the compiler lowers patterns to clip + solid primitives
 (#74). Anything unknown raises ``NotImplementedError`` for the same
 reason the IR ReportLab backend does — fail loud, not silent.
+
+Fonts (#76): every ``font_id`` drawn on a page is embedded in ``<defs>`` as
+a glyph subset of the TTF the compiler measured (``svg_fonts``), and text
+names that face first, then a generic family. A ``font_id`` without a
+bundled TTF raises ``NotImplementedError``; nothing unembedded is emitted.
 """
 
 from __future__ import annotations
@@ -61,6 +66,8 @@ from holiday_card.core.render_ir import (
     Stroke,
     Transform,
 )
+from holiday_card.renderers.font_registry import ttf_path_for
+from holiday_card.renderers.svg_fonts import css_family, font_face_css, svg_font_family
 
 __all__ = ["SVGRenderer"]
 
@@ -92,6 +99,7 @@ class SVGRenderer:
         self._clip_counter: int = 0
         self._paint_counter: int = 0
         self._metadata: list[tuple[str, str]] = []
+        self._font_chars: dict[str, set[str]] = {}
 
         for cmd in commands:
             self._dispatch(cmd)
@@ -175,6 +183,7 @@ class SVGRenderer:
         self._stack = [self._root]
 
     def _end_page(self) -> None:
+        self._embed_fonts()
         # Flush metadata as <title>/<desc>. Place after <defs> per convention.
         if self._metadata and self._root is not None:
             for key, value in self._metadata:
@@ -186,6 +195,28 @@ class SVGRenderer:
                     desc = ET.Element("desc")
                     desc.text = f"theme: {value}"
                     self._root.insert(1, desc)
+
+    def _embed_fonts(self) -> None:
+        # One @font-face per font_id drawn on the page, subset to its chars.
+        if not self._font_chars or self._defs is None:
+            return
+        faces: list[str] = []
+        notice: list[str] = []
+        for font_id in sorted(self._font_chars):
+            path = ttf_path_for(font_id)
+            assert path is not None  # _draw_text refused it otherwise
+            chars = "".join(sorted(self._font_chars[font_id]))
+            faces.append(font_face_css(font_id, path, chars))
+            notice.append(f"{css_family(font_id)} ({path.stem})")
+        comment = ET.Comment(
+            " Embedded font subsets, each under the SIL Open Font License 1.1: "
+            + ", ".join(notice) + " "
+        )
+        style = ET.Element("style")
+        style.text = "\n".join(faces)
+        self._defs.insert(0, style)
+        self._defs.insert(0, comment)
+        self._font_chars = {}
 
     # ------------------------------------------------------------------
     # Groups
@@ -480,10 +511,13 @@ class SVGRenderer:
 
     def _draw_text(self, cmd: DrawText) -> None:
         run = cmd.run
+        if ttf_path_for(run.font_id) is None:
+            raise NotImplementedError(f"SVG backend cannot embed font {run.font_id!r}")
+        self._font_chars.setdefault(run.font_id, set()).update(run.text)
         attrib = {
             "x": _fmt(run.origin.x),
             "y": _fmt(self._page_height - run.origin.y),
-            "font-family": run.font_id,
+            "font-family": svg_font_family(run.font_id),
             "font-size": _fmt(run.size_pt),
             "fill": _rgba_to_css(run.color),
         }

@@ -69,9 +69,14 @@ CAPABILITIES: dict[str, dict[Backend, Cap]] = {
     "text_lato_left": _both(_M),
     "text_lato_center": _both(_M),
     "text_lato_right": _both(_M),
-    # SVG names the font by font_id ("Cormorant"), which matches no font
-    # family, so the oracle draws nothing until @font-face lands.
-    "text_curated_family": _both(Cap("known_diff", "#76")),
+    # SVG embeds a glyph subset of the TTF the compiler measured (#76).
+    **{
+        f"text_family_{family}": _both(_M)
+        for family in (
+            "cormorant", "cormorant_italic", "playfairdisplay", "inter",
+            "caveat", "comfortaa", "helvetica",
+        )
+    },
     "text_opacity": _both(_M),
     "image_jpeg": _both(_M),
     "image_clipped_circle": _both(_M),

@@ -2,13 +2,18 @@
 
 The SVG backend is the oracle. PDF and SVG are rasterized with
 host-independent, wheel-only libraries (``pypdfium2`` and ``resvg-py`` with
-``skip_system_fonts=True`` + the bundled fonts), so results do not depend on
-what the CI runner has installed. The PNG backend rasterizes itself.
+``skip_system_fonts=True``), so results do not depend on what the CI runner
+has installed. resvg ignores ``@font-face``, so the SVG rasterizer loads the
+font subsets embedded in the SVG itself (#76) and no other font: text in the
+oracle is drawn only with what the file carries. The PNG backend rasterizes itself.
 """
 
 from __future__ import annotations
 
+import base64
 import io
+import re
+import tempfile
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
@@ -18,7 +23,6 @@ from PIL import Image, ImageChops
 
 import rasterize
 from holiday_card.core.render_ir import RenderCommand
-from holiday_card.renderers.font_registry import FONT_DIR
 from holiday_card.renderers.png_backend import PNGRenderer
 
 # Every comparison runs at 144 DPI (2 px per point).
@@ -60,15 +64,24 @@ _FAMILY_OPTIONS = (
 )
 
 
+_EMBEDDED_FONT = re.compile(rb"url\(data:font/ttf;base64,([A-Za-z0-9+/=]+)\)")
+
+
 def _rasterize_svg(path: Path, dpi: int = DPI) -> Image.Image:
-    png = resvg_py.svg_to_bytes(
-        svg_path=str(path),
-        zoom=dpi / 72,
-        background="#ffffff",
-        skip_system_fonts=True,
-        font_dirs=[str(FONT_DIR)],
-        **dict.fromkeys(_FAMILY_OPTIONS, _NO_FALLBACK),
-    )
+    with tempfile.TemporaryDirectory() as fonts_dir:
+        font_files = []
+        for i, data in enumerate(_EMBEDDED_FONT.findall(path.read_bytes())):
+            font_file = Path(fonts_dir) / f"embedded-{i}.ttf"
+            font_file.write_bytes(base64.b64decode(data))
+            font_files.append(str(font_file))
+        png = resvg_py.svg_to_bytes(
+            svg_path=str(path),
+            zoom=dpi / 72,
+            background="#ffffff",
+            skip_system_fonts=True,
+            font_files=font_files,
+            **dict.fromkeys(_FAMILY_OPTIONS, _NO_FALLBACK),
+        )
     with Image.open(io.BytesIO(bytes(png))) as im:
         return rasterize.to_rgb_on_white(im)
 

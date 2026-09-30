@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 2286 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 2389 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -73,6 +73,7 @@ primitives (#74, D13).
 - Typer 0.9+ (CLI)
 - PyYAML 6.0+ (template loading)
 - pikepdf 8.0+ (PDF/X-1a post-processing for `--export-for moo-a6`)
+- fontTools 4.47+ (`fontTools.subset` only: glyph subsets embedded in SVG output, #76)
 - openai 1.0+ (**optional** `[ai]` extra; only `core/ai_openai.py` imports it)
 
 ## Project layout
@@ -110,7 +111,8 @@ src/holiday_card/
     validators.py       # Domain validation helpers
   renderers/
     reportlab_backend.py  # IR → PDF (default; sRGB or CMYK mode)
-    svg_backend.py        # IR → SVG (browser-openable)
+    svg_backend.py        # IR → SVG (browser-openable, self-contained: fonts embedded as glyph subsets)
+    svg_fonts.py          # fontTools subset → `@font-face` data URI per font_id + GENERIC_FAMILY (#76)
     png_backend.py        # IR → PNG (powers `preview`); clips/dashes/text alpha honoured, bundled TTFs only
     pdfx_postprocess.py   # pikepdf-based PDF/X-1a:2003 upgrade
     pdfx_preflight.py     # Rule-based PDF/X-1a:2003 checker (D11; veraPDF has no PDF/X)
@@ -149,6 +151,7 @@ tests/
                         # Curation/POD/markdown additions: test_sentiments, test_export_targets,
                         #   test_per_panel, test_markdown, test_render_changed
                         # L3 AI imagery: test_ai_rails, test_ai_provenance, test_ai_assets
+                        # SVG font subsets: test_svg_fonts (#76)
                         # Loader: test_templates_loading (extra="forbid", fail-loud keys)
                         # CLI seam: test_card_request (precedence rules 1-18, #78)
                         # PDF/X flattening: test_compiler_flatten (backdrop rule, refusals, IR alpha)
@@ -168,10 +171,13 @@ tests/
                         #   by the visual-baselines workflow
                         #   (scripts/regenerate_visual_baselines.py); eyeball before commit.
   rasterize.py          # Shared pypdfium2 PDF rasterizer (conformance + visual gate)
-  conformance/          # Cross-backend conformance (#67, D12): cases.py (37 one-feature
+  conformance/          # Cross-backend conformance (#67, D12): cases.py (53 one-feature
                         #   IR pages), capabilities.py (the pdf/png status matrix),
                         #   conftest.py (resvg-py / pypdfium2 rasterizers + tolerances),
-                        #   test_conformance.py (case × backend vs the SVG oracle).
+                        #   test_conformance.py (case × backend vs the SVG oracle),
+                        #   test_template_text_parity.py (21 templates' text, SVG vs PDF
+                        #   per panel ±2 px). The SVG oracle loads only the SVG's own
+                        #   embedded font subsets (resvg ignores @font-face).
                         #   docs/conformance-matrix.md is generated from capabilities.py.
 LICENSE                 # MIT
 scripts/                # Stand-alone helpers used by CI/Actions
@@ -196,7 +202,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 2286 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 2389 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
 
@@ -353,6 +359,54 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — SVG output embeds glyph subsets of the fonts the
+  compiler measured (expert-panel §P13 / D4 / D12, issue #76)**: the SVG
+  backend wrote a bare `font-family="Caveat"` with no font data, so each
+  viewer substituted its own font (33% wider than Caveat at 18 pt) and the
+  text overflowed the boxes the compiler wrapped with ReportLab. New
+  `renderers/svg_fonts.py`: `subset_font_bytes(ttf_path, text, *,
+  family_name)` runs `fontTools.subset` with fixed options (the chars
+  drawn plus `.notdef`; no GSUB / GPOS / GDEF / kern, because ReportLab
+  measures unkerned advances; no hinting; source `head.modified` kept, so
+  output is byte-stable) and renames the subset to its CSS family
+  `hc-<font_id>`, keeping the copyright / license name records. That
+  rename is how non-browser tools find it: resvg, rsvg and Inkscape ignore
+  `@font-face` and match the font's own name table. **Variation tables
+  (`fvar` / `gvar` / `avar` / `HVAR` / `MVAR` / `STAT` …) are dropped**,
+  so a variable master is embedded as its static default instance. The
+  issue assumed viewers render the default axes, but browsers and resvg
+  apply `font-optical-sizing: auto`, which drew Inter (`opsz` 14 by
+  default) at `opsz` 32 for 32 pt text, visibly narrower than the PDF.
+  `font_face_css(font_id, ttf_path, text)` gives the rule, `css_family` /
+  `svg_font_family` the names, and `GENERIC_FAMILY` maps every font_id to
+  serif / sans-serif / cursive / monospace. `SVGRenderer` collects the
+  chars per font_id and at `EndPage` inserts one `<style>` with one
+  `@font-face { … url(data:font/ttf;base64,…) format("truetype"); }` per
+  font_id (sorted), preceded by an XML comment naming each face and the
+  SIL OFL 1.1. `<text>` now says `font-family="'hc-Caveat', cursive"`. A
+  font_id with no TTF (`ttf_path_for` → `None`) raises `NotImplementedError
+  ("SVG backend cannot embed font 'NoSuchFont'")` at the `DrawText`. The
+  christmas-classic SVG is 12.9 KB (11 KB of base64 font data) and
+  byte-identical across runs. New dependency `fonttools>=4.47` (in
+  `uv.lock`; mypy override `fontTools.*`). Conformance: the SVG rasterizer
+  pulls the embedded subsets out of the SVG and passes them to resvg as
+  `font_files`, with no `font_dirs`, so the oracle draws text only with
+  what the file carries. `text_curated_family` (known_diff #76) became 7
+  `text_family_*` cases (Cormorant, Cormorant-Italic, PlayfairDisplay,
+  Inter, Caveat, Comfortaa, Helvetica), all `match` on PDF and PNG;
+  `docs/conformance-matrix.md` regenerated. **OFL note:** Lato, Comfortaa,
+  Playfair Display and Liberation declare Reserved Font Names (the issue
+  said none do); the embedding is treated like the PDF's per-document
+  subsets (`ABCDEF+Lato`), with the `hc-` tag and the original copyright /
+  license records kept. Snapshots and visual baselines are unchanged (both
+  are PDF / PNG). Guarded by `tests/unit/test_svg_fonts.py`, the `#76`
+  block in `tests/integration/test_svg_backend.py` (every `<text>` names an
+  embedded face + generic, one `@font-face` per family, each cmap covers its
+  chars, the license comment, byte stability, the refusal, and
+  christmas-classic advances within 0.5% of `pdfmetrics.stringWidth`) and
+  `tests/conformance/test_template_text_parity.py` (all 21 templates' text,
+  SVG vs PDF per panel, ±2 px; 21 of 21 fail on the old backend).
 
 - **2026-09-29 — Pattern fills are lowered by the compiler; the three
   backend tilers are deleted (expert-panel §P13 / D13, issue #74)**: PDF,
