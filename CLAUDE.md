@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 2866 tests, mypy-clean, ruff-clean, coverage ≥ 92%
+uv run pytest                       # all 2887 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -224,7 +224,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 2866 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 2887 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
@@ -414,6 +414,21 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-30 — christmas-photo-ornament's inside-left caption is on its
+  panel; no shipped text leaves its panel (issue #134)**: the
+  centre-aligned `message` ("Treasured moments from our family to yours")
+  was anchored at `x: 0.5"` with `width: 3.25`, so it hung 72 pt off the
+  panel's left edge on every target (moo-a6 warned 1.5" past the safe
+  zone, #73). The anchor is now the panel centre, `x: 2.125`; moo-a6 no
+  longer warns for this template. New guard
+  `tests/unit/test_template_text_in_panel.py`: every panel of all 21
+  templates compiled natively (per-panel-pdf, trim-relative IR), and every
+  `DrawText` run's measured box (advance × ascent/descent, through any
+  group) stays inside its panel's trim; it failed only on this template.
+  Regenerated on purpose: the photo-ornament `letter_content_sha256.json`
+  entry and its PNG + PDF visual baselines (`visual-baselines` workflow,
+  eyeballed; only the caption line moved). Tests 2866 → 2887.
 
 - **2026-09-30 — Shape `rotation` is honoured for every shape type
   (issue #135)**: `BaseShape.rotation` loaded for every shape, but only
