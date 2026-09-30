@@ -582,8 +582,7 @@ def _border_to_stroke(border: Border) -> Stroke:
 
 
 # ---------------------------------------------------------------------------
-# Element ordering — replaces the heterogeneous list[tuple[str, Any, int]]
-# at reportlab_renderer.py:118-138 (source of 6 mypy errors)
+# Element ordering — one typed, z-sorted list of a panel's elements
 # ---------------------------------------------------------------------------
 
 
@@ -687,9 +686,8 @@ def _compile_triangle(shape: Triangle, panel: Panel) -> list[RenderCommand]:
 def _compile_star(shape: Star, panel: Panel) -> list[RenderCommand]:
     """Compute star vertices once, in the compiler.
 
-    Mirrors the math in shape_renderer.py's render_star but emits a
-    PolygonGeom with the resolved points so the backend never computes
-    star geometry.
+    Emits a PolygonGeom with the resolved points so the backend never
+    computes star geometry.
     """
     import math
 
@@ -751,7 +749,7 @@ def _compile_svg_path(shape: SVGPath, panel: Panel) -> list[RenderCommand]:
     :class:`UnsupportedFeatureError`. Real templates ship cubic +
     quadratic Beziers only; arc support is a follow-up.
     """
-    from holiday_card.utils.svg_parser import SVGCommand, SVGPathParser
+    from holiday_card.utils.svg_parser import SVGPathParser
 
     parser = SVGPathParser()
     raw_commands = parser.parse(shape.path_data)
@@ -794,8 +792,6 @@ def _compile_svg_path(shape: SVGPath, panel: Panel) -> list[RenderCommand]:
             rotate_deg=shape.rotation,
         )
         return [BeginGroup(transform=transform_ir), *draw, EndGroup()]
-    # Silence unused import if SVGCommand isn't referenced elsewhere.
-    _ = SVGCommand
     return draw
 
 
@@ -1765,8 +1761,6 @@ def _compile_image(image: ImageElement, panel: Panel) -> list[RenderCommand]:
       treatments need an outline pass.
     * ``image.width`` or ``image.height`` is ``None`` — auto-sizing
       from the source image's natural dimensions needs a Pillow probe.
-    * Clip mask types ``heart`` and ``svg_path`` — Heart needs synthesis
-      to a path; SVGPath needs the parser wired to ``PathGeom``.
     """
     from holiday_card.core.models import PhotoFrameStyle  # local: enum only used here
 

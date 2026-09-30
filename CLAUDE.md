@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 2587 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 2572 tests, mypy-clean, ruff-clean
 ```
 
 ## Architecture
@@ -115,7 +115,6 @@ src/holiday_card/
     template_checks.py  # check_template: fonts, bounds, default theme, compile smoke (#57)
     template_schema.py  # template_json_schema: model JSON Schema + AliasChoices names (#57)
                         #   + effective-PPI print check on the IR (#66)
-    validators.py       # Domain validation helpers
   renderers/
     reportlab_backend.py  # IR → PDF (default; sRGB or CMYK mode)
     reportlab_measurer.py # ReportLabTextMeasurer: pdfmetrics widths/ascent + the font catalog (#75)
@@ -124,7 +123,6 @@ src/holiday_card/
     png_backend.py        # IR → PNG (powers `preview`); clips/dashes/text alpha honoured, bundled TTFs only
     pdfx_postprocess.py   # pikepdf-based PDF/X-1a:2003 upgrade
     pdfx_preflight.py     # Rule-based PDF/X-1a:2003 checker (D11; veraPDF has no PDF/X)
-    image_effects.py      # Pillow effects (sepia/grayscale/vignette/blur)
   data/                 # Package data shipped in the wheel (no __init__.py);
                         #   resolved only via core/data_paths.data_path()
     templates/          # YAML card templates (21)
@@ -148,13 +146,12 @@ src/holiday_card/
     exit_codes.py       # ExitCode (0-5) + the root --help epilog (#80)
   utils/
     measurements.py     # inch ↔ point conversions; page constants
-    svg_parser.py       # SVG path parser (preserved for future IR support)
-    validators.py       # Input validation (image format, etc.)
+    svg_parser.py       # SVG path parser used by the compiler's `_compile_svg_path`
 tests/
   unit/                 # Wave 2 core: test_render_ir, test_compiler, test_cli, test_text_fitting,
                         #   test_text_utils, test_models, test_clipping_masks,
                         #   test_gradient_models, test_pattern_models,
-                        #   test_svg_models, test_svg_parser, test_validators,
+                        #   test_svg_models, test_svg_parser,
                         #   test_measurements, test_font_registry
                         # Curation/POD/markdown additions: test_sentiments, test_export_targets,
                         #   test_per_panel, test_markdown, test_render_changed
@@ -210,7 +207,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 2587 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 2572 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
 
@@ -367,6 +364,27 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — Dead modules, dead APIs and stale comments deleted
+  (expert-panel §P15 / D17, issue #83)**: Removed, with no importers
+  anywhere: `core/validators.py`, `utils/gradient_utils.py`,
+  `renderers/image_effects.py` (the `ImageEffects` *model* stays; the
+  compiler refuses it), `utils/validators.py` (every function left after
+  #65 was unused, including `validate_dpi`; #66 owns the real PPI check)
+  and the uncollected `tests/performance_validation.py` (it wrote
+  `/tmp/perf_test` at import). Removed APIs: `TextElement.
+  get_adjustment_result` / `set_adjustment_result` / `_adjustment_applied`
+  (`AdjustmentResult` stays; `text_fitting` uses it), `CardGenerator.
+  generate_pdf` and `create_and_generate` (use `create_card(...)` then
+  `generate(card, out)`; the 9 `test_full_generation.py` callers were
+  migrated). Compiler comments no longer cite the deleted
+  `reportlab_renderer.py` / `shape_renderer.py`, the `_ = SVGCommand`
+  import silencer is gone, and `_compile_image`'s docstring no longer
+  lists heart / svg_path clip masks (`ClipMask` never had them). Tests:
+  2587 → 2572 (−20 `test_validators.py`, −1 adjustment tracking, −2
+  `test_core_purity` cases for `core/validators.py`, +8 guard cases).
+  Guarded by `tests/unit/test_no_dead_modules.py` (the four modules raise
+  `ModuleNotFoundError`; the four APIs are absent).
 
 - **2026-09-29 — PNG backend: anti-aliased coverage masks, centred
   strokes, vectorized gradients, bbox-sized layers (expert-panel §P6 /
@@ -1704,8 +1722,8 @@ template editing; a JSON "render plan" backend for downstream tooling.
   `requirements.txt` deleted, 22 B904 + 10 null-deref bugs fixed.
 - **2026-05 — Valentine deprecation (PR #8)**: Removed the 2026-02
   Valentine release (templates + decorative-element library) when
-  porting to the IR proved non-trivial. Dead model code (HeartClipMask,
-  etc.) intentionally kept in `models.py` for now.
+  porting to the IR proved non-trivial. The dead model code (HeartClipMask,
+  etc.) has since been removed; no `HeartClipMask` exists in `src/`.
 - **003-vector-graphics-and-decorative-elements** (specs/): Original
   spec for vector graphics. Decorative elements piece is no longer
   shipped (see Valentine deprecation).

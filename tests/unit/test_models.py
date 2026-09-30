@@ -114,7 +114,7 @@ class TestEnums:
 class TestAdjustmentResult:
     """Tests for AdjustmentResult model."""
 
-    def test_adjustment_result_creation(self):
+    def test_creation(self):
         """Test creating an AdjustmentResult."""
         result = AdjustmentResult(
             was_adjusted=True,
@@ -131,7 +131,7 @@ class TestAdjustmentResult:
         assert result.lines_used == 1
         assert result.content_truncated is False
 
-    def test_adjustment_result_default_truncated(self):
+    def test_default_truncated(self):
         """Test that content_truncated defaults to False."""
         result = AdjustmentResult(
             was_adjusted=False,
@@ -194,30 +194,6 @@ class TestTextElement:
         """Test that max_lines defaults to None."""
         text = TextElement(content="Test", x=0.0, y=0.0)
         assert text.max_lines is None
-
-    def test_text_element_adjustment_tracking(self):
-        """Test get/set adjustment result methods."""
-        text = TextElement(content="Test", x=0.0, y=0.0)
-
-        # Initially None
-        assert text.get_adjustment_result() is None
-
-        # Set adjustment result
-        result = AdjustmentResult(
-            was_adjusted=True,
-            strategy_applied=OverflowStrategy.SHRINK,
-            original_font_size=24,
-            final_font_size=18,
-            lines_used=1,
-        )
-        text.set_adjustment_result(result)
-
-        # Retrieve result
-        retrieved = text.get_adjustment_result()
-        assert retrieved is not None
-        assert retrieved.was_adjusted is True
-        assert retrieved.final_font_size == 18
-
 
 class TestPanel:
     """Tests for Panel model."""

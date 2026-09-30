@@ -30,11 +30,12 @@ class TestFullGeneration:
         """Test creating a Christmas classic card."""
         output_path = temp_output / "christmas-card.pdf"
 
-        card, pdf_path = generator.create_and_generate(
+        card = generator.create_card(
             template_id="christmas-classic",
             output_path=output_path,
             message="Merry Christmas!",
         )
+        pdf_path = generator.generate(card, output_path)[0]
 
         assert pdf_path.exists()
         assert pdf_path.stat().st_size > 0
@@ -45,12 +46,13 @@ class TestFullGeneration:
         """Test creating a card with a color theme."""
         output_path = temp_output / "themed-card.pdf"
 
-        card, pdf_path = generator.create_and_generate(
+        card = generator.create_card(
             template_id="christmas-classic",
             output_path=output_path,
             message="Season's Greetings!",
             theme_id="christmas-winter-blue",
         )
+        pdf_path = generator.generate(card, output_path)[0]
 
         assert pdf_path.exists()
         assert card.theme_id == "christmas-winter-blue"
@@ -59,11 +61,12 @@ class TestFullGeneration:
         """Test creating a card with fold type override."""
         output_path = temp_output / "quarter-fold-card.pdf"
 
-        card, pdf_path = generator.create_and_generate(
+        card = generator.create_card(
             template_id="christmas-classic",
             output_path=output_path,
             fold_type=FoldType.QUARTER_FOLD,
         )
+        pdf_path = generator.generate(card, output_path)[0]
 
         assert pdf_path.exists()
         assert card.fold_type == FoldType.QUARTER_FOLD
@@ -72,11 +75,12 @@ class TestFullGeneration:
         """Test creating a birthday card."""
         output_path = temp_output / "birthday-card.pdf"
 
-        card, pdf_path = generator.create_and_generate(
+        card = generator.create_card(
             template_id="birthday-balloons",
             output_path=output_path,
             message="Happy Birthday!",
         )
+        pdf_path = generator.generate(card, output_path)[0]
 
         assert pdf_path.exists()
         assert "birthday" in card.template_id
@@ -85,11 +89,12 @@ class TestFullGeneration:
         """Test creating a modern Christmas card (quarter fold)."""
         output_path = temp_output / "modern-christmas.pdf"
 
-        card, pdf_path = generator.create_and_generate(
+        card = generator.create_card(
             template_id="christmas-modern",
             output_path=output_path,
             message="Happy Holidays!",
         )
+        pdf_path = generator.generate(card, output_path)[0]
 
         assert pdf_path.exists()
         assert card.fold_type == FoldType.QUARTER_FOLD
@@ -98,11 +103,12 @@ class TestFullGeneration:
         """Test that card panels are properly populated."""
         output_path = temp_output / "card.pdf"
 
-        card, _ = generator.create_and_generate(
+        card = generator.create_card(
             template_id="christmas-classic",
             output_path=output_path,
             message="Test Message",
         )
+        generator.generate(card, output_path)
 
         # Should have 4 panels for half-fold
         assert len(card.panels) == 4
@@ -115,10 +121,11 @@ class TestFullGeneration:
         """Test that output directory is created if it doesn't exist."""
         nested_path = temp_output / "nested" / "dir" / "card.pdf"
 
-        _, pdf_path = generator.create_and_generate(
+        card = generator.create_card(
             template_id="christmas-classic",
             output_path=nested_path,
         )
+        pdf_path = generator.generate(card, nested_path)[0]
 
         assert pdf_path.exists()
         assert pdf_path.parent.exists()
@@ -153,9 +160,11 @@ class TestLetterPageBoxes:
 
     def test_pdf_boxes_are_all_us_letter(self, tmp_path: Path) -> None:
         out = tmp_path / "boxes.pdf"
-        CardGenerator().create_and_generate(
+        generator = CardGenerator()
+        card = generator.create_card(
             template_id="christmas-classic", output_path=out,
         )
+        generator.generate(card, out)
         with pikepdf.open(out) as pdf:
             page = pdf.pages[0]
             letter = [0.0, 0.0, 612.0, 792.0]
@@ -168,9 +177,11 @@ class TestLetterPageBoxes:
 
     def test_svg_canvas_is_us_letter(self, tmp_path: Path) -> None:
         out = tmp_path / "letter.svg"
-        CardGenerator(renderer=SVGRenderer()).create_and_generate(
+        generator = CardGenerator(renderer=SVGRenderer())
+        card = generator.create_card(
             template_id="christmas-classic", output_path=out,
         )
+        generator.generate(card, out)
         root = ET.parse(out).getroot()
         assert root.get("width") == "612"
         assert root.get("height") == "792"

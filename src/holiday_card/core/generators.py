@@ -424,21 +424,6 @@ class CardGenerator:
                 else:
                     text.color = theme.text
 
-    def generate_pdf(self, card: Card, output_path: Path) -> Path:
-        """Generate a PDF file from a card via the IR pipeline.
-
-        Args:
-            card: Card to render.
-            output_path: Output PDF file path.
-
-        Returns:
-            Path to generated PDF file.
-        """
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        commands = compile_card(card)
-        self.renderer.render(commands, output_path)
-        return output_path
-
     def generate(
         self,
         card: Card,
@@ -606,41 +591,3 @@ class CardGenerator:
             self._maybe_apply_pdfx(out, target)
             written.append(out)
         return written
-
-    def create_and_generate(
-        self,
-        template_id: str,
-        output_path: Path,
-        message: str | None = None,
-        fold_type: FoldType | None = None,
-        photos: Sequence[Path] | None = None,
-        theme_id: str | None = None,
-        inside_message: str | None = None,
-    ) -> tuple[Card, Path]:
-        """Create a card and generate the PDF in one step.
-
-        Args:
-            template_id: Template identifier.
-            output_path: Output PDF file path.
-            message: Optional greeting message (applied to front, for backwards compatibility).
-            fold_type: Optional fold type override.
-            photos: Optional photos for the template's photo slots.
-            theme_id: Optional theme to apply.
-            inside_message: Optional message for the inside panel.
-
-        Returns:
-            Tuple of (Card object, Path to PDF file).
-        """
-        card = self.create_card(
-            template_id=template_id,
-            message=message,
-            output_path=output_path,
-            theme_id=theme_id,
-            fold_type=fold_type,
-            photos=photos,
-            inside_message=inside_message,
-        )
-
-        pdf_path = self.generate_pdf(card, output_path)
-
-        return card, pdf_path
