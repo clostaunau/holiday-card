@@ -10,27 +10,38 @@ network and no ``OPENAI_API_KEY`` are needed — the panel's
 
 from __future__ import annotations
 
+import base64
 import io
+import struct
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from hypothesis import given, settings
+from hypothesis import strategies as st
+from PIL import EpsImagePlugin, Image, ImageFile
 
 from holiday_card.core.ai_assets import (
     DEFAULT_AI_MODEL,
+    MAX_IMAGE_BYTES,
     MODEL_SIZE_POLICIES,
     AIRequest,
     ConsentRequiredError,
     GeneratedImage,
+    ImageMediaType,
+    ImagePayloadError,
     ModelSizePolicy,
     RailRefusedError,
     build_ai_request,
     choose_request_size,
+    decode_b64_image,
     generate_ai_asset,
+    open_generated_image,
     size_is_allowed,
 )
 from holiday_card.core.ai_provenance import read_sidecar, record_consent
+from holiday_card.core.images import MAX_IMAGE_PIXELS
 from holiday_card.core.models import OccasionType
 
 # --- Fake injectable client -------------------------------------------------
@@ -38,12 +49,20 @@ from holiday_card.core.models import OccasionType
 
 @dataclass
 class FakeImageClient:
-    """Records the size it was sent; returns a solid PNG of ``returns`` or that size."""
+    """Records the size it was sent; returns a solid image of ``returns`` or that size.
+
+    ``fmt`` / ``media_type`` pick the encoding, ``raw`` replaces the bytes
+    outright, and ``cost_usd=None`` is a provider that reports no cost.
+    """
 
     calls: list[dict] | None = None
     model: str = "gpt-image-2"
     returns: tuple[int, int] | None = None
     image: Image.Image | None = None
+    fmt: str = "PNG"
+    media_type: ImageMediaType = "image/png"
+    raw: bytes | None = None
+    cost_usd: float | None = 0.13
 
     def generate(
         self,
@@ -70,8 +89,14 @@ class FakeImageClient:
         buf = io.BytesIO()
         size = self.returns or (width_px, height_px)
         img = self.image or Image.new("RGB", size, (10, 120, 60))
-        img.save(buf, format="PNG")
-        return GeneratedImage(png_bytes=buf.getvalue(), cost_usd=0.04, model_version="2027-01")
+        img.save(buf, format=self.fmt)
+        return GeneratedImage(
+            image_bytes=self.raw if self.raw is not None else buf.getvalue(),
+            media_type=self.media_type,
+            cost_usd=self.cost_usd,
+            cost_source="reported" if self.cost_usd is not None else "unknown",
+            model_version="2027-01",
+        )
 
 
 def _consented(tmp_path: Path) -> Path:
@@ -226,11 +251,13 @@ class TestGenerateHappyPath:
         record = read_sidecar(out)
         assert record.prompt == "watercolor pine bough border"
         assert record.seed == 42
-        assert record.cost_usd == 0.04
+        assert record.cost_usd == 0.13
+        assert record.cost_source == "reported"
         assert record.model_version == "2027-01"
         assert record.color_profile == "sRGB IEC61966-2.1"
 
-        assert result.cost_usd == 0.04
+        assert result.cost_usd == 0.13
+        assert result.cost_source == "reported"
         assert result.asset_path == out
         assert result.overridden == []
 
@@ -373,3 +400,193 @@ class TestRailsEnforced:
         # Override reasons are persisted into the sidecar for audit.
         record = read_sidecar(out)
         assert record.override_reasons
+
+
+# --- Model output is untrusted (#141) ---------------------------------------
+
+
+def _encoded(fmt: str, size: tuple[int, int] = (16, 16), **save: object) -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", size, (10, 120, 60)).save(buf, format=fmt, **save)
+    return buf.getvalue()
+
+
+def _animated(fmt: str) -> bytes:
+    buf = io.BytesIO()
+    frames = [Image.new("RGB", (16, 16), c) for c in ((255, 0, 0), (0, 0, 255))]
+    frames[0].save(buf, format=fmt, save_all=True, append_images=frames[1:])
+    return buf.getvalue()
+
+
+def _png_with_ihdr(width: int, height: int) -> bytes:
+    """A tiny PNG whose header claims ``width``×``height`` (one short IDAT)."""
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data))
+
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", ihdr)
+        + chunk(b"IDAT", zlib.compress(b"\x00" * 64))
+        + chunk(b"IEND", b"")
+    )
+
+
+_EPS = b"%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 10 10\n"
+
+
+@pytest.fixture
+def no_load(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail the test if any raster is decoded."""
+
+    def refuse(_self: object) -> None:
+        raise AssertionError("the raster was decoded")
+
+    monkeypatch.setattr(ImageFile.ImageFile, "load", refuse)
+
+
+class TestGeneratedImage:
+    def test_reported_cost_requires_a_value(self) -> None:
+        with pytest.raises(ValueError, match="cost_source"):
+            GeneratedImage(image_bytes=b"", media_type="image/png", cost_usd=None, cost_source="reported")
+
+    def test_unknown_cost_must_have_no_value(self) -> None:
+        with pytest.raises(ValueError, match="cost_source"):
+            GeneratedImage(image_bytes=b"", media_type="image/png", cost_usd=0.1, cost_source="unknown")
+
+
+class TestDecodeB64Image:
+    def test_round_trip(self) -> None:
+        raw = _encoded("PNG")
+        assert decode_b64_image(base64.b64encode(raw).decode()) == raw
+
+    def test_non_alphabet_characters_are_refused(self) -> None:
+        good = base64.b64encode(_encoded("PNG")).decode()
+        with pytest.raises(ImagePayloadError, match="base64"):
+            decode_b64_image(good[:8] + "!*" + good[8:])
+
+    def test_oversize_is_refused_before_decoding(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def boom(*_args: object, **_kwargs: object) -> bytes:
+            raise AssertionError("b64decode was called")
+
+        monkeypatch.setattr(base64, "b64decode", boom)
+        with pytest.raises(ImagePayloadError, match="1024"):
+            decode_b64_image("A" * (4 * -(-1024 // 3) + 4), max_bytes=1024)
+
+    def test_default_cap_is_32_mib(self) -> None:
+        assert MAX_IMAGE_BYTES == 32 * 1024 * 1024
+
+
+class TestOpenGeneratedImage:
+    @pytest.mark.parametrize(
+        ("fmt", "media_type"),
+        [("PNG", "image/png"), ("JPEG", "image/jpeg"), ("WEBP", "image/webp")],
+    )
+    def test_valid_image_opens_as_rgb(self, fmt: str, media_type: ImageMediaType) -> None:
+        img = open_generated_image(_encoded(fmt), media_type)
+        assert img.mode == "RGB"
+        assert img.size == (16, 16)
+
+    def test_eps_is_refused_without_ghostscript(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def ghostscript(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("Ghostscript was invoked")
+
+        monkeypatch.setattr(EpsImagePlugin, "Ghostscript", ghostscript)
+        with pytest.raises(ImagePayloadError):
+            open_generated_image(_EPS, "image/png")
+
+    def test_gif_is_refused(self) -> None:
+        with pytest.raises(ImagePayloadError):
+            open_generated_image(_encoded("GIF"), "image/png")
+
+    def test_declared_type_must_match_the_bytes(self) -> None:
+        with pytest.raises(ImagePayloadError, match="image/jpeg"):
+            open_generated_image(_encoded("PNG"), "image/jpeg")
+
+    @pytest.mark.parametrize(("fmt", "media_type"), [("PNG", "image/png"), ("WEBP", "image/webp")])
+    def test_animated_image_is_refused(self, fmt: str, media_type: ImageMediaType) -> None:
+        with pytest.raises(ImagePayloadError, match="frames"):
+            open_generated_image(_animated(fmt), media_type)
+
+    @pytest.mark.usefixtures("no_load")
+    def test_decompression_bomb_is_refused_before_decoding(self) -> None:
+        with pytest.raises(ImagePayloadError):
+            open_generated_image(_png_with_ihdr(20000, 20000), "image/png")
+
+    @pytest.mark.usefixtures("no_load")
+    def test_our_pixel_cap_applies_below_pillows_threshold(self) -> None:
+        assert MAX_IMAGE_PIXELS < 8000 * 7000
+        assert Image.MAX_IMAGE_PIXELS > 8000 * 7000
+        with pytest.raises(ImagePayloadError, match="megapixels"):
+            open_generated_image(_png_with_ihdr(8000, 7000), "image/png")
+
+    def test_truncated_image_is_refused(self) -> None:
+        raw = _encoded("PNG", (64, 64))
+        with pytest.raises(ImagePayloadError):
+            open_generated_image(raw[: len(raw) // 2], "image/png")
+
+    def test_message_never_echoes_the_payload(self) -> None:
+        with pytest.raises(ImagePayloadError) as info:
+            open_generated_image(b"SECRET-PAYLOAD-BYTES" * 4, "image/png")
+        assert "SECRET" not in str(info.value)
+
+
+_MAGIC = st.sampled_from([b"", b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"RIFF\x00\x00\x00\x00WEBPVP8 "])
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    prefix=_MAGIC,
+    body=st.binary(max_size=512),
+    media_type=st.sampled_from(["image/png", "image/jpeg", "image/webp"]),
+)
+def test_open_generated_image_returns_or_refuses(
+    prefix: bytes, body: bytes, media_type: ImageMediaType
+) -> None:
+    try:
+        img = open_generated_image(prefix + body, media_type)
+    except ImagePayloadError:
+        return
+    assert img.mode == "RGB"
+
+
+class TestBakePayload:
+    def _run(self, tmp_path: Path, client: FakeImageClient, out: Path | None = None) -> Path:
+        out = out or tmp_path / "bake.png"
+        generate_ai_asset(
+            prompt="watercolor pine bough border",
+            occasion=OccasionType.CHRISTMAS,
+            out_path=out,
+            request=_small_request(),
+            client=client,
+            timestamp="2027-01-15T10:00:00Z",
+            consent_path=_consented(tmp_path),
+        )
+        return out
+
+    def test_unreported_cost_is_recorded_as_unknown(self, tmp_path: Path) -> None:
+        out = self._run(tmp_path, FakeImageClient(cost_usd=None))
+        record = read_sidecar(out)
+        assert record.cost_usd is None
+        assert record.cost_source == "unknown"
+        text = out.with_suffix(".license.yaml").read_text()
+        assert "cost_usd: null" in text
+        assert "cost_source: unknown" in text
+
+    @pytest.mark.parametrize(
+        ("fmt", "media_type"), [("JPEG", "image/jpeg"), ("WEBP", "image/webp")]
+    )
+    def test_jpeg_and_webp_bake_to_the_exact_target(
+        self, tmp_path: Path, fmt: str, media_type: ImageMediaType
+    ) -> None:
+        out = self._run(tmp_path, FakeImageClient(fmt=fmt, media_type=media_type))
+        with Image.open(out) as img:
+            assert img.format == "PNG"
+            assert img.size == (64, 96)
+
+    def test_refused_payload_writes_nothing(self, tmp_path: Path) -> None:
+        out = tmp_path / "out" / "bake.png"
+        with pytest.raises(ImagePayloadError):
+            self._run(tmp_path, FakeImageClient(raw=_EPS), out=out)
+        assert not out.parent.exists()

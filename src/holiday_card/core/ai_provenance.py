@@ -5,7 +5,7 @@ A2 and A5):
 
 1. **Bake-to-disk with a provenance sidecar.** Every generated asset
    gets a sibling ``<asset>.license.yaml`` capturing the prompt, model,
-   seed, timestamp, cost, the OpenAI policy URL at generation time, and
+   seed, timestamp, the provider-reported cost (or ``unknown``), the OpenAI policy URL at generation time, and
    a placeholder for the user's own commercial-use determination. The
    render pipeline refuses to embed any AI asset whose sidecar is
    missing — this is what preserves the reproducibility moat.
@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -74,6 +75,9 @@ class LicenseRecord(BaseModel):
     seed: int | None = None
     timestamp: str
     cost_usd: float | None = None
+    # "unknown" when the provider reported no cost; also what a v1.3.0
+    # sidecar (no such key) reads as, since its 0.04 may be an invented figure.
+    cost_source: Literal["reported", "unknown"] = "unknown"
     # The baked file's size; ``generated_*`` is what the model returned,
     # and ``native_ppi`` the resolution that carries into the bake.
     width_px: int | None = None

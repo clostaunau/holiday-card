@@ -343,7 +343,13 @@ Guardrails that ship on by default (see
   reason first).
 * **Provenance sidecar** — every asset gets a sibling
   `<asset>.license.yaml` recording the prompt, model, seed, timestamp,
-  cost, and the OpenAI policy URL in force at generation time.
+  the cost the provider reported (or `unknown` when it reports none;
+  nothing is estimated), and the OpenAI policy URL in force at
+  generation time.
+* **Untrusted output, checked inputs** — the model's image is decoded
+  only as PNG, JPEG or WebP (one frame, at most 50 MP), or refused with
+  exit 7 and nothing written; `--reference` must be a readable PNG or
+  JPEG, checked before anything is uploaded.
 
 ## What this is not
 

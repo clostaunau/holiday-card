@@ -21,6 +21,7 @@ import openai_sdk_stub as sdk
 from holiday_card.core.ai_assets import (
     DEFAULT_AI_MODEL,
     MODEL_SIZE_POLICIES,
+    ImagePayloadError,
     build_ai_request,
     size_is_allowed,
 )
@@ -305,3 +306,42 @@ def test_make_image_client_redacts_the_env_key(monkeypatch: pytest.MonkeyPatch) 
     with pytest.raises(ProviderError) as info:
         _generate(make_image_client())
     assert key not in str(info.value)
+
+
+# --- #141: decode safely, never invent a cost --------------------------------
+
+
+def _client_returning(**response: Any) -> OpenAIImageClient:
+    images = SimpleNamespace(generate=lambda **_kw: SimpleNamespace(**response))
+    return OpenAIImageClient(SimpleNamespace(images=images))
+
+
+def test_invalid_base64_is_an_image_payload_error() -> None:
+    client = _client_returning(data=[SimpleNamespace(b64_json="iVBOR*not~base64")])
+    with pytest.raises(ImagePayloadError, match="base64"):
+        _generate(client)
+
+
+def test_cost_is_unknown_because_the_sdk_reports_none() -> None:
+    # openai 3.19.2's ImagesResponse carries token `usage`, never a USD cost.
+    usage = SimpleNamespace(input_tokens=10, output_tokens=100, total_tokens=110)
+    image = _generate(_client_returning(data=[SimpleNamespace(b64_json=_png_b64())], usage=usage))
+    assert image.cost_usd is None
+    assert image.cost_source == "unknown"
+
+
+@pytest.mark.parametrize(
+    ("output_format", "media_type"),
+    [("png", "image/png"), ("jpeg", "image/jpeg"), ("webp", "image/webp"), (None, "image/png")],
+)
+def test_media_type_follows_output_format(output_format: str | None, media_type: str) -> None:
+    image = _generate(
+        _client_returning(data=[SimpleNamespace(b64_json=_png_b64())], output_format=output_format)
+    )
+    assert image.media_type == media_type
+
+
+def test_media_type_defaults_to_png_without_output_format() -> None:
+    image = _generate(_client_returning(data=[SimpleNamespace(b64_json=_png_b64())]))
+    assert image.media_type == "image/png"
+    assert base64.b64encode(image.image_bytes).decode() == _png_b64()

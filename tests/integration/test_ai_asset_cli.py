@@ -35,6 +35,8 @@ class FakeImageClient:
     calls: list[dict] = field(default_factory=list)
     model: str = "gpt-image-2"
     returns: tuple[int, int] | None = None
+    raw: bytes | None = None
+    cost_usd: float | None = 0.13
 
     def generate(
         self,
@@ -59,7 +61,13 @@ class FakeImageClient:
         buf = io.BytesIO()
         size = self.returns or (width_px, height_px)
         Image.new("RGB", size, (10, 120, 60)).save(buf, format="PNG")
-        return GeneratedImage(png_bytes=buf.getvalue(), cost_usd=0.04, model_version="2027-01")
+        return GeneratedImage(
+            image_bytes=self.raw if self.raw is not None else buf.getvalue(),
+            media_type="image/png",
+            cost_usd=self.cost_usd,
+            cost_source="reported" if self.cost_usd is not None else "unknown",
+            model_version="2027-01",
+        )
 
 
 @pytest.fixture
@@ -123,8 +131,8 @@ class TestHappyPath:
         # The print-aware size was used (A6 trim+bleed >> 1024).
         assert fake_client.calls[0]["width_px"] > 1024
         assert fake_client.calls[0]["moderation"] == "auto"
-        # Cost surfaced to the user.
-        assert "0.04" in result.output
+        # The provider-reported cost is surfaced as such.
+        assert "Cost: $0.13 (reported)" in _plain(result.output)
         # The written size, not the request size, is reported.
         assert "1314x1824px" in result.output
         assert "300.0 PPI native" in result.output
@@ -476,3 +484,110 @@ def _raiser(exc: BaseException) -> Callable[..., object]:
         raise exc
 
     return raise_
+
+
+# ---------------------------------------------------------------------------
+# #141: model output is untrusted, the cost is never invented, the
+# reference is content-checked before anything is uploaded
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("isolated_config")
+class TestUntrustedPayload:
+    def test_unreported_cost_prints_unknown(
+        self,
+        runner: CliRunner,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        reference_png: Path,
+    ) -> None:
+        result = _run(runner, monkeypatch, FakeImageClient(cost_usd=None), tmp_path, reference_png)
+        assert result.exit_code == 0, result.output
+        text = _plain(result.output)
+        assert "Cost: unknown (the provider did not report one)" in text
+        assert "$0.04" not in text
+        sidecar = (tmp_path / "x.license.yaml").read_text()
+        assert "cost_usd: null" in sidecar
+        assert "cost_source: unknown" in sidecar
+        assert "0.04" not in sidecar
+
+    @pytest.mark.parametrize("debug", [False, True], ids=["plain", "debug"])
+    def test_refused_image_exits_7_and_writes_nothing(
+        self,
+        runner: CliRunner,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        reference_png: Path,
+        debug: bool,
+    ) -> None:
+        eps = b"%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 10 10\n"
+        client = FakeImageClient(raw=eps)
+        result = _run(runner, monkeypatch, client, tmp_path, reference_png, debug=debug)
+        assert result.exit_code == 7, result.output
+        text = _plain(result.output)
+        assert "Error: the model's image was refused:" in text
+        assert "Traceback" not in text
+        assert not (tmp_path / "x.png").exists()
+        assert not (tmp_path / "x.license.yaml").exists()
+
+
+@pytest.mark.usefixtures("isolated_config")
+class TestReferenceIsProbed:
+    def _no_client(self) -> object:
+        raise AssertionError("an image client was built")
+
+    def test_text_file_named_png_is_refused_before_any_client(
+        self,
+        runner: CliRunner,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        monkeypatch.setattr(commands, "make_image_client", self._no_client)
+        secrets = tmp_path / "ref.png"
+        secrets.write_text("OPENAI_API_KEY=sk-not-an-image\n")
+        result = runner.invoke(
+            app,
+            _generate_args(
+                secrets, tmp_path / "x.png", subject="balloons", occasion="birthday",
+                extra=["--accept-ai-terms"],
+            ),
+        )
+        assert result.exit_code == 2, result.output
+        text = _plain(result.output)
+        assert "Error: --reference:" in text
+        assert "sk-not-an-image" not in text
+        assert not (tmp_path / "x.png").exists()
+
+    def test_missing_reference_file_is_refused(
+        self, runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(commands, "make_image_client", self._no_client)
+        result = runner.invoke(
+            app,
+            _generate_args(
+                tmp_path / "nope.png", tmp_path / "x.png", subject="balloons",
+                occasion="birthday", extra=["--accept-ai-terms"],
+            ),
+        )
+        assert result.exit_code == 2, result.output
+        assert "Error: --reference: image file not found" in _plain(result.output)
+
+    def test_resolved_reference_path_is_sent(
+        self,
+        runner: CliRunner,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        reference_png: Path,
+    ) -> None:
+        client = FakeImageClient()
+        monkeypatch.setattr(commands, "make_image_client", lambda: client)
+        monkeypatch.chdir(reference_png.parent)
+        result = runner.invoke(
+            app,
+            _generate_args(
+                Path(reference_png.name), tmp_path / "x.png", subject="balloons",
+                occasion="birthday", extra=["--accept-ai-terms"],
+            ),
+        )
+        assert result.exit_code == 0, result.output
+        assert client.calls[0]["reference_path"] == str(reference_png.resolve())

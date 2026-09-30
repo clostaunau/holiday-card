@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from holiday_card.core.ai_provenance import (
     OPENAI_USAGE_POLICY_URL,
@@ -52,6 +53,9 @@ class TestLicenseRecord:
         # Commercial-use determination is an explicit placeholder for the user.
         assert record.commercial_use_determination == "UNREVIEWED"
 
+    def test_cost_source_defaults_to_unknown(self) -> None:
+        assert _record().cost_source == "unknown"
+
 
 class TestSidecarRoundTrip:
     def test_write_then_read_round_trips(self, tmp_path: Path) -> None:
@@ -65,6 +69,34 @@ class TestSidecarRoundTrip:
         assert sidecar.exists()
         loaded = read_sidecar(asset)
         assert loaded == record
+
+    def test_v1_3_0_sidecar_still_loads(self, tmp_path: Path) -> None:
+        # Written before #141: no cost_source, and 0.04 may be the invented figure.
+        asset = tmp_path / "old.png"
+        asset.write_bytes(b"x")
+        v130 = {
+            "prompt": "watercolor pine bough border",
+            "style": "watercolor",
+            "reference": "ref.png",
+            "model": "gpt-image-2",
+            "model_version": "gpt-image-2",
+            "seed": None,
+            "timestamp": "2026-06-02T10:00:00",
+            "cost_usd": 0.04,
+            "width_px": 1314,
+            "height_px": 1824,
+            "generated_width_px": 1328,
+            "generated_height_px": 1824,
+            "native_ppi": 300.0,
+            "color_profile": "sRGB IEC61966-2.1",
+            "openai_policy_url": OPENAI_USAGE_POLICY_URL,
+            "commercial_use_determination": "UNREVIEWED",
+            "override_reasons": [],
+        }
+        (tmp_path / "old.license.yaml").write_text(yaml.safe_dump(v130, sort_keys=False))
+        record = read_sidecar(asset)
+        assert record.cost_usd == 0.04
+        assert record.cost_source == "unknown"
 
     def test_read_missing_sidecar_raises(self, tmp_path: Path) -> None:
         asset = tmp_path / "no-sidecar.png"
