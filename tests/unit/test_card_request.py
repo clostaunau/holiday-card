@@ -406,7 +406,7 @@ class TestPrecedenceRules:
             build_card(CardRequest(template="sympathy-spare", voice="witty"))
         assert str(excinfo.value) == (
             "voice 'witty' is not available for occasion 'sympathy'. "
-            "Available: devotional, spare, warm"
+            "Available: warm, spare, devotional"
         )
 
     def test_rule_11_occasion_comes_from_the_template_not_its_directory(
@@ -437,8 +437,11 @@ class TestPrecedenceRules:
                 build_card(CardRequest(template=CLASSIC, voice="warm"))
         finally:
             reset_cache()
+        # Half-shipped voices are not available (#82: available_voices needs
+        # both roles), so the refusal lists what is.
         assert str(excinfo.value) == (
-            "voice 'warm' has no inside sentiment for occasion 'christmas'"
+            "voice 'warm' is not available for occasion 'christmas'. "
+            "Available: (none)"
         )
         assert str(get_sentiments_dir()) not in str(excinfo.value)
 

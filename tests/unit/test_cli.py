@@ -455,7 +455,7 @@ class TestCreateFailsLoud:
         _refused(
             result, workdir,
             "Error: voice 'witty' is not available for occasion 'sympathy'. "
-            "Available: devotional, spare, warm",
+            "Available: warm, spare, devotional",
         )
         assert str(get_sentiments_dir()) not in result.output
         assert "Warning" not in result.output
@@ -482,7 +482,8 @@ class TestCreateFailsLoud:
         reset_cache()
         _refused(
             result, workdir,
-            "Error: voice 'warm' has no inside sentiment for occasion 'christmas'",
+            "Error: voice 'warm' is not available for occasion 'christmas'. "
+            "Available: (none)",
         )
         assert str(lib) not in result.output
 
