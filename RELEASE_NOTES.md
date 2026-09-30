@@ -1,5 +1,18 @@
 # Holiday Card Generator — Release Notes
 
+## Unreleased
+
+### Releases are now tag-driven
+
+The version lives only in `holiday_card.__version__`, and pushing a
+`vX.Y.Z` tag that matches it builds, checks and publishes the release to
+PyPI through trusted publishing (no stored token), then creates a GitHub
+Release whose notes are that version's section of this file. Once the
+first tag ships, `pipx install holiday-card` works as the README says.
+Package metadata now has project URLs, a Python 3.13 classifier, the
+bundled font / ICC licence files, and an `openai<4` cap on the `[ai]`
+extra. The sdist no longer carries unrelated repository files.
+
 ## v1.3.0 — "AI as plumbing, hard-railed" — 2026-06-02
 
 L3 ships — the last named leapfrog the panel endorsed, in the narrow

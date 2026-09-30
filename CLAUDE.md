@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 2642 tests, mypy-clean, ruff-clean, coverage ≥ 92%
+uv run pytest                       # all 2677 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -189,6 +189,7 @@ tests/
 LICENSE                 # MIT
 scripts/                # Stand-alone helpers used by CI/Actions
                         #   render_changed_templates.py — powers .github/workflows/render-cards.yml
+                        #   check_release_version.py — release.yml's tag == __version__ check + notes (#86)
                         #   build_microsite.py — Leapfrog 5 template-gallery generator
                         #   make_placeholder_photo.py — regenerates the CC0 placeholder-photo.jpg
 .github/workflows/      # CI: ci.yml (lint/type/test → build → smoke of the installed wheel;
@@ -196,6 +197,7 @@ scripts/                # Stand-alone helpers used by CI/Actions
                         #     render-cards.yml (PR-comment card previews; job summary on fork PRs)
                         #     microsite.yml (build + deploy gallery to GitHub Pages)
                         #     latest-deps.yml (weekly unpinned canary + weekly lock audit)
+                        #     release.yml (tag vX.Y.Z → build/check/smoke → PyPI via OIDC → GitHub Release, #86)
                         #   Every `uses:` is pinned to a 40-hex SHA + `# vX.Y.Z` comment and
                         #   every workflow declares `permissions:` (tests/unit/test_workflow_policy.py).
 .github/dependabot.yml  # Weekly grouped PRs for the action pins and uv.lock (#85)
@@ -214,7 +216,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 2642 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 2677 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
@@ -230,6 +232,32 @@ numpy 2.5's stubs use the Python 3.12 `type` statement, which mypy rejects
 while `python_version = "3.11"`. The weekly `latest-deps.yml` workflow
 ignores the lock and the constraint; a red run means bump the lock or lift
 a constraint.
+
+### Releasing
+
+The version lives only in `src/holiday_card/__init__.py` (`__version__`;
+`pyproject.toml` reads it via `[tool.hatch.version]`). A release is a tag:
+
+1. Bump `__version__` in `src/holiday_card/__init__.py`.
+2. Add a `## vX.Y.Z — "…" — YYYY-MM-DD` section to `RELEASE_NOTES.md`
+   (its body becomes the GitHub Release notes).
+3. Merge the PR to `main`.
+4. `git tag vX.Y.Z && git push --tags`
+5. Approve the `pypi` environment when `release.yml` asks.
+
+`release.yml`'s `build` job fails if the tag isn't exactly `v` +
+the installed wheel's `--version`, if `RELEASE_NOTES.md` has no section
+for the tag, if `twine check --strict` fails, or if the installed wheel
+can't render christmas-classic outside the checkout. `publish` uses PyPI
+trusted publishing (OIDC, no token, attestations on); `github-release`
+attaches `dist/*` to a GitHub Release.
+
+**One-time owner setup (Claude cannot do either):** on PyPI, add a
+*pending* trusted publisher for project `holiday-card`: owner
+`clostaunau`, repository `holiday-card`, workflow `release.yml`,
+environment `pypi`. In the GitHub repo settings, create the `pypi`
+environment with required reviewers (and optionally restrict it to
+`v*` tags).
 
 ### Card generation
 
@@ -376,6 +404,46 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — Tag-driven PyPI release via trusted publishing; trimmed
+  sdist; complete metadata (expert-panel §P15 / D1 / D2, issue #86)**:
+  the project had never been published (PyPI 404, no tags, no publish
+  workflow) and the version was hand-edited in two places. `pyproject.toml`
+  now has `dynamic = ["version"]` + `[tool.hatch.version] path =
+  "src/holiday_card/__init__.py"` (the literal `version =` is gone; `uv.lock`
+  records the project as dynamic). New `.github/workflows/release.yml`
+  (tags `v[0-9]+.[0-9]+.[0-9]+`, plus `pull_request` on its own paths;
+  top-level `contents: read`, SHA pins): `build` runs `uv build`, refuses
+  root-level `data/ docs/ .claude/ .specify/ .devcontainer/ specs/ output/`
+  in the sdist, runs `uvx twine==7.0.0 check --strict`, installs the
+  wheel in a clean venv, and on tags only checks `scripts/
+  check_release_version.py check "$GITHUB_REF_NAME" <--version>` and that
+  `RELEASE_NOTES.md` has a section for the tag, then renders
+  christmas-classic (letter + moo-a6) from `$RUNNER_TEMP`; `publish`
+  (`environment: pypi`, `permissions: id-token: write`, tag-only) uses
+  `pypa/gh-action-pypi-publish` with no `password`; `github-release`
+  (`contents: write`, tag-only) runs `gh release create --verify-tag
+  --notes-file` with the notes from `check_release_version.py notes`. On
+  a PR only `build` runs. `[tool.hatch.build.targets.sdist] include` is
+  root-anchored (`/src/`, `/tests/`, `/LICENSE`, `/README.md`,
+  `/RELEASE_NOTES.md`, `/pyproject.toml`, `/uv.lock`): **hatch treats
+  them as gitignore patterns, so an unanchored `README.md` also pulls
+  in every `.claude/**/README.md`**. Measured sdist 11.1 → 10.1 MB
+  (fonts, the ICC profile and the visual baselines dominate; the gate is
+  the exclusion list). Metadata: `authors` = Chris Lostaunau (no email),
+  `[project.urls]` (Homepage / Source / Issues / Changelog /
+  Documentation), a 3.13 classifier, no `License ::` classifier next to
+  PEP 639 `license = "MIT"`, `license-files` (root LICENSE, Liberation
+  LICENSE, the six curated `*-LICENSE.txt`, the ICC NOTICE), and
+  `openai>=1.0,<4` (the lock resolves 3.19.2; the AI tests pass with the
+  `ai` extra installed). `__author__` matches. Wheel METADATA is still
+  `Version: 1.3.0`. Guarded by `tests/unit/test_packaging_metadata.py`
+  (version single-sourced, `importlib.metadata.version == __version__`,
+  classifiers, URLs, license files, openai cap, sdist include list
+  anchored and clutter-free, release.yml triggers / permissions / OIDC /
+  no password / tag gating, the tag check where `v1.3.1` vs `1.3.0` exits
+  1, notes extraction) and, via `test_workflow_policy.py`, the #85 pins /
+  permissions / no-`${{`-in-`run:` rules. Tests 2642 → 2677.
 
 - **2026-09-29 — CI hardening: least-privilege tokens, SHA-pinned actions,
   Dependabot, pip-audit, fork-PR guard (expert-panel §P15 / D2, issue #85)**:

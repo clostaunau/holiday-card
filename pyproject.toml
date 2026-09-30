@@ -4,24 +4,31 @@ build-backend = "hatchling.build"
 
 [project]
 name = "holiday-card"
-version = "1.3.0"
+# Single source: src/holiday_card/__init__.py (#86); a release tag must match it.
+dynamic = ["version"]
 description = "CLI application for creating printable holiday greeting cards"
 readme = "README.md"
 license = "MIT"
+license-files = [
+    "LICENSE",
+    "src/holiday_card/data/fonts/LICENSE",
+    "src/holiday_card/data/fonts/curated/*-LICENSE.txt",
+    "src/holiday_card/data/icc/NOTICE",
+]
 requires-python = ">=3.11"
 authors = [
-    { name = "Holiday Card Team" }
+    { name = "Chris Lostaunau" }
 ]
 keywords = ["greeting-cards", "pdf", "printing", "holidays", "cli"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Multimedia :: Graphics",
     "Topic :: Printing",
 ]
@@ -35,12 +42,20 @@ dependencies = [
     "fonttools>=4.47",  # SVG backend embeds glyph subsets (fontTools.subset, #76)
 ]
 
+[project.urls]
+Homepage = "https://github.com/clostaunau/holiday-card"
+Source = "https://github.com/clostaunau/holiday-card"
+Issues = "https://github.com/clostaunau/holiday-card/issues"
+Changelog = "https://github.com/clostaunau/holiday-card/blob/main/RELEASE_NOTES.md"
+Documentation = "https://clostaunau.github.io/holiday-card/"
+
 [project.optional-dependencies]
 # AI imagery (Leapfrog 3). Opt-in only — the project is fully functional
 # without it. See `holiday-card ai-asset generate` and
 # docs/industry-review/consensus-ai-feature.md.
 ai = [
-    "openai>=1.0",
+    # Capped at the major above the locked release (3.x); lift after testing a new major.
+    "openai>=1.0,<4",
 ]
 dev = [
     "pytest>=7.0",
@@ -63,8 +78,26 @@ dev = ["holiday-card[dev]"]
 [project.scripts]
 holiday-card = "holiday_card.cli:app"
 
+[tool.hatch.version]
+path = "src/holiday_card/__init__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/holiday_card"]
+
+[tool.hatch.build.targets.sdist]
+# Everything else in the repo (.claude/, .specify/, specs/, docs/, data/,
+# output/ ...) stays out. tests/ ships so packagers can run the suite, and
+# uv.lock ships because builds come from the locked environment (D2).
+# Leading "/" anchors each gitignore-style pattern at the root.
+include = [
+    "/src/",
+    "/tests/",
+    "/LICENSE",
+    "/README.md",
+    "/RELEASE_NOTES.md",
+    "/pyproject.toml",
+    "/uv.lock",
+]
 
 [tool.uv]
 # numpy arrived transitively via imagehash (dropped in #68); nothing locks it
