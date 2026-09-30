@@ -39,16 +39,19 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out PR (full history for diff)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # We need the merge-base with main to compute the changed
           # files, so fetch enough history. fetch-depth: 0 grabs
           # everything; cheaper alternatives exist if this becomes a
           # bottleneck.
           fetch-depth: 0
+          # Nothing here pushes; the repo is public, so the later
+          # `git fetch` needs no token either.
+          persist-credentials: false
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: "3.12"
           enable-cache: true
@@ -58,12 +61,15 @@ jobs:
 
       - name: List files changed in this PR
         id: diff
+        # Expressions go through env, never straight into the script (#85).
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch origin "${{ github.base_ref }}" --depth=1
+          git fetch origin "$BASE_REF" --depth=1
           # Three-dot diff: changes on the PR branch since it diverged
           # from base. Falls back to staged changes if the diff is
           # empty (defensive — paths-filter already excluded that case).
-          CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          CHANGED=$(git diff --name-only "origin/${BASE_REF}...HEAD")
           echo "$CHANGED" > changed.txt
           echo "Changed files:"
           cat changed.txt
@@ -87,7 +93,7 @@ jobs:
       - name: Upload PNG previews as artifact
         if: steps.render.outputs.count != '0'
         id: upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: card-previews-${{ github.run_number }}
           path: card-previews/
@@ -97,11 +103,15 @@ jobs:
       - name: Build PR comment body
         if: steps.render.outputs.count != '0'
         id: comment-body
+        env:
+          COUNT: ${{ steps.render.outputs.count }}
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           {
             echo "## 🎴 Card preview (auto-rendered)"
             echo ""
-            COUNT="${{ steps.render.outputs.count }}"
             if [ "$COUNT" = "1" ]; then
               echo "1 template affected by this PR:"
             else
@@ -111,16 +121,24 @@ jobs:
             # Each line of rendered.tsv: "{template_id}\t{png_path}"
             cut -f1 rendered.tsv | sed 's|^|- `|; s|$|`|'
             echo ""
-            echo "PNG previews are uploaded as the **\`card-previews-${{ github.run_number }}\`** artifact on [this workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+            echo "PNG previews are uploaded as the **\`card-previews-${RUN_NUMBER}\`** artifact on [this workflow run](${RUN_URL})."
             echo ""
-            echo "<sub>Rendered at \`${{ github.event.pull_request.head.sha }}\`. Re-render by pushing a new commit.</sub>"
+            echo "<sub>Rendered at \`${HEAD_SHA}\`. Re-render by pushing a new commit.</sub>"
           } > comment-body.md
           cat comment-body.md
 
+      # A fork PR's GITHUB_TOKEN is read-only whatever `permissions:` says,
+      # so commenting would 403. Fork PRs get the same body in the job
+      # summary instead and the job stays green (#85). Never switch this
+      # workflow to pull_request_target (spec §4).
+      - name: Write preview list to the job summary (fork PR)
+        if: steps.render.outputs.count != '0' && github.event.pull_request.head.repo.full_name != github.repository
+        run: cat comment-body.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: Find existing sticky comment (if any)
-        if: steps.render.outputs.count != '0'
+        if: steps.render.outputs.count != '0' && github.event.pull_request.head.repo.full_name == github.repository
         id: find-comment
-        uses: peter-evans/find-comment@v3
+        uses: peter-evans/find-comment@3eae4d37986fb5a8592848f6a574fdf654e61f9e # v3.1.0
         with:
           issue-number: ${{ github.event.pull_request.number }}
           # ``body-includes`` filters for comments containing this
@@ -130,8 +148,8 @@ jobs:
           body-includes: "🎴 Card preview (auto-rendered)"
 
       - name: Post (or update) sticky PR comment
-        if: steps.render.outputs.count != '0'
-        uses: peter-evans/create-or-update-comment@v4
+        if: steps.render.outputs.count != '0' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: peter-evans/create-or-update-comment@71345be0265236311c031f5c7866368bd1eff043 # v4.0.0
         with:
           # If find-comment returned an id, edit that comment in place.
           # If it didn't, comment-id is empty and the action creates a

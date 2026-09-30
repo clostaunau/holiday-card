@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 2606 tests, mypy-clean, ruff-clean, coverage ≥ 92%
+uv run pytest                       # all 2642 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -191,9 +191,14 @@ scripts/                # Stand-alone helpers used by CI/Actions
                         #   render_changed_templates.py — powers .github/workflows/render-cards.yml
                         #   build_microsite.py — Leapfrog 5 template-gallery generator
                         #   make_placeholder_photo.py — regenerates the CC0 placeholder-photo.jpg
-.github/workflows/      # CI: ci.yml (lint/type/test → build → smoke of the installed wheel)
-                        #     render-cards.yml (PR-comment card previews)
+.github/workflows/      # CI: ci.yml (lint/type/test → build → smoke of the installed wheel;
+                        #     `audit` = pip-audit of the uv.lock export, fails on any known CVE)
+                        #     render-cards.yml (PR-comment card previews; job summary on fork PRs)
                         #     microsite.yml (build + deploy gallery to GitHub Pages)
+                        #     latest-deps.yml (weekly unpinned canary + weekly lock audit)
+                        #   Every `uses:` is pinned to a 40-hex SHA + `# vX.Y.Z` comment and
+                        #   every workflow declares `permissions:` (tests/unit/test_workflow_policy.py).
+.github/dependabot.yml  # Weekly grouped PRs for the action pins and uv.lock (#85)
 specs/                  # Historical spec-kit feature plans (001-004; some describe deleted features)
 docs/industry-review/   # Six critic personas + consensus docs that drive the roadmap
 docs/template-authoring.md  # Template authoring guide (coords, shapes, fills, fonts, validate loop)
@@ -209,10 +214,14 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 2606 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 2642 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
+
+Actions are SHA-pinned: Dependabot bumps the SHA and its `# vX.Y.Z` comment
+weekly. For a manual bump, look the SHA up (never from memory) with
+`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha` and update the comment.
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit
 `uv.lock`. `[tool.uv] constraint-dependencies` pins `numpy<2.5` (nothing
@@ -367,6 +376,40 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — CI hardening: least-privilege tokens, SHA-pinned actions,
+  Dependabot, pip-audit, fork-PR guard (expert-panel §P15 / D2, issue #85)**:
+  `ci.yml` and `latest-deps.yml` had no `permissions:` and every workflow
+  used mutable tags. Now `ci.yml` / `latest-deps.yml` /
+  `visual-baselines.yml` are top-level `contents: read` (render-cards and
+  microsite keep their existing scopes) and every `uses:` in
+  `.github/workflows/` is a 40-hex commit SHA with a `# vX.Y.Z` comment
+  (each major tag resolved to its latest patch, so no behaviour changed).
+  Every `actions/checkout` sets `persist-credentials: false`. New CI job
+  `audit` (not in `build`'s `needs`, so the job graph is unchanged):
+  `uv export --frozen --all-extras --no-emit-project` of `uv.lock` →
+  `uvx pip-audit==2.10.1 --disable-pip --require-hashes --strict`; a known
+  vulnerability fails it, and a suppression must be `--ignore-vuln <ID>`
+  with a `#` justification on the same line. `latest-deps.yml` runs the
+  same audit weekly, because new advisories land against an unchanged
+  lock. New `.github/dependabot.yml`: `github-actions` (all actions in one
+  group) and `uv` (minor + patch grouped), both weekly at `/`; it updates
+  `uv.lock`, not the floors (D2). `render-cards.yml` stays on
+  `pull_request` (never `_target`, spec §4); the two `peter-evans/` steps
+  also require `github.event.pull_request.head.repo.full_name ==
+  github.repository`, and a fork PR instead appends `comment-body.md` to
+  `$GITHUB_STEP_SUMMARY`, so the read-only fork token no longer turns the
+  check red with a 403. No `run:` script contains `${{ … }}` any more:
+  values go through step `env:` (`BASE_REF`, `COUNT`, `RUN_NUMBER`,
+  `RUN_URL`, `HEAD_SHA`, visual-baselines' `BACKEND`). The pre-commit
+  `check-added-large-files` keeps `--maxkb=500` and excludes
+  `^src/holiday_card/data/(fonts|icc)/` (the 3.4 MB ICC profile and 1.2 MB
+  Cormorant). Guarded by `tests/unit/test_workflow_policy.py` (every
+  workflow: SHA pins + version comments, a `permissions` mapping and no
+  `write-all`, no `${{` in `run:`, credential-less checkouts; render-cards
+  trigger, fork guard and summary fallback; the pinned strict audit in CI
+  and latest-deps; justified suppressions; Dependabot ecosystems / grouping;
+  the large-file exclude). Tests 2606 → 2642.
 
 - **2026-09-29 — Branch-coverage floor of 92%; `preview` / `init`,
   shrink-to-fit and parser-property tests; a live fail-loud watchdog
