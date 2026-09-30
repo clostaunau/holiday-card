@@ -27,3 +27,5 @@ repos:
       - id: check-merge-conflict
       - id: check-added-large-files
         args: [--maxkb=500]
+        # Shipped binaries: the 3.4 MB ICC profile and the curated TTFs (#85).
+        exclude: ^src/holiday_card/data/(fonts|icc)/
