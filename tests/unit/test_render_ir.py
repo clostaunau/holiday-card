@@ -16,7 +16,7 @@ guards on the contract until Step 2 lands the compiler.
 import json
 
 import pytest
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from holiday_card.core.render_ir import (
     RGBA,
@@ -34,9 +34,9 @@ from holiday_card.core.render_ir import (
     GradientStop,
     ImageRef,
     LinearGradientPaint,
+    PaintU,
     PathGeom,
     PathOp,
-    PatternPaint,
     Point,
     PolygonGeom,
     RadialGradientPaint,
@@ -210,15 +210,19 @@ def test_paint_variants_all_serialize_with_kind_discriminator() -> None:
                 GradientStop(position=1.0, color=RGBA(r=1, g=1, b=1)),
             ),
         ),
-        PatternPaint(
-            pattern="stripes",
-            colors=(RGBA(r=0, g=0, b=0),),
-            spacing=4.0,
-        ),
     ]
     for p in paints:
         blob = json.loads(p.model_dump_json())  # type: ignore[attr-defined]
         assert "kind" in blob
+
+
+def test_pattern_is_not_an_ir_paint() -> None:
+    # #74 / D13: the compiler lowers patterns to clip + solid primitives.
+    with pytest.raises(ValidationError):
+        TypeAdapter(PaintU).validate_python({
+            "kind": "pattern", "pattern": "stripes",
+            "colors": [{"r": 0, "g": 0, "b": 0}], "spacing": 4.0,
+        })
 
 
 def test_path_geom_with_cubic_op_roundtrips() -> None:

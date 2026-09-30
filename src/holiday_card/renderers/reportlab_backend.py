@@ -47,7 +47,6 @@ from holiday_card.core.render_ir import (
     EndPage,
     LinearGradientPaint,
     PathGeom,
-    PatternPaint,
     PolygonGeom,
     PolylineGeom,
     RadialGradientPaint,
@@ -153,9 +152,9 @@ class IRReportLabRenderer:
         role: ColorRole = "fill",
         area_pt2: float | None = None,
     ) -> _rl_colors.Color:
-        """A ReportLab colour object for gradient stops and pattern tiles."""
+        """A ReportLab colour object for gradient stops."""
         if self._cmyk is not None:
-            self._require_opaque(rgba.a, "gradient stop / pattern colour")
+            self._require_opaque(rgba.a, "gradient stop")
             c, m, y, k = self._cmyk.convert(rgba.r, rgba.g, rgba.b, role=role, area_pt2=area_pt2)
             return _rl_colors.CMYKColor(c, m, y, k)
         return _rl_colors.Color(rgba.r, rgba.g, rgba.b, alpha=rgba.a)
@@ -261,14 +260,14 @@ class IRReportLabRenderer:
     # ------------------------------------------------------------------
 
     def _draw_shape(self, canvas: _canvas.Canvas, cmd: DrawShape) -> None:
-        # Gradient and pattern fills need a different drawing flow:
-        # clip to the shape, paint the gradient/pattern inside the clip,
+        # Gradient fills need a different drawing flow:
+        # clip to the shape, paint the gradient inside the clip,
         # then draw the stroke separately on top. ReportLab's
         # ``canvas.rect`` / ``circle`` / ``drawPath`` only accept a
         # single solid fill.
         if isinstance(
             cmd.fill,
-            (LinearGradientPaint, RadialGradientPaint, PatternPaint),
+            (LinearGradientPaint, RadialGradientPaint),
         ):
             self._draw_shape_with_complex_fill(canvas, cmd)
             return
@@ -337,22 +336,18 @@ class IRReportLabRenderer:
         canvas: _canvas.Canvas,
         cmd: DrawShape,
     ) -> None:
-        """Draw a shape whose fill is a gradient or pattern.
+        """Draw a shape whose fill is a gradient.
 
         ReportLab's ``canvas.linearGradient`` and ``canvas.radialGradient``
         paint inside the current clip region — so the flow is:
         ``saveState → clipPath(shape) → emit gradient → restoreState``.
-        Patterns aren't a first-class ReportLab primitive; we tile the
-        chosen pattern's primitive (lines for stripes, circles for dots,
-        etc.) across the shape's bounding box inside the clip.
 
         After the fill, the stroke is drawn separately in a second pass
         so the outline lands on top of the fill. Opacity wraps the
         whole operation.
         """
         fill = cmd.fill
-        # Compute the bounding box for pattern tiling and gradient
-        # extent fallbacks.
+        # The bbox gives the stops' area for the CMYK black rules.
         bbox = self._shape_bbox(cmd.geometry)
         if bbox is None:
             raise NotImplementedError(
@@ -363,10 +358,9 @@ class IRReportLabRenderer:
         stroke_a = cmd.opacity * (cmd.stroke.color.a if cmd.stroke is not None else 1.0)
         self._require_opaque(min(cmd.opacity, stroke_a), f"{cmd.geometry.kind} shape")
         canvas.saveState()
-        # Pattern tiles paint with both fills and strokes (grid lines).
         self._set_alpha(canvas, fill=cmd.opacity, stroke=cmd.opacity)
 
-        # Clip to the shape so the gradient/pattern only paints inside.
+        # Clip to the shape so the gradient only paints inside.
         clip_path = self._geometry_to_path(canvas, cmd.geometry)
         canvas.clipPath(clip_path, stroke=0, fill=0)
 
@@ -388,8 +382,6 @@ class IRReportLabRenderer:
                 positions=[s.position for s in fill.stops],
                 extend=True,
             )
-        elif isinstance(fill, PatternPaint):
-            self._draw_pattern_tile(canvas, fill, bbox)
 
         canvas.restoreState()
 
@@ -402,92 +394,11 @@ class IRReportLabRenderer:
             canvas.drawPath(stroke_path, stroke=1, fill=0)
             canvas.restoreState()
 
-    def _draw_pattern_tile(
-        self,
-        canvas: _canvas.Canvas,
-        pattern: PatternPaint,
-        bbox: tuple[float, float, float, float],
-    ) -> None:
-        """Tile a pattern primitive across the bbox inside the active clip.
-
-        First lays down ``pattern.colors[0]`` as the background, then
-        repeats the pattern primitive (``stripes`` / ``dots`` / ``grid``
-        / ``checkerboard``) using ``pattern.colors[1]`` (or the same
-        color if only one is supplied). ``rotation_deg`` rotates the
-        entire pattern around the bbox center.
-        """
-        x, y, w, h = bbox
-        spacing = pattern.spacing * pattern.scale
-        if spacing < 0.1:
-            spacing = 0.1
-        c0 = pattern.colors[0]
-        c1 = pattern.colors[1] if len(pattern.colors) > 1 else c0
-
-        # Background fill (color 0) covers the bbox; the tiles are small.
-        canvas.setFillColor(self._rl_color(c0, area_pt2=w * h))
-        canvas.rect(x, y, w, h, stroke=0, fill=1)
-
-        # Rotate around bbox center if requested.
-        if pattern.rotation_deg:
-            canvas.saveState()
-            cx, cy = x + w / 2, y + h / 2
-            canvas.translate(cx, cy)
-            canvas.rotate(pattern.rotation_deg)
-            canvas.translate(-cx, -cy)
-
-        canvas.setFillColor(self._rl_color(c1))
-        canvas.setStrokeColor(self._rl_color(c1, role="stroke"))
-
-        if pattern.pattern == "stripes":
-            # Horizontal stripes — alternate rows at half-spacing height.
-            half = spacing / 2
-            row_y = y - half
-            while row_y < y + h + spacing:
-                canvas.rect(x - spacing, row_y, w + 2 * spacing, half, stroke=0, fill=1)
-                row_y += spacing
-        elif pattern.pattern == "dots":
-            radius = spacing / 4
-            cy = y
-            while cy < y + h + spacing:
-                cx = x
-                while cx < x + w + spacing:
-                    canvas.circle(cx, cy, radius, stroke=0, fill=1)
-                    cx += spacing
-                cy += spacing
-        elif pattern.pattern == "grid":
-            # Vertical lines
-            line_x = x
-            while line_x < x + w + spacing:
-                canvas.setLineWidth(1.0)
-                canvas.line(line_x, y - spacing, line_x, y + h + spacing)
-                line_x += spacing
-            # Horizontal lines
-            line_y = y
-            while line_y < y + h + spacing:
-                canvas.line(x - spacing, line_y, x + w + spacing, line_y)
-                line_y += spacing
-        elif pattern.pattern == "checkerboard":
-            half = spacing
-            grid_y = y - half
-            row = 0
-            while grid_y < y + h + half:
-                offset = half if row % 2 else 0
-                gx = x - half + offset
-                while gx < x + w + half:
-                    canvas.rect(gx, grid_y, half, half, stroke=0, fill=1)
-                    gx += 2 * half
-                grid_y += half
-                row += 1
-
-        if pattern.rotation_deg:
-            canvas.restoreState()
-
     def _shape_bbox(self, geom: object) -> tuple[float, float, float, float] | None:
         """Bounding box of an IR geometry in page-points.
 
         Returns ``(x, y, width, height)`` with bottom-left origin (the
-        IR convention). Used by pattern tiling and as a fallback when
-        a complex fill needs a target rect.
+        IR convention). Gives the painted area for the CMYK black rules.
         """
         if isinstance(geom, RectGeom):
             return (geom.x, geom.y, geom.width, geom.height)
@@ -589,8 +500,8 @@ class IRReportLabRenderer:
             c = fill.color
             self._set_fill(canvas, c.r, c.g, c.b, area_pt2=area_pt2)
             return True
-        # Gradient + pattern paints aren't emitted by the compiler yet.
-        # If they slip through, fail loud rather than silently drop.
+        # Gradients take _draw_shape_with_complex_fill; anything else
+        # is a new paint type, so fail loud rather than silently drop.
         raise NotImplementedError(
             f"IRReportLabRenderer does not yet handle paint type {type(fill).__name__}"
         )

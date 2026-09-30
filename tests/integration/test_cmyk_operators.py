@@ -43,7 +43,6 @@ from holiday_card.core.render_ir import (
     LinearGradientPaint,
     PathGeom,
     PathOp,
-    PatternPaint,
     Point,
     RectGeom,
     RenderCommand,
@@ -169,14 +168,19 @@ def test_fold_line_uses_the_converter(tmp_path: Path) -> None:
     assert operands != pytest.approx([0.0, 0.0, 0.0, 0.3], abs=0.01)  # naive
 
 
-def test_pattern_colours_use_icc(tmp_path: Path) -> None:
-    shape = DrawShape(
-        geometry=RectGeom(x=0, y=0, width=100, height=100),
-        fill=PatternPaint(pattern="dots", colors=(_BLUE, RGBA(r=1, g=1, b=1)), spacing=20),
-    )
-    ops = _cmyk_ops(_page(shape), tmp_path)
+def test_lowered_pattern_colours_use_icc(tmp_path: Path) -> None:
+    # #74: a pattern arrives as solid primitives, so the solid path converts it.
+    from holiday_card.core.compiler import _lower_pattern_fill
+    from holiday_card.core.models import PatternFill, PatternType
+
+    fill = PatternFill(pattern_type=PatternType.DOTS, colors=["#0000FF", "#FFFFFF"],
+                       spacing=20 / 72)
+    geom = RectGeom(x=0, y=0, width=100, height=100)
+    ops = _cmyk_ops(_page(*_lower_pattern_fill(fill, geom, (0, 0, 100, 100), None, 1.0)),
+                    tmp_path)
     assert ops[0][0] == "k"
     assert ops[0][1] == pytest.approx([1.0, 0.855, 0.0, 0.0], abs=0.02)
+    assert all(op == "k" for op, _ in ops)
 
 
 def test_gradient_stops_use_icc(tmp_path: Path) -> None:

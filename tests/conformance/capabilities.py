@@ -49,13 +49,12 @@ CAPABILITIES: dict[str, dict[Backend, Cap]] = {
     "stroke_dash_line_4": _both(_M),
     "linear_gradient": _both(_M),
     "radial_gradient": _both(_M),
-    # PDF anchors the tile at the shape origin, SVG at the page origin: a
-    # half-period shift swaps the stripe colours.
-    "pattern_stripes": {"pdf": Cap("known_diff", "#74"), "png": _M},
-    "pattern_dots": _both(_M),
-    # SVG draws grid lines / checker cells at half the spacing of PDF and PNG.
-    "pattern_grid": _both(Cap("known_diff", "#74")),
-    "pattern_checkerboard": _both(Cap("known_diff", "#74")),
+    # Patterns are lowered to clip + solid primitives by the compiler (#74).
+    **{
+        f"pattern_{kind}_{rotation}": _both(_M)
+        for kind in ("stripes", "dots", "grid", "checkerboard")
+        for rotation in (0, 45, 90)
+    },
     "clip_circle_over_rect": _both(_M),
     "clip_nested": _both(_M),
     "group_rotate_pivot": _both(_M),

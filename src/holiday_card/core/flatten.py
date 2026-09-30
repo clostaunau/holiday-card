@@ -18,8 +18,9 @@ draws through :class:`Flattener`, which removes alpha in the IR:
 * An image cannot be pre-blended here, so a ``DrawImage`` that is
   translucent or carries an alpha channel records the solid backdrop on
   ``ImageRef.backdrop``; the PDF backend flattens its pixels against it.
-* Every other case (gradient, pattern, image or text backdrop, partial
-  overlap, a translucent group whose children overlap) raises
+* Every other case (gradient, clipped pattern primitive, image or text
+  backdrop, partial overlap, a translucent group whose children overlap,
+  which includes a translucent pattern) raises
   ``UnsupportedFeatureError`` naming the element and the backdrop found.
 
 Bounding boxes are compared in the panel's frame: group transforms and
@@ -50,13 +51,10 @@ from holiday_card.core.render_ir import (
     EndGroup,
     GeomU,
     GradientStop,
-    LinearGradientPaint,
     PaintU,
     PathGeom,
-    PatternPaint,
     PolygonGeom,
     PolylineGeom,
-    RadialGradientPaint,
     RectGeom,
     RenderCommand,
     SolidPaint,
@@ -256,8 +254,6 @@ def _paint_colours(paint: PaintU | None) -> list[RGBA]:
         return []
     if isinstance(paint, SolidPaint):
         return [paint.color]
-    if isinstance(paint, PatternPaint):
-        return list(paint.colors)
     return [s.color for s in paint.stops]
 
 
@@ -283,10 +279,6 @@ def _blend_paint(paint: PaintU | None, alpha: float, bd: RGBA) -> PaintU | None:
         return None
     if isinstance(paint, SolidPaint):
         return paint.model_copy(update={"color": _blend(paint.color, alpha, bd)})
-    if isinstance(paint, PatternPaint):
-        return paint.model_copy(
-            update={"colors": tuple(_blend(c, alpha, bd) for c in paint.colors)}
-        )
     stops = tuple(
         GradientStop(position=s.position, color=_blend(s.color, alpha, bd)) for s in paint.stops
     )
@@ -367,9 +359,7 @@ def _paint_kind(paint: PaintU | None) -> str:
         return "stroked"
     if isinstance(paint, SolidPaint):
         return "solid"
-    if isinstance(paint, (LinearGradientPaint, RadialGradientPaint)):
-        return "gradient-filled"
-    return "pattern-filled"
+    return "gradient-filled"
 
 
 def _describe(cmd: DrawShape | DrawText | DrawImage) -> str:

@@ -314,3 +314,28 @@ def test_png_inside_left_prints_rotated_180(tmp_path: Path) -> None:
     assert _sample(img, 8.5 - 0.15, 5.5 + 0.15, dpi) == (0, 0, 0)
     # Where the marker would sit without the rotation: still plain blue.
     assert _sample(img, 4.25 + 0.15, 11.0 - 0.15, dpi) == (0, 0, 255)
+
+
+def test_png_fill_only_rect_covers_exactly_its_pixels(tmp_path: Path) -> None:
+    """Pillow's rectangle end is inclusive: a 2 px wide rect drew 3 px (#74,
+    visible once patterns became thousands of 1 pt grid lines)."""
+    from holiday_card.core.render_ir import (
+        RGBA,
+        BeginPage,
+        DrawShape,
+        EndPage,
+        RectGeom,
+        SolidPaint,
+    )
+
+    rect = DrawShape(geometry=RectGeom(x=10, y=10, width=1, height=20),
+                     fill=SolidPaint(color=RGBA(r=0, g=0, b=1)))
+    out = tmp_path / "line.png"
+    PNGRenderer(dpi=144).render([BeginPage(width=40, height=40), rect, EndPage()], out)
+    with Image.open(out) as img:
+        rgb = img.convert("RGB")
+        row = [rgb.getpixel((x, 40)) for x in range(18, 24)]
+        col = [rgb.getpixel((21, y)) for y in range(18, 64)]
+    blue = (0, 0, 255)
+    assert [p == blue for p in row] == [False, False, True, True, False, False]
+    assert sum(p == blue for p in col) == 40

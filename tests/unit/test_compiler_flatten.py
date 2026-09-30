@@ -31,6 +31,8 @@ from holiday_card.core.models import (
     LinearGradientFill,
     Panel,
     PanelPosition,
+    PatternFill,
+    PatternType,
     Rectangle,
     Star,
 )
@@ -46,7 +48,6 @@ from holiday_card.core.render_ir import (
     EndGroup,
     GradientStop,
     LinearGradientPaint,
-    PatternPaint,
     Point,
     RectGeom,
     SolidPaint,
@@ -229,19 +230,6 @@ class TestIRFlattening:
         assert _approx(paint.stops[0].color, 0.75, 0.75, 0.75)
         assert _approx(paint.stops[1].color, 0.5, 0.5, 1.0)
 
-    def test_pattern_colours_are_preblended(self) -> None:
-        pattern = DrawShape(
-            geometry=RectGeom(x=10, y=10, width=50, height=50),
-            fill=PatternPaint(pattern="dots", colors=(RED, RGBA(r=0, g=0, b=0)),
-                              spacing=10),
-            opacity=0.5,
-        )
-        out = flatten_transparency([_white_page(), pattern], where="t/front/p")
-        paint = out[-1].fill  # type: ignore[union-attr]
-        assert isinstance(paint, PatternPaint)
-        assert _approx(paint.colors[0], 1.0, 0.5, 0.5)
-        assert _approx(paint.colors[1], 0.5, 0.5, 0.5)
-
     def test_text_opacity_and_colour_alpha_are_preblended(self) -> None:
         text = DrawText(
             run=TextRun(text="Hi", origin=Point(x=50, y=50), font_id="Helvetica",
@@ -399,6 +387,28 @@ class TestIRFlattening:
 def test_flattening_a_template_without_translucency_is_a_no_op() -> None:
     card = CardGenerator().create_card("christmas-classic")
     assert compile_card(card, CompileContext(flatten_transparency=True)) == compile_card(card)
+
+
+def test_flattening_opaque_lowered_patterns_changes_no_paint() -> None:
+    # #74: a pattern is a clip + group of opaque solid primitives. The
+    # flattener only drops the rotated bands its clip box culls entirely.
+    card = CardGenerator().create_card("christmas-festive-stripes")
+    live = compile_card(card)
+    flat = compile_card(card, CompileContext(flatten_transparency=True))
+    remaining = iter(live)
+    assert all(any(cmd == other for other in remaining) for cmd in flat)  # a subsequence
+    assert [c for c in flat if not isinstance(c, DrawShape)] == [
+        c for c in live if not isinstance(c, DrawShape)
+    ]
+
+
+def test_translucent_pattern_is_refused() -> None:
+    # The pattern's opacity sits on its group, whose background and
+    # primitives overlap, so there is no single backdrop to pre-blend.
+    pattern = PatternFill(pattern_type=PatternType.DOTS, colors=["#FF0000", "#000000"],
+                          spacing=0.2)
+    with pytest.raises(UnsupportedFeatureError, match="dots"):
+        compile_card(_card(_veil(id="dots", fill=pattern, fill_color=None)), _FLAT)
 
 
 def _placeholder() -> object:

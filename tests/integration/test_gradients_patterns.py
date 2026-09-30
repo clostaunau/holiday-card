@@ -7,9 +7,10 @@ the fill landed correctly:
 
 * PDF: content-stream contains `Sh` (shading-network draw) or `cs`
   (color space) markers indicating a non-DeviceRGB fill.
-* SVG: ``<linearGradient>`` / ``<radialGradient>`` / ``<pattern>``
-  element appears in ``<defs>`` and is referenced by a ``url(#id)``
-  fill.
+* SVG: ``<linearGradient>`` / ``<radialGradient>`` element appears in
+  ``<defs>`` and is referenced by a ``url(#id)`` fill. Patterns are
+  lowered by the compiler (#74), so they arrive as a ``<clipPath>`` plus
+  plain solid shapes, never a ``<pattern>``.
 * PNG: pixel-sample inside the shape returns a non-white color
   (proving the fill rendered through the shape mask) and is consistent
   with the fill type (e.g. midpoint of a red→blue gradient is purple-ish).
@@ -115,12 +116,13 @@ class TestSVGGradients:
         assert "<radialGradient" in body
         assert re.search(r'fill="url\(#rg_\d+\)"', body) is not None
 
-    def test_pattern_emits_pattern_def(self, pattern_card: Card, tmp_path: Path) -> None:
+    def test_pattern_is_a_clip_of_solid_shapes(self, pattern_card: Card, tmp_path: Path) -> None:
         out = tmp_path / "pattern.svg"
         SVGRenderer().render(compile_card(pattern_card), out)
         body = out.read_text()
-        assert "<pattern" in body
-        assert re.search(r'fill="url\(#pat_\d+\)"', body) is not None
+        assert "<pattern" not in body
+        assert "<clipPath" in body
+        assert body.count('fill="rgb(255,0,0)"') >= 10  # one band per stripe
 
 
 class TestPDFGradients:
@@ -273,3 +275,67 @@ class TestDeadTemplatesNowCompile:
         # Should not raise UnsupportedFeatureError
         commands = compile_card(card)
         assert len(commands) > 0
+
+
+class TestFestiveStripesRibbon:
+    """#74: the 90° ribbon on festive-stripes was missing in PNG."""
+
+    @staticmethod
+    def _ribbon_colours(img: Image.Image, dpi: int, y_in: float) -> set[tuple[int, int, int]]:
+        # Front panel lands bottom-right (x + 4.25"); ribbon spans x 1.8–2.45".
+        rgb = img.convert("RGB")
+        y_px = img.height - 1 - int(y_in * dpi)
+        colours: set[tuple[int, int, int]] = set()
+        for i in range(int(6.1 * dpi), int(6.65 * dpi)):
+            r, g, b = rgb.getpixel((i, y_px))  # type: ignore[misc]
+            colours.add((r, g, b))
+        return colours
+
+    @pytest.mark.parametrize("y_in", [0.6, 1.5, 3.0, 4.5])
+    def test_png_ribbon_has_both_greens(self, tmp_path: Path, y_in: float) -> None:
+        from holiday_card.core.generators import CardGenerator
+
+        card = CardGenerator().create_card(template_id="christmas-festive-stripes")
+        out = tmp_path / "fs.png"
+        PNGRenderer(dpi=144).render(compile_card(card), out)
+        with Image.open(out) as img:
+            colours = self._ribbon_colours(img, 144, y_in)
+        assert (0x22, 0x8B, 0x22) in colours, colours
+        assert (0x90, 0xEE, 0x90) in colours, colours
+
+
+def test_png_draws_pattern_primitives_on_one_layer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The pattern group isolates its primitives: a clipped draw would
+    otherwise composite a canvas-sized layer per primitive (#74)."""
+    from holiday_card.core.compiler import _lower_pattern_fill
+    from holiday_card.core.render_ir import BeginPage, EndPage, RectGeom
+
+    fill = PatternFill(pattern_type=PatternType.CHECKERBOARD, colors=["#FF0000", "#0000FF"],
+                       spacing=0.1)
+    geom = RectGeom(x=10, y=10, width=200, height=200)
+    commands = [
+        BeginPage(width=220, height=220),
+        *_lower_pattern_fill(fill, geom, (10, 10, 200, 200), None, 1.0),
+        EndPage(),
+    ]
+    layers = 0
+    original = PNGRenderer._draw_in_layer
+
+    def spy(self: PNGRenderer, *args: object, **kwargs: object) -> None:
+        nonlocal layers
+        layers += 1
+        original(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(PNGRenderer, "_draw_in_layer", spy)
+    out = tmp_path / "checker.png"
+    PNGRenderer(dpi=72).render(commands, out)
+    assert layers == 0
+    with Image.open(out) as img:
+        rgb = img.convert("RGB")
+        # First 7.2 pt tile hangs from (10, 210): cells top-left and
+        # bottom-right are the foreground, the others the background.
+        assert rgb.getpixel((11, 220 - 209)) == (0, 0, 255)
+        assert rgb.getpixel((15, 220 - 209)) == (255, 0, 0)
+        assert rgb.getpixel((5, 5)) == (255, 255, 255)  # outside the clip

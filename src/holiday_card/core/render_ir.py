@@ -48,7 +48,6 @@ __all__ = [
     "SolidPaint",
     "LinearGradientPaint",
     "RadialGradientPaint",
-    "PatternPaint",
     "PaintU",
     # Geometry variants and union
     "RectGeom",
@@ -183,17 +182,8 @@ class RadialGradientPaint(_IRBase):
     stops: tuple[GradientStop, ...] = Field(min_length=2)
 
 
-class PatternPaint(_IRBase):
-    kind: Literal["pattern"] = "pattern"
-    pattern: Literal["stripes", "dots", "grid", "checkerboard"]
-    colors: tuple[RGBA, ...] = Field(min_length=1)
-    spacing: float = Field(gt=0.0, description="Pattern spacing in points")
-    scale: float = Field(default=1.0, gt=0.0)
-    rotation_deg: float = 0.0
-
-
 PaintU = Annotated[
-    SolidPaint | LinearGradientPaint | RadialGradientPaint | PatternPaint,
+    SolidPaint | LinearGradientPaint | RadialGradientPaint,
     Field(discriminator="kind"),
 ]
 

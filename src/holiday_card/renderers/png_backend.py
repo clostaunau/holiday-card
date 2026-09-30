@@ -25,7 +25,8 @@ Every IR command is honoured or raises ``NotImplementedError`` (fail
 loud, D4):
 
 * Shapes (rect / rounded rect / circle / ellipse / polygon / polyline /
-  path) with solid fills, linear + radial gradients and patterns;
+  path) with solid fills and linear + radial gradients (patterns are
+  lowered to clip + solid primitives by the compiler, #74);
   strokes with ``Stroke.dash`` (PDF/SVG semantics: odd-length arrays
   repeat, phase 0, restart per subpath).
 * Text with three alignments; effective alpha is
@@ -68,7 +69,6 @@ from holiday_card.core.render_ir import (
     EndPage,
     LinearGradientPaint,
     PathGeom,
-    PatternPaint,
     PolygonGeom,
     PolylineGeom,
     RadialGradientPaint,
@@ -133,6 +133,17 @@ def _interp_stops(
         int(round(c.b * 255)),
         int(round(c.a * 255)),
     )
+
+
+def _pixel_span(start: float, end: float) -> tuple[int, int]:
+    """Inclusive range of the pixels whose centres lie in ``[start, end)``.
+
+    Never empty. Pillow treats a box end as inclusive, so a 2 px line drew
+    3 px; the centre rule also gives abutting rects (checker cells) exactly
+    one owner per pixel.
+    """
+    first = math.ceil(start - 0.5)
+    return first, max(first, math.ceil(end - 0.5) - 1)
 
 
 def _dash_runs(
@@ -335,12 +346,15 @@ class PNGRenderer:
             raise NotImplementedError(
                 "PNGRenderer does not yet handle BeginGroup with non-1.0 opacity"
             )
-        if t.is_identity():
+        if t.is_identity() and self._active_mask() is None:
             # No isolation needed; draw context unchanged.
             self._group_stack.append(None)
             return
         # Draw the group's content to a transparent overlay at canvas size,
-        # then map the whole overlay through the transform on EndGroup.
+        # then map the whole overlay through the transform on EndGroup. An
+        # identity group under a clip is isolated too, so its draws go
+        # straight onto one overlay that is clipped once (a lowered
+        # pattern's thousands of primitives, #74) instead of one layer each.
         assert self._image is not None and self._draw is not None
         saved_image = self._image
         saved_draw = self._draw
@@ -358,7 +372,7 @@ class PNGRenderer:
         saved_image, saved_draw, transform = state
         overlay = self._image
         assert overlay is not None
-        transformed = overlay.transform(
+        transformed = overlay if transform.is_identity() else overlay.transform(
             overlay.size,
             Image.Transform.AFFINE,
             self._inverse_pixel_affine(transform),
@@ -480,7 +494,7 @@ class PNGRenderer:
         assert self._draw is not None
         complex_fill = isinstance(
             cmd.fill,
-            (LinearGradientPaint, RadialGradientPaint, PatternPaint),
+            (LinearGradientPaint, RadialGradientPaint),
         )
         # Pillow's ImageDraw drops the alpha channel: a fill or stroke
         # with alpha < 255 *replaces* the pixel instead of compositing
@@ -494,7 +508,7 @@ class PNGRenderer:
         ):
             self._draw_in_layer(lambda: self._draw_shape(cmd))
             return
-        # Gradient and pattern fills need a separate rendering path —
+        # Gradient fills need a separate rendering path —
         # they paint a 2D field rather than a single color, so the
         # ``ImageDraw.rectangle``/``ellipse`` calls below can't fill
         # them in one step. Dispatch and return.
@@ -523,6 +537,12 @@ class PNGRenderer:
                     radius=self._len(geom.corner_radius),
                     fill=fill_rgba, outline=stroke_rgba, width=stroke_width,
                 )
+            elif stroke_rgba is None:
+                if fill_rgba is not None:
+                    # Pillow's box end is inclusive (one pixel too many).
+                    left, right = _pixel_span(x0, x1)
+                    top, bottom = _pixel_span(y0, y1)
+                    self._draw.rectangle((left, top, right, bottom), fill=fill_rgba)
             else:
                 self._draw.rectangle(
                     (x0, y0, x1, y1),
@@ -532,8 +552,11 @@ class PNGRenderer:
             cx = self._x(geom.center.x)
             cy = self._y(geom.center.y)
             r = self._len(geom.radius)
+            # Pillow's box end is inclusive; a fill-only disc insets it by
+            # half a pixel each side so its diameter matches (#74).
+            inset = 0.5 if stroke_rgba is None else 0.0
             self._draw.ellipse(
-                (cx - r, cy - r, cx + r, cy + r),
+                (cx - r + inset, cy - r + inset, cx + r - inset, cy + r - inset),
                 fill=fill_rgba, outline=stroke_rgba, width=stroke_width,
             )
         elif isinstance(geom, EllipseGeom):
@@ -541,8 +564,9 @@ class PNGRenderer:
             cy = self._y(geom.center.y)
             rx = self._len(geom.rx)
             ry = self._len(geom.ry)
+            inset = 0.5 if stroke_rgba is None else 0.0
             self._draw.ellipse(
-                (cx - rx, cy - ry, cx + rx, cy + ry),
+                (cx - rx + inset, cy - ry + inset, cx + rx - inset, cy + ry - inset),
                 fill=fill_rgba, outline=stroke_rgba, width=stroke_width,
             )
         elif isinstance(geom, PolygonGeom):
@@ -940,11 +964,11 @@ class PNGRenderer:
         )
 
     # ------------------------------------------------------------------
-    # Complex fills (gradients + patterns)
+    # Complex fills (gradients)
     # ------------------------------------------------------------------
 
     def _draw_shape_with_complex_fill(self, cmd: DrawShape) -> None:
-        """Render a shape whose fill is a gradient or pattern.
+        """Render a shape whose fill is a gradient.
 
         Pillow's ``ImageDraw`` only fills with a single color, so we
         build a small RGBA image sized to the shape's bounding box,
@@ -1010,7 +1034,7 @@ class PNGRenderer:
         opacity: float,
         bbox_origin: tuple[int, int],
     ) -> None:
-        """Render gradient/pattern paint into the supplied small RGBA image.
+        """Render gradient paint into the supplied small RGBA image.
 
         ``bbox_origin`` is the top-left of ``img`` in canvas pixels —
         used to translate IR-space gradient endpoints into image-local
@@ -1064,88 +1088,6 @@ class PNGRenderer:
                     r, g, b, a = _interp_stops(stops, t)
                     data.append((r, g, b, int(round(a * alpha_mult))))
             img.putdata(data)
-        elif isinstance(fill, PatternPaint):
-            self._render_pattern_into(img, fill, opacity, bbox_origin)
-
-    def _render_pattern_into(
-        self,
-        img: Image.Image,
-        pattern: PatternPaint,
-        opacity: float,
-        bbox_origin: tuple[int, int],
-    ) -> None:
-        """Render a pattern into a small RGBA image via ImageDraw."""
-        bx, by = bbox_origin
-        w, h = img.size
-        spacing_px = max(2.0, self._len(pattern.spacing * pattern.scale))
-        c0 = pattern.colors[0]
-        c1 = pattern.colors[1] if len(pattern.colors) > 1 else c0
-        alpha = max(0.0, min(1.0, opacity))
-
-        def rgba(c: object) -> tuple[int, int, int, int]:
-            r = int(round(c.r * 255))  # type: ignore[attr-defined]
-            g = int(round(c.g * 255))  # type: ignore[attr-defined]
-            b = int(round(c.b * 255))  # type: ignore[attr-defined]
-            a = int(round(c.a * alpha * 255))  # type: ignore[attr-defined]
-            return (r, g, b, a)
-
-        rgba_c0 = rgba(c0)
-        rgba_c1 = rgba(c1)
-
-        # Fill background with color 0 (the negative-space color).
-        bg_layer = Image.new("RGBA", (w, h), rgba_c0)
-
-        draw = ImageDraw.Draw(bg_layer)
-        if pattern.pattern == "stripes":
-            half = spacing_px / 2
-            y = -half
-            while y < h + spacing_px:
-                draw.rectangle((-spacing_px, y, w + spacing_px, y + half), fill=rgba_c1)
-                y += spacing_px
-        elif pattern.pattern == "dots":
-            radius = spacing_px / 4
-            cy = 0.0
-            while cy < h + spacing_px:
-                cx = 0.0
-                while cx < w + spacing_px:
-                    draw.ellipse(
-                        (cx - radius, cy - radius, cx + radius, cy + radius),
-                        fill=rgba_c1,
-                    )
-                    cx += spacing_px
-                cy += spacing_px
-        elif pattern.pattern == "grid":
-            line_x = 0.0
-            while line_x < w + spacing_px:
-                draw.line((line_x, 0, line_x, h), fill=rgba_c1, width=1)
-                line_x += spacing_px
-            line_y = 0.0
-            while line_y < h + spacing_px:
-                draw.line((0, line_y, w, line_y), fill=rgba_c1, width=1)
-                line_y += spacing_px
-        elif pattern.pattern == "checkerboard":
-            half = spacing_px
-            gy = 0.0
-            row = 0
-            while gy < h + half:
-                offset = half if row % 2 else 0
-                gx = -half + offset
-                while gx < w + half:
-                    draw.rectangle((gx, gy, gx + half, gy + half), fill=rgba_c1)
-                    gx += 2 * half
-                gy += half
-                row += 1
-
-        # Apply rotation around center if requested.
-        if pattern.rotation_deg:
-            bg_layer = bg_layer.rotate(
-                pattern.rotation_deg,
-                resample=Image.Resampling.BILINEAR,
-                expand=False,
-            )
-
-        # Paste into the destination image.
-        img.paste(bg_layer, (0, 0))
 
     def _geom_bbox_px(
         self, geom: object,

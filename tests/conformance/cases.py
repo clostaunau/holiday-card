@@ -4,6 +4,8 @@ Each ``Case`` is a 144×144 pt page with ``bleed=0`` (except
 ``page_bleed_background``, which exercises bleed itself) that exercises
 exactly one feature. Cases are built from ``core/render_ir.py`` types
 directly, never via templates, so a failure points at one backend feature.
+The pattern cases are the exception: patterns exist only as a compiler
+lowering (#74, D13), so they come from ``_lower_pattern_fill``.
 """
 
 from __future__ import annotations
@@ -14,6 +16,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from holiday_card.core.compiler import _lower_pattern_fill
+from holiday_card.core.models import PatternFill, PatternType
 from holiday_card.core.render_ir import (
     RGBA,
     BeginClip,
@@ -33,7 +37,6 @@ from holiday_card.core.render_ir import (
     LinearGradientPaint,
     PathGeom,
     PathOp,
-    PatternPaint,
     Point,
     PolygonGeom,
     PolylineGeom,
@@ -94,15 +97,17 @@ def _stroke_line(dash: tuple[float, ...]) -> DrawShape:
     )
 
 
-def _pattern(kind: str) -> DrawShape:
-    return DrawShape(
-        geometry=RectGeom(x=24, y=24, width=96, height=96),
-        fill=PatternPaint(
-            pattern=kind,  # type: ignore[arg-type]
-            colors=(RED, BLUE),
-            spacing=16,
-        ),
+PATTERN_KINDS = ("stripes", "dots", "grid", "checkerboard")
+PATTERN_ROTATIONS = (0, 45, 90)
+
+
+def _pattern(kind: str, rotation: float) -> tuple[RenderCommand, ...]:
+    fill = PatternFill(
+        pattern_type=PatternType(kind), colors=["#FF0000", "#0000FF"],
+        spacing=16 / 72, rotation=rotation,
     )
+    geom = RectGeom(x=24, y=36, width=96, height=72)
+    return tuple(_lower_pattern_fill(fill, geom, (24, 36, 96, 72), None, 1.0))
 
 
 # #72 / D14: a 20×20 pt red square at (40, 40)-(60, 60) inside one or more
@@ -234,10 +239,11 @@ CASES: tuple[Case, ...] = (
             ),
         ),
     ),
-    _case("pattern_stripes", _pattern("stripes")),
-    _case("pattern_dots", _pattern("dots")),
-    _case("pattern_grid", _pattern("grid")),
-    _case("pattern_checkerboard", _pattern("checkerboard")),
+    *(
+        _case(f"pattern_{kind}_{rotation}", *_pattern(kind, rotation))
+        for kind in PATTERN_KINDS
+        for rotation in PATTERN_ROTATIONS
+    ),
     _case("clip_circle_over_rect", _CIRCLE_CLIP, _fill(_FULL_PAGE), EndClip()),
     _case(
         "clip_nested",
