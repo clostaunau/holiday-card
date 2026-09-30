@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 2572 tests, mypy-clean, ruff-clean
+uv run pytest                       # all 2606 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -158,6 +158,8 @@ tests/
                         # L3 AI imagery: test_ai_rails, test_ai_provenance, test_ai_assets
                         # SVG font subsets: test_svg_fonts (#76)
                         # Loader: test_templates_loading (extra="forbid", fail-loud keys)
+                        # CLI preview / init end to end: test_cli_preview_init (#84)
+                        # Hypothesis properties (SVG path + Markdown parsers): test_parsers_properties (#84)
                         # CLI seam: test_card_request (precedence rules 1-18, #78)
                         # PDF/X flattening: test_compiler_flatten (backdrop rule, refusals, IR alpha)
                         # Patterns: test_compiler_patterns (lowering to clip + primitives, #74)
@@ -207,7 +209,8 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 2572 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 2606 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
 
@@ -364,6 +367,42 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-29 — Branch-coverage floor of 92%; `preview` / `init`,
+  shrink-to-fit and parser-property tests; a live fail-loud watchdog
+  (expert-panel §P12 / D4 / D17, issue #84)**: coverage was measured in
+  CI but never enforced. `[tool.coverage.report]` now has `fail_under =
+  92` (the measured TOTAL, 92.20% branch coverage, rounded down; every CI
+  leg measured the same) and `show_missing = true`, so the CI `pytest
+  --cov` step fails below it with `FAIL Required test coverage`. Raise the
+  floor when coverage rises; never lower it to pass a PR. New
+  `tests/unit/test_cli_preview_init.py`: `preview` writes an `8.5·dpi ×
+  11·dpi` PNG, a missing template exits 2 and writes nothing, `.png` is
+  appended, voice + letter flags work, `--open` / `--no-open` and
+  `_open_in_default_viewer` per platform with `subprocess.run` /
+  `os.startfile` patched (plus the failure message); `init` round-trips
+  through `load_template_from_file` with `check_template` clean, honours
+  `--fold-type` and `--output`. `test_text_fitting.py` gains a half-em
+  `HalfEmMeasurer`: the wrap strategy's binary search returns the largest
+  size that fits (re-measured at `size` and `size + 1`, and equal to a
+  brute-force search), never goes below `min_font_size`, and
+  `apply_shrink_strategy` truncates maximally at the floor. First
+  `hypothesis` use, `tests/unit/test_parsers_properties.py`
+  (`max_examples=200, deadline=None`, < 1 s): generated
+  `M/L/H/V/C/S/Q/T/Z` paths (abs + rel) round-trip, arbitrary text either
+  parses or raises `ValueError` for `SVGPathParser.parse` and
+  `parse_markdown`, plain lines round-trip as unstyled runs, and
+  `***x***` is one bold-italic run. **Found by it:** `parse("Z0")` raised
+  `ZeroDivisionError` (`len(params) % 0` for a zero-arity command); a
+  parameter on `Z`/`z` is now the same arity `ValueError` as any other
+  command. The watchdog `test_unsupported_features_raise_loudly` was an
+  empty parametrize (the suite's one skip); it now adds an absolute and a
+  relative SVG arc to christmas-classic and requires
+  `UnsupportedFeatureError`. `SUPPORTED_REJECTING_TEMPLATES` is gone.
+  Not done here: `per_panel._scale_shape` no longer exists (#73), so it
+  gets no tests (D17); `tests/performance_validation.py` was already
+  deleted by #83. Tests 2572 → 2606. Coverage: `cli/commands.py` 83 →
+  87%, `core/text_fitting.py` 76 → 92%, `utils/svg_parser.py` 92 → 98%.
 
 - **2026-09-29 — Dead modules, dead APIs and stale comments deleted
   (expert-panel §P15 / D17, issue #83)**: Removed, with no importers

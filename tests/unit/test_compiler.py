@@ -41,6 +41,7 @@ from holiday_card.core.models import (
     FoldType,
     Panel,
     PanelPosition,
+    SVGPath,
     TextElement,
 )
 from holiday_card.core.render_ir import (
@@ -92,11 +93,6 @@ SUPPORTED_SNAPSHOT_TEMPLATES = (
     "pet-loss-spare",
 )
 
-# Templates expected to raise UnsupportedFeatureError. Empty after the
-# valentine/decorative-element removal — every shipped template now
-# compiles via the IR. Kept as a hook so a future feature with partial
-# coverage can re-enable the watch-dog without restructuring the test.
-SUPPORTED_REJECTING_TEMPLATES: tuple[str, ...] = ()
 
 # Sympathy-class templates (panel L2 taxonomy). One restrained template
 # per occasion; each compiles via the IR pipeline like the rest.
@@ -184,15 +180,19 @@ class TestStructure:
 
 
 # ---------------------------------------------------------------------------
-# Watch-dog: templates with unsupported features must raise loudly so we
-# never silently ship a half-compiled PDF.
+# Watch-dog: a card with an unsupported feature must raise loudly so we
+# never silently ship a half-compiled PDF. Every shipped template compiles,
+# so the watch-dog adds a known-unsupported feature (an SVG arc) to one.
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("template_id", SUPPORTED_REJECTING_TEMPLATES)
-def test_unsupported_features_raise_loudly(template_id: str) -> None:
-    card = CardGenerator().create_card(template_id=template_id)
-    with pytest.raises(UnsupportedFeatureError):
+@pytest.mark.parametrize("path_data", ["M 0 0 A 5 5 0 0 1 10 10", "M 0 0 a 5 5 0 0 1 10 10 Z"])
+def test_unsupported_features_raise_loudly(path_data: str) -> None:
+    card = CardGenerator().create_card(template_id="christmas-classic")
+    compile_card(card)  # the unmodified card compiles
+    front = next(p for p in card.panels if p.position == PanelPosition.FRONT)
+    front.shape_elements.append(SVGPath(id="arc", path_data=path_data, x=1.0, y=1.0))
+    with pytest.raises(UnsupportedFeatureError, match="arc"):
         compile_card(card)
 
 

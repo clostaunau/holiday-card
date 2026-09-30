@@ -152,10 +152,8 @@ class SVGPathParser:
         # Validate parameter count for each command type.
         # Some commands allow multiple sets of parameters, so we check divisibility.
         expected_params = self._get_expected_param_count(command)
-        if (
-            expected_params is not None
-            and len(params) != expected_params
-            and len(params) % expected_params != 0
+        if expected_params is not None and len(params) != expected_params and (
+            expected_params == 0 or len(params) % expected_params != 0
         ):
             raise ValueError(
                 f"Command {command_char} expects {expected_params} parameters, "
