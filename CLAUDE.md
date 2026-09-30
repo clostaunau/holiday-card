@@ -33,7 +33,7 @@ holiday-card create christmas-classic --export-for moo-a6 -o out/     # CMYK PDF
 holiday-card create christmas-family-photo -i me.jpg                 # your photo in the template's photo slot
                                     # PDF: < 300 PPI warns, < 150 PPI exits 2 (--allow-low-res: proofs only)
 holiday-card preview christmas-classic --voice warm             # PNG preview; takes every create content flag
-uv run pytest                       # all 3060 tests, mypy-clean, ruff-clean, coverage ≥ 92%
+uv run pytest                       # all 3199 tests, mypy-clean, ruff-clean, coverage ≥ 92%
 ```
 
 ## Architecture
@@ -116,6 +116,8 @@ src/holiday_card/
                         #   + provider-neutral ImageClient (#146), generate orchestration,
                         #   decode_b64_image / open_generated_image: model bytes as untrusted input (#141)
     ai_openai.py        # L3 OpenAI image-client adapter (only module importing openai)
+    ai_openrouter_models.py  # L3 curated OpenRouter image allowlist: pinned endpoint, capabilities,
+                        #   pricing, upstream terms (stdlib only, #148)
     images.py           # Template image path containment + PNG/JPEG content probe (D5)
     template_checks.py  # check_template: fonts, bounds, default theme, compile smoke (#57)
     template_schema.py  # template_json_schema: model JSON Schema + AliasChoices names (#57)
@@ -206,6 +208,8 @@ scripts/                # Stand-alone helpers used by CI/Actions
                         #   build_microsite.py — Leapfrog 5 template-gallery generator (thumbnails
                         #     via build_card; voices from available_voices; -i on photo-slot pages)
                         #   make_placeholder_photo.py — regenerates the CC0 placeholder-photo.jpg
+                        #   refresh_openrouter_models.py — OpenRouter allowlist drift table / entries
+                        #     from the public catalogue (dev-only; never in CI, #148)
 .github/workflows/      # CI: ci.yml (lint/type/test → build → smoke of the installed wheel;
                         #     `audit` = pip-audit of the uv.lock export, fails on any known CVE)
                         #     render-cards.yml (PR-comment card previews; job summary on fork PRs)
@@ -230,7 +234,7 @@ uv sync --extra dev                      # Install locked deps (uv.lock); `pip i
 uv lock --check                          # Lockfile in sync with pyproject.toml (CI lint job)
 uv run ruff check src/ tests/ scripts/   # Lint — must be clean
 uv run mypy src/                         # Type-check — must be clean (strict mode, runs on py3.11 in CI)
-uv run pytest                            # All 3060 tests pass (PNG visual gate needs raqm: see tests/visual)
+uv run pytest                            # All 3199 tests pass (PNG visual gate needs raqm: see tests/visual)
 uv run pytest --cov=holiday_card         # + branch-coverage floor: fail_under = 92 in pyproject.toml (CI runs this)
 uv run pytest -m pdfx                    # PDF/X-1a preflight (needs pdffonts + gs; CI job pdfx-preflight)
 ```
@@ -420,6 +424,51 @@ template editing; a JSON "render plan" backend for downstream tooling.
   to use them. Needs a contractor, not a PR.
 
 ## Recent changes
+
+- **2026-09-30 — Curated OpenRouter image allowlist, the aspect / tier
+  chooser and a dev-only refresh script (issue #148, OpenRouter program)**:
+  OpenRouter sizes images by an aspect-ratio enum plus a resolution tier,
+  per endpoint. New stdlib-only `core/ai_openrouter_models.py`: frozen
+  `OpenRouterPrice(billable, unit, cost_usd)` and `OpenRouterModel` (`id`,
+  the **one** pinned `provider_tag`, `aspect_ratios` without `"auto"`,
+  `resolutions` / `output_formats` (`()` = never send), `input_refs_min/max`,
+  `seed`, `background_transparent`, `passthrough`, every `pricing` row,
+  `upstream_terms_url`, `snapshot_date`), whose `__post_init__` refuses a
+  bad entry at import naming the id and field (`"auto"`, an unknown tier,
+  refs outside `0 ≤ min ≤ max ≤ 16`, empty or negative pricing, a non-ISO
+  date, a non-https or `openrouter.ai` terms URL, so `"TODO-REVIEW"` fails,
+  an empty tag). `OPENROUTER_IMAGE_MODELS` (read-only) holds 5 entries
+  fetched 2026-09-30: gemini-3-pro-image @ `google-ai-studio/global` (4K),
+  gemini-3.1-flash-image @ `google-ai-studio`, flux.2-pro and seedream-4.5
+  (the two with `seed`), openai/gpt-image-2. `openrouter_model(id)` refuses
+  an unknown id listing them. Also there: `RESOLUTION_LONG_EDGE_PX` (a
+  tier's nominal long edge; an assumption until #140 measures it) and
+  `aspect_ratio_value("9:19.5")`, both re-exported from `ai_assets` (they
+  live in the stdlib module so the entries validate without Pillow).
+  `ai_assets.choose_aspect_shape(entry, w, h) -> AspectSize`: nearest aspect
+  in log space, ties to the narrower ratio then the smaller string (order
+  independent), and the smallest tier covering the long edge, else the
+  largest, else `None`. Every curated model picks 3:4 for letter (4K) and
+  moo-a6 (2K). Not wired into `choose_request_shape` yet: no
+  `AIProvider.OPENROUTER` before #150 (D17). The terms review replaced every
+  `/providers` URL with the page that governs output ownership (Gemini API
+  terms, BFL developer terms, BytePlus AI-services terms, the OpenAI
+  services agreement); it is recorded in the new
+  `docs/industry-review/openrouter-image-api-snapshot.md` (#140 fills in the
+  rest). New `scripts/refresh_openrouter_models.py` (stdlib `urllib`, https
+  only, no key): `--from-dir` / `--save-dir` recordings, `--add
+  ID[@TAG]` (ambiguous → exit 2), `--emit table` (drift rows; 0 / 1 / 2)
+  or `python` (paste-ready literals; unreviewed terms print `TODO-REVIEW`);
+  it never compares the reviewed `upstream_terms_url`. Guarded by
+  `tests/unit/test_ai_openrouter_models.py` (drift guard on the 5 ids, every
+  refusal, pinned facts, a subprocess check that the import adds no
+  non-stdlib module), `TestChooseAspectShape` in `test_ai_assets.py` (every
+  entry × every geometry target, pinned rows, ties in both orders, tier
+  fallback), `tests/unit/test_refresh_openrouter_models.py` (replays
+  `tests/fixtures/openrouter/catalogue{,-drifted}/`: 0 differences, exactly
+  3 drift rows, `TODO-REVIEW` refused on `eval`, no `Authorization`) and a
+  `test_workflow_policy.py` row (no workflow runs the script).
+  Tests 3060 → 3199.
 
 - **2026-09-30 — AI provider registry, request shapes and a
   provider-neutral `ImageClient`; `--provider` / `--model`; `--seed`

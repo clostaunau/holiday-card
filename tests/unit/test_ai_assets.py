@@ -25,6 +25,7 @@ from PIL import EpsImagePlugin, Image, ImageFile
 from holiday_card.core.ai_assets import (
     MAX_IMAGE_BYTES,
     MODEL_SIZE_POLICIES,
+    RESOLUTION_LONG_EDGE_PX,
     AIRequest,
     AspectSize,
     ConsentRequiredError,
@@ -35,7 +36,9 @@ from holiday_card.core.ai_assets import (
     PixelSize,
     RailRefusedError,
     RequestShape,
+    aspect_ratio_value,
     build_ai_request,
+    choose_aspect_shape,
     choose_request_shape,
     choose_request_size,
     decode_b64_image,
@@ -43,8 +46,13 @@ from holiday_card.core.ai_assets import (
     open_generated_image,
     size_is_allowed,
 )
+from holiday_card.core.ai_openrouter_models import (
+    OPENROUTER_IMAGE_MODELS,
+    openrouter_model,
+)
 from holiday_card.core.ai_provenance import read_sidecar, record_consent
 from holiday_card.core.ai_providers import AIProvider
+from holiday_card.core.export_targets import REGISTRY
 from holiday_card.core.images import MAX_IMAGE_PIXELS
 from holiday_card.core.models import OccasionType
 
@@ -192,6 +200,132 @@ class TestChooseRequestShape:
     def test_aspect_size_is_a_request_shape(self) -> None:
         shape: RequestShape = AspectSize("3:4", "2K")
         assert (shape.aspect_ratio, shape.resolution) == ("3:4", "2K")
+
+
+def _target_px(name: str) -> tuple[int, int]:
+    geom = REGISTRY[name].geometry
+    assert geom is not None
+    req = build_ai_request(
+        prompt="x",
+        trim_width_in=geom.trim_width_in,
+        trim_height_in=geom.trim_height_in,
+        bleed_in=geom.bleed_in,
+        provider=AIProvider.OPENAI,
+        model="gpt-image-2",
+    )
+    return req.width_px, req.height_px
+
+
+_GEOMETRY_TARGETS = sorted(name for name, t in REGISTRY.items() if t.geometry is not None)
+_GEMINI_PRO = "google/gemini-3-pro-image"
+
+
+class TestChooseAspectShape:
+    """OpenRouter sizing: nearest aspect in log space, then a resolution tier (#148)."""
+
+    @pytest.mark.parametrize(
+        ("ratio", "value"),
+        [("3:4", 0.75), ("9:19.5", 9 / 19.5), ("19.5:9", 19.5 / 9), ("2.35:1", 2.35), ("1:1", 1.0)],
+    )
+    def test_aspect_ratio_value(self, ratio: str, value: float) -> None:
+        assert aspect_ratio_value(ratio) == pytest.approx(value)
+
+    @pytest.mark.parametrize(
+        "ratio", ["auto", "", "3", "0:4", "3:0", "a:b", "-3:4", "inf:1", "nan:1", "1:2:3", ":4"]
+    )
+    def test_aspect_ratio_value_refuses(self, ratio: str) -> None:
+        with pytest.raises(ValueError, match="aspect ratio"):
+            aspect_ratio_value(ratio)
+
+    def test_resolution_tiers(self) -> None:
+        assert dict(RESOLUTION_LONG_EDGE_PX) == {
+            "512": 512,
+            "768": 768,
+            "1K": 1024,
+            "2K": 2048,
+            "4K": 4096,
+        }
+
+    def test_target_sizes(self) -> None:
+        assert _target_px("letter") == (2550, 3300)
+        assert _target_px("moo-a6") == (1314, 1824)
+
+    @pytest.mark.parametrize("target", _GEOMETRY_TARGETS)
+    @pytest.mark.parametrize("model", sorted(OPENROUTER_IMAGE_MODELS))
+    def test_chosen_shape_is_advertised_by_the_pinned_endpoint(
+        self, model: str, target: str
+    ) -> None:
+        entry = OPENROUTER_IMAGE_MODELS[model]
+        shape = choose_aspect_shape(entry, *_target_px(target))
+        assert shape.aspect_ratio in entry.aspect_ratios
+        if entry.resolutions:
+            assert shape.resolution in entry.resolutions
+        else:
+            assert shape.resolution is None
+
+    @pytest.mark.parametrize("model", sorted(OPENROUTER_IMAGE_MODELS))
+    @pytest.mark.parametrize("target", ["letter", "moo-a6"])
+    def test_every_curated_model_picks_3_4_for_portrait_targets(
+        self, model: str, target: str
+    ) -> None:
+        shape = choose_aspect_shape(OPENROUTER_IMAGE_MODELS[model], *_target_px(target))
+        assert shape.aspect_ratio == "3:4"
+
+    def test_gemini_pro_moo_a6(self) -> None:
+        assert choose_aspect_shape(openrouter_model(_GEMINI_PRO), 1314, 1824) == AspectSize("3:4", "2K")
+
+    def test_gemini_pro_letter(self) -> None:
+        assert choose_aspect_shape(openrouter_model(_GEMINI_PRO), 2550, 3300) == AspectSize("3:4", "4K")
+
+    def test_flux_has_no_resolution(self) -> None:
+        entry = openrouter_model("black-forest-labs/flux.2-pro")
+        assert choose_aspect_shape(entry, 1314, 1824) == AspectSize("3:4", None)
+
+    def test_landscape(self) -> None:
+        assert choose_aspect_shape(openrouter_model(_GEMINI_PRO), 1824, 1314).aspect_ratio == "4:3"
+
+    def test_decimal_ratio_is_reachable(self) -> None:
+        entry = openrouter_model("bytedance-seed/seedream-4.5")
+        assert choose_aspect_shape(entry, 900, 1950).aspect_ratio == "9:19.5"
+
+    @pytest.mark.parametrize(
+        ("ratios", "expected"),
+        [
+            (("4:3", "3:4"), "3:4"),
+            (("3:4", "4:3"), "3:4"),
+            (("2:1", "1:2"), "1:2"),
+            (("1:2", "2:1"), "1:2"),
+        ],
+    )
+    def test_tie_goes_to_the_narrower_ratio_in_any_order(
+        self, ratios: tuple[str, ...], expected: str
+    ) -> None:
+        entry = replace(openrouter_model(_GEMINI_PRO), aspect_ratios=ratios)
+        assert choose_aspect_shape(entry, 1000, 1000).aspect_ratio == expected
+
+    def test_equal_values_tie_on_the_string(self) -> None:
+        entry = replace(openrouter_model(_GEMINI_PRO), aspect_ratios=("6:8", "3:4"))
+        assert choose_aspect_shape(entry, 1314, 1824).aspect_ratio == "3:4"
+
+    def test_reversed_catalogue_order_gives_the_same_shape(self) -> None:
+        for entry in OPENROUTER_IMAGE_MODELS.values():
+            flipped = replace(
+                entry,
+                aspect_ratios=entry.aspect_ratios[::-1],
+                resolutions=entry.resolutions[::-1],
+            )
+            for size in [(1314, 1824), (2550, 3300), (1824, 1314), (1000, 1000)]:
+                assert choose_aspect_shape(flipped, *size) == choose_aspect_shape(entry, *size)
+
+    def test_resolution_falls_back_to_the_largest_tier(self) -> None:
+        entry = replace(openrouter_model(_GEMINI_PRO), resolutions=("1K", "2K"))
+        assert choose_aspect_shape(entry, 2550, 3300).resolution == "2K"
+
+    def test_resolution_is_the_smallest_tier_that_covers_the_long_edge(self) -> None:
+        entry = replace(openrouter_model(_GEMINI_PRO), resolutions=("512", "1K", "2K"))
+        assert choose_aspect_shape(entry, 1000, 1000).resolution == "1K"
+        assert choose_aspect_shape(entry, 1024, 500).resolution == "1K"
+        assert choose_aspect_shape(entry, 1025, 500).resolution == "2K"
 
 
 class TestModelSizePolicy:

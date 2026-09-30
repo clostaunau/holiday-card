@@ -1,0 +1,58 @@
+{
+  "data": [
+    {
+      "name": "Black Forest Labs",
+      "slug": "black-forest-labs",
+      "privacy_policy_url": "https://bfl.ai/legal/privacy-policy",
+      "terms_of_service_url": "https://bfl.ai/legal/terms-of-service",
+      "status_page_url": null,
+      "headquarters": null,
+      "datacenters": []
+    },
+    {
+      "name": "Recraft",
+      "slug": "recraft",
+      "privacy_policy_url": null,
+      "terms_of_service_url": null,
+      "status_page_url": null,
+      "headquarters": null,
+      "datacenters": []
+    },
+    {
+      "name": "Seed",
+      "slug": "seed",
+      "privacy_policy_url": "https://docs.byteplus.com/en/docs/legal/docs-privacy-policy",
+      "terms_of_service_url": "https://docs.byteplus.com/en/docs/legal/docs-terms-of-service",
+      "status_page_url": null,
+      "headquarters": "SG",
+      "datacenters": []
+    },
+    {
+      "name": "Google",
+      "slug": "google-vertex",
+      "privacy_policy_url": "https://cloud.google.com/terms/cloud-privacy-notice",
+      "terms_of_service_url": "https://cloud.google.com/terms/",
+      "status_page_url": "https://status.cloud.google.com/products/sdXM79fz1FS6ekNpu37K/history",
+      "headquarters": "US",
+      "datacenters": null
+    },
+    {
+      "name": "Google AI Studio",
+      "slug": "google-ai-studio",
+      "privacy_policy_url": "https://cloud.google.com/terms/cloud-privacy-notice",
+      "terms_of_service_url": "https://cloud.google.com/terms/",
+      "status_page_url": null,
+      "headquarters": "US",
+      "datacenters": null
+    },
+    {
+      "name": "OpenAI",
+      "slug": "openai",
+      "privacy_policy_url": "https://openai.com/policies/privacy-policy/",
+      "terms_of_service_url": "https://openai.com/policies/row-terms-of-use/",
+      "status_page_url": "https://status.openai.com/",
+      "headquarters": "US",
+      "datacenters": null
+    }
+  ]
+}
