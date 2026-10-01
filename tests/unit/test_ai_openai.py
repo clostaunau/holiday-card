@@ -128,6 +128,17 @@ def test_refuses_a_seed_before_calling_the_api() -> None:
     assert fake.images.calls == []
 
 
+def test_refuses_a_transparent_background_before_calling_the_api() -> None:
+    # Whether direct OpenAI gets --transparent is an owner call (#169); until
+    # then the client refuses it rather than silently baking opaque.
+    fake = _fake_openai()
+    client = OpenAIImageClient(fake, model="gpt-image-2")
+    with pytest.raises(ValueError, match="transparent"):
+        client.generate(prompt="x", reference_path=None, shape=PixelSize(1024, 1024),
+                        seed=None, transparent=True)  # fmt: skip
+    assert fake.images.calls == []
+
+
 def test_unknown_model_is_refused_at_construction() -> None:
     with pytest.raises(ValueError, match="dall-e-9"):
         OpenAIImageClient(_fake_openai(), model="dall-e-9")

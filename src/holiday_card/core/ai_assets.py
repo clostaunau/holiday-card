@@ -17,7 +17,8 @@ Responsibilities, in order:
    another model is refused.
 4. **Bake** — open the model's bytes as untrusted input
    (:func:`open_generated_image`: PNG / JPEG / WebP only, matching the
-   declared type, one frame, at most ``MAX_IMAGE_PIXELS``), then cover-crop + LANCZOS-resample the result to exactly
+   declared type, one frame, at most ``MAX_IMAGE_PIXELS``; a transparent
+   request keeps the alpha and must show some), then cover-crop + LANCZOS-resample the result to exactly
    trim + 2×bleed at 300 PPI, write it as a PNG tagged sRGB IEC61966-2.1
    with ``dpi=(300, 300)`` and a sibling ``<asset>.license.yaml``
    provenance sidecar recording the generated size and native PPI.
@@ -326,6 +327,7 @@ class AIRequest:
     reference_path: str | None = None
     purpose: AssetPurpose = "page"
     export_target: str | None = None
+    transparent: bool = False  # a motif on a transparent background (#169)
 
 
 ImageMediaType = Literal["image/png", "image/jpeg", "image/webp"]
@@ -399,8 +401,8 @@ class ImageClient(Protocol):
     tests inject a fake. Keeping this a Protocol is what keeps provider SDKs
     out of the import graph unless the user installs ``holiday-card[ai]``.
     ``provider`` / ``model`` are what the client calls; the sidecar records
-    the model. A client refuses a ``shape`` or ``seed`` its model cannot
-    take. The returned bytes are untrusted: the bake decodes them only
+    the model. A client refuses a ``shape``, ``seed`` or ``transparent``
+    background its model cannot take. The returned bytes are untrusted: the bake decodes them only
     through :func:`open_generated_image`.
     """
 
@@ -417,6 +419,7 @@ class ImageClient(Protocol):
         reference_path: str | None,
         shape: RequestShape,
         seed: int | None,
+        transparent: bool = False,
     ) -> GeneratedImage: ...
 
 
@@ -493,8 +496,11 @@ def probe_generated_image(image_bytes: bytes, media_type: ImageMediaType) -> tup
         return img.size
 
 
-def open_generated_image(image_bytes: bytes, media_type: ImageMediaType) -> Image.Image:
-    """Decode model output as untrusted input and return a loaded RGB copy.
+def open_generated_image(
+    image_bytes: bytes, media_type: ImageMediaType, *, keep_alpha: bool = False
+) -> Image.Image:
+    """Decode model output as untrusted input and return a loaded RGB copy
+    (RGBA with ``keep_alpha``).
 
     Only PNG, JPEG and WebP decoders are consulted (never EPS / Ghostscript),
     the bytes must be the declared ``media_type``, a single frame, and at
@@ -506,7 +512,26 @@ def open_generated_image(image_bytes: bytes, media_type: ImageMediaType) -> Imag
     """
     with _checked_image(image_bytes, media_type) as img:
         img.load()
+        if keep_alpha:
+            return img.convert("RGBA") if _has_alpha(img) else img.convert("RGB")
         return img.convert("RGB")
+
+
+def _has_alpha(img: Image.Image) -> bool:
+    return img.mode in ("RGBA", "LA", "PA", "La", "RGBa") or "transparency" in img.info
+
+
+def _require_transparency(img: Image.Image) -> None:
+    """Refuse a "transparent" result with no transparent pixel (#169; #140: advertised isn't proof)."""
+    if img.mode != "RGBA":
+        raise ImagePayloadError(
+            "a transparent background was requested, but the image has no alpha channel"
+        )
+    low, _high = img.getchannel("A").getextrema()
+    if low == 255:
+        raise ImagePayloadError(
+            "a transparent background was requested, but every pixel is opaque"
+        )
 
 
 def request_shape_record(shape: RequestShape) -> dict[str, str]:
@@ -553,6 +578,7 @@ def build_ai_request(
     provider: AIProvider,
     model: str,
     export_target: str | None = None,
+    transparent: bool = False,
 ) -> AIRequest:
     """Resolve print geometry to a request for ``provider`` / ``model``.
 
@@ -573,6 +599,7 @@ def build_ai_request(
         dpi=dpi,
         reference_path=reference_path,
         export_target=export_target,
+        transparent=transparent,
     )
 
 
@@ -586,6 +613,7 @@ def build_panel_background_request(
     reference_path: str | None = None,
     provider: AIProvider,
     model: str,
+    transparent: bool = False,
 ) -> AIRequest:
     """A request sized for a panel ``background_image`` on ``target`` (#168).
 
@@ -613,6 +641,7 @@ def build_panel_background_request(
         reference_path=reference_path,
         purpose="panel_background",
         export_target=target.name,
+        transparent=transparent,
     )
 
 
@@ -636,6 +665,7 @@ def _cover_resample(img: Image.Image, size: tuple[int, int]) -> Image.Image:
         box = (0.0, top, float(w), top + crop_h)
     if (w, h) == size:
         return img
+    # Pillow premultiplies RGBA here, so transparent colour never fringes (#169).
     return img.resize(size, Image.Resampling.LANCZOS, box=box)
 
 
@@ -705,14 +735,19 @@ def generate_ai_asset(
         reference_path=request.reference_path,
         shape=request.shape,
         seed=seed,
+        transparent=request.transparent,
     )
 
     # Decode as untrusted input before anything touches the disk, then
     # re-encode as an sRGB-tagged PNG (drops ancillary metadata).
     target = (request.width_px, request.height_px)
-    rgb = open_generated_image(generated.image_bytes, generated.media_type)
-    generated_w, generated_h = rgb.size
-    baked = _cover_resample(rgb, target)
+    decoded = open_generated_image(
+        generated.image_bytes, generated.media_type, keep_alpha=request.transparent
+    )
+    if request.transparent:
+        _require_transparency(decoded)
+    generated_w, generated_h = decoded.size
+    baked = _cover_resample(decoded, target)
     # The marker names the sidecar by basename only: it travels with the
     # file, so it must not leak the author's directories.
     marker = PngImagePlugin.PngInfo()
@@ -758,6 +793,7 @@ def generate_ai_asset(
         cost_estimate_usd=None if estimate is None else estimate.usd,
         purpose=request.purpose,
         export_target=request.export_target,
+        background="transparent" if request.transparent else None,
     )
     sidecar = write_sidecar(out_path, record)
 

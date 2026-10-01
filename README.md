@@ -368,6 +368,9 @@ Set `HOLIDAY_CARD_AI_PROVIDER=openrouter` to make it your default
   you upload.
 * `--seed` works only for models that take one (e.g.
   `black-forest-labs/flux.2-pro`).
+* `--transparent` bakes an RGBA motif for `image_elements`. It works only
+  for models whose `ai-asset models` row says `TRANSPARENT yes`, and none
+  does yet: each needs a live call proving real alpha first.
 * **Cost cap** — `--max-cost USD` (opt-in) estimates an *upper bound*
   for the call **offline**, from the curated price list and its cited
   vendor bounds, and refuses with exit 2 before any call when the

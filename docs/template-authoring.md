@@ -347,6 +347,12 @@ vector. The rules:
   there; on `letter`, SVG and PNG, transparency over the art is fine. An
   image with an alpha channel is flattened against `background_color`, or
   against paper white when there is none.
+- **Motifs on top.** A transparent AI motif (`ai-asset generate
+  --transparent`, an RGBA PNG) is an `image_elements` rect, not a
+  background. On `moo-a6` its alpha is flattened only over a solid
+  `background_color` or shape (or bare paper). Over a `background_image`,
+  `create --export-for moo-a6` refuses it and names the element. On
+  `letter`, SVG and PNG it composites over anything.
 - **AI art.** An `ai-asset generate` bake needs its `.license.yaml`
   sidecar next to it, or the card is refused; with it, the card's metadata
   discloses the model. A background is not a photo slot, so `create -i`

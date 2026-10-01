@@ -831,3 +831,67 @@ class TestReviewFindings:
                             shape=AspectSize("3:4", "2K"), seed=None)  # fmt: skip
         assert info.value.kind == "usage"
         assert fake.calls == []
+
+
+# --------------------------------------------------------------------------- transparent motifs (#169)
+
+
+class TestTransparentBackground:
+    def test_a_model_without_the_capability_is_refused_before_any_call(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        entry = _test_entry(background_transparent=False)
+        _install(monkeypatch, entry)
+        client, fake = _client(entry.id)
+        with pytest.raises(ProviderError, match="transparent background") as info:
+            client.generate(prompt="x", reference_path=None, shape=_valid_shape(entry),
+                            seed=None, transparent=True)  # fmt: skip
+        assert info.value.kind == "usage"
+        assert fake.calls == []
+
+    @pytest.mark.parametrize("model", sorted(OPENROUTER_IMAGE_MODELS))
+    def test_no_shipped_model_is_capable_until_a_live_call_proves_alpha(self, model: str) -> None:
+        # Flip one only with an owner-run call showing real alpha (#169).
+        assert OPENROUTER_IMAGE_MODELS[model].background_transparent is False
+
+    def test_a_capable_model_is_sent_background_transparent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        entry = _test_entry(background_transparent=True, output_formats=("png", "jpeg"))
+        _install(monkeypatch, entry)
+        client, fake = _client(entry.id)
+        client.generate(prompt="x", reference_path=None, shape=_valid_shape(entry),
+                        seed=None, transparent=True)  # fmt: skip
+        assert fake.body["background"] == "transparent"
+        assert fake.body["output_format"] == "png"
+
+    def test_an_opaque_request_to_a_capable_model_sends_no_background(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        entry = _test_entry(background_transparent=True)
+        _install(monkeypatch, entry)
+        client, fake = _client(entry.id)
+        client.generate(prompt="x", reference_path=None, shape=_valid_shape(entry), seed=None)
+        assert "background" not in fake.body
+
+    def test_a_capable_model_with_only_alpha_less_formats_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Riverflow v2.5 Fast advertises transparent but only outputs JPEG.
+        entry = _test_entry(background_transparent=True, output_formats=("jpeg",))
+        _install(monkeypatch, entry)
+        client, fake = _client(entry.id)
+        with pytest.raises(ProviderError, match="jpeg") as info:
+            client.generate(prompt="x", reference_path=None, shape=_valid_shape(entry),
+                            seed=None, transparent=True)  # fmt: skip
+        assert info.value.kind == "usage"
+        assert fake.calls == []
+
+    def test_webp_carries_alpha(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        entry = _test_entry(background_transparent=True, output_formats=("webp", "jpeg"))
+        _install(monkeypatch, entry)
+        client, fake = _client(entry.id)
+        client.generate(prompt="x", reference_path=None, shape=_valid_shape(entry),
+                        seed=None, transparent=True)  # fmt: skip
+        assert fake.body["background"] == "transparent"
+        assert fake.body["output_format"] == "webp"
