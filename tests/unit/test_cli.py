@@ -639,7 +639,7 @@ class TestCreateFailsLoud:
         )
         _refused(result, workdir, "Error: unknown font 'NotAFont'", "Available: Caveat,")
 
-    def test_panel_background_image(
+    def test_missing_panel_background_image_file(
         self,
         runner: CliRunner,
         workdir: Path,
@@ -652,7 +652,7 @@ class TestCreateFailsLoud:
             '    position: "front"\n    background_image: "x.png"\n',
         )
         result = runner.invoke(app, ["create", "christmas-classic", "-o", "card.pdf"])
-        _refused(result, workdir, "panel background_image is not supported (panel front)")
+        _refused(result, workdir, "image file not found")
 
     def test_template_font_file(
         self,

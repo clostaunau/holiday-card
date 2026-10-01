@@ -138,7 +138,7 @@ class TestTheme:
 class TestCompileSmoke:
     def test_compile_failure_is_a_problem_not_a_traceback(self) -> None:
         data = _classic_data()
-        _front(data)["background_image"] = "bg.png"  # UnsupportedFeatureError
+        _front(data)["background_image"] = "bg.png"  # relative path: ImageSourceError
 
         problems = _check(data)
 

@@ -30,7 +30,7 @@ before you render:
 4. **Theme.** `default_theme_id`, when set, must name a theme from
    `holiday-card themes`.
 5. **Compile.** The card is compiled once, so anything the renderer
-   refuses (an SVG arc, a panel `background_image`, an auto-sized image)
+   refuses (an SVG arc, an auto-sized image, a missing or non-image file)
    shows up here instead of at `create`.
 
 ```text
@@ -309,6 +309,48 @@ whole image inside and can leave margins. Unset, a `slot` element is
 image is `contain`. `fit` with `preserve_aspect: false` is a load error:
 that stretches the image to the rect. PPI under `cover` is measured at the
 covering size, so a square photo in a 2.6 × 3.4 in slot needs 1020 px.
+
+### Panel background image
+
+```yaml
+background_color: {r: 0.97, g: 0.95, b: 0.91}   # optional; drawn first, under the art
+background_image: art/front-bg.png             # relative to this YAML file
+```
+
+A panel's `background_image` is a PNG or JPEG drawn as the panel's
+background layer: baked art under vector text and shapes, which stay
+vector. The rules:
+
+- **Cover, always.** The image fills the panel's background rect and the
+  overflow is cropped, centred. There is no `fit` option.
+- **Bleed.** It covers exactly the rect `background_color` covers, so it
+  extends into the bleed wherever the background does (0.125 in on the POD
+  targets, nothing on `letter`).
+- **Under everything.** It is drawn over `background_color` and under the
+  border and every element, whatever their `z_index`; nothing can go under
+  it. It rotates with its panel, so on the letter sheet the inside panels'
+  art is upside down, like their text.
+- **Paths.** Same as `source_path`: relative to the template, no absolute
+  paths, no `..`, no symlinks out of the template directory, and the file
+  must really be a PNG or JPEG.
+- **Resolution.** PPI is measured at the covering size. An asset baked by
+  `ai-asset generate --export-for moo-a6` (1314 × 1824 px) prints at
+  309 PPI on `letter`, but at 276 PPI on `moo-a6`, which scales the panel
+  by 1.06 to fill the A6 trim; that warns. For 300 PPI on `moo-a6` give
+  at least 1427 × 1824 px. Below 150 PPI, `create` refuses.
+- **PDF/X.** On `moo-a6` an image is not a solid backdrop, so a translucent
+  element (opacity below 1) over the art is refused. Use opaque colours
+  there; on `letter`, SVG and PNG, transparency over the art is fine. An
+  image with an alpha channel is flattened against `background_color`, or
+  against paper white when there is none.
+- **AI art.** An `ai-asset generate` bake needs its `.license.yaml`
+  sidecar next to it, or the card is refused; with it, the card's metadata
+  discloses the model. A background is not a photo slot, so `create -i`
+  never replaces it.
+
+Use it as a background, never as the whole panel: keep the words and the
+design in vector elements on top, and don't ship a panel whose only
+content is the image.
 
 ## See also
 
