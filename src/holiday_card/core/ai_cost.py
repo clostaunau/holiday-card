@@ -16,6 +16,10 @@ Per pricing row (``n_refs`` is 1 with a reference, else 0):
   ``cost × (UTF-8 bytes + 16)``, a bound on byte-level BPE tokens plus
   special tokens, not an exact count.
 
+Then, for an entry with an ``output_text_tokens`` allowance (#173),
+``output_text_usd_per_token × output_text_tokens``: text / thinking tokens
+the model bills beside the image, which no catalogue price row covers.
+
 Stdlib only at import time; the OpenAI branch reads its size policy lazily.
 """
 
@@ -165,6 +169,11 @@ def estimate_openrouter_cost(
         usd = row.cost_usd * n
         total += usd
         lines.append(_line(row, qty, unit, usd))
+    text_tokens, text_rate = entry.output_text_tokens, entry.output_text_usd_per_token
+    if text_tokens is not None and text_rate is not None:
+        usd = text_rate * text_tokens
+        total += usd
+        lines.append(f"output_text: {text_tokens} tok x ${text_rate:g} = ${usd:.10g}")
     return CostEstimate(usd=total, lines=tuple(lines))
 
 

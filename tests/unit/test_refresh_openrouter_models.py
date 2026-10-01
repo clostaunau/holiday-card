@@ -75,7 +75,8 @@ class TestEntryFromCatalogue:
         # The terms URL and the --max-cost bounds (#151) are human-maintained.
         assert set(script.REVIEWED_FIELDS) == {
             "upstream_terms_url", "max_output_megapixels", "output_image_tokens",
-            "input_image_tokens", "bound_source",
+            "input_image_tokens", "output_text_tokens", "output_text_usd_per_token",
+            "bound_source",
         }  # fmt: skip
         assert live.bound_source is None
         reviewed = {f: getattr(current, f) for f in script.REVIEWED_FIELDS}
@@ -104,8 +105,9 @@ class TestDiffEntry:
     def test_cost_bounds_are_reviewed_values_not_drift(self, script: ModuleType) -> None:
         entry = OPENROUTER_IMAGE_MODELS["google/gemini-3-pro-image"]
         live = replace(
-            entry, output_image_tokens=None, input_image_tokens=None, bound_source=None
-        )
+            entry, output_image_tokens=None, input_image_tokens=None,
+            output_text_tokens=None, output_text_usd_per_token=None, bound_source=None,
+        )  # fmt: skip
         assert script.diff_entry(entry, live) == []
 
     def test_a_dropped_tier_drops_its_token_bound(self, script: ModuleType) -> None:
@@ -115,10 +117,21 @@ class TestDiffEntry:
         assert kept["bound_source"] == entry.bound_source
 
     def test_no_bound_left_drops_the_source(self, script: ModuleType) -> None:
-        entry = OPENROUTER_IMAGE_MODELS["google/gemini-3.1-flash-image"]
+        entry = replace(
+            OPENROUTER_IMAGE_MODELS["google/gemini-3.1-flash-image"],
+            output_text_tokens=None,
+            output_text_usd_per_token=None,
+        )
         kept = script.carry_reviewed(entry, ("8K",))
         assert kept["output_image_tokens"] is None
         assert kept["bound_source"] is None
+
+    def test_an_output_text_allowance_keeps_the_source(self, script: ModuleType) -> None:
+        entry = OPENROUTER_IMAGE_MODELS["google/gemini-3.1-flash-image"]
+        kept = script.carry_reviewed(entry, ("8K",))
+        assert kept["output_image_tokens"] is None
+        assert kept["output_text_tokens"] == entry.output_text_tokens
+        assert kept["output_text_usd_per_token"] == entry.output_text_usd_per_token
 
     def test_gone(self, script: ModuleType) -> None:
         entry = OPENROUTER_IMAGE_MODELS["openai/gpt-image-2"]

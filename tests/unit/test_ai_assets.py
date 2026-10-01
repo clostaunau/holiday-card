@@ -240,6 +240,7 @@ _GEMINI_PRO = "google/gemini-3-pro-image"
 # Synthetic tier sets drop the recorded --max-cost bounds (keyed by tier, #151).
 _UNBOUNDED: dict[str, Any] = {
     "output_image_tokens": None, "input_image_tokens": None, "bound_source": None,
+    "output_text_tokens": None, "output_text_usd_per_token": None,
 }  # fmt: skip
 
 

@@ -79,14 +79,20 @@ them as drift.
 
 | model | bound | source (read 2026-09-30) |
 |---|---|---|
-| `google/gemini-3-pro-image` | output tokens 1K 1120, 2K 1120, 4K 2000; 560 tokens per input image | <https://ai.google.dev/gemini-api/docs/pricing> |
-| `google/gemini-3.1-flash-image` | output tokens 512 747, 1K 1120, 2K 1680, 4K 2520 (no input-image price row) | <https://ai.google.dev/gemini-api/docs/pricing> |
+| `google/gemini-3-pro-image` | output tokens 1K 1120, 2K 1120, 4K 2000; 560 tokens per input image; **+256 non-image output tokens at $0.000012** ("$12.00 (text and thinking)" per 1M; 256 is a margin over #140's 87 / 101, #173) | <https://ai.google.dev/gemini-api/docs/pricing> |
+| `google/gemini-3.1-flash-image` | output tokens 512 747, 1K 1120, 2K 1680, 4K 2520 (no input-image price row); **+256 non-image output tokens at $0.0000015** ("$1.50 (text and thinking)" per 1M; same margin, #173) | <https://ai.google.dev/gemini-api/docs/pricing> |
 | `black-forest-labs/flux.2-pro` | 4.194304 MP output (2048×2048: "up to 4MP (e.g., 2048x2048)") | <https://help.bfl.ai/articles/8531149640-what-are-the-resolution-limits> |
 | `bytedance-seed/seedream-4.5` | none needed (priced per image) | — |
 | `openai/gpt-image-2` | **none recorded**: no token count per output size, so `--max-cost` exits 2 | — |
 
-#140's live call reports `usage.completion_tokens`; it must stay at or
-below the recorded tier bound (the `ok_png` fixture's 1120 at 2K does).
+#140's live calls report `usage.completion_tokens`: the image tokens
+(`completion_tokens_details.image_tokens`) must stay at or below the tier
+bound, and the rest (87 at 2K, 101 at 4K) at or below `output_text_tokens`.
+Those extra tokens are billed at the text-output rate, which the catalogue's
+`pricing[]` has no row for, so each Gemini entry records the rate itself
+(`output_text_usd_per_token`). With that allowance the 3:4 estimate with one
+reference is $0.138592 at 2K and $0.244192 at 4K, above the billed $0.136002
+and $0.241770 (`TestObservedGeminiCost`, #173).
 
 ### Refreshing
 
@@ -132,7 +138,7 @@ the attribution headers.
 | Q5 | Is `size: "1328x1824"` honoured on `openai/gpt-image-2`? | **Yes**: exactly 1328×1824. | Call D decode line |
 | Q6 | Unadvertised `output_format: "png"` on Gemini AI Studio | **Ignored**: 200 with `media_type: image/jpeg`, and the bytes are JPEG. | Call A |
 | T1 | Is `2K` a 2048 px long edge, as `RESOLUTION_LONG_EDGE_PX` assumes? | **No**: the long edge is 2400 at `2K` and 4800 at `4K` (3:4). → #174 | Calls A, B |
-| T2 | Are Gemini `2K` output tokens ≤ the 1120 bound? | `image_tokens` = **1120** (at the bound), but `completion_tokens` = **1207**. The extra 87 are billed at $0.000012/token, which no price row covers, so the real cost $0.136002 > the estimate $0.135520. At `4K`: 2000 image tokens, 2101 completion tokens. → #173 | Calls A, B `usage` |
+| T2 | Are Gemini `2K` output tokens ≤ the 1120 bound? | `image_tokens` = **1120** (at the bound), but `completion_tokens` = **1207**. The extra 87 are billed at $0.000012/token, which no price row covers, so the real cost $0.136002 > the estimate $0.135520. At `4K`: 2000 image tokens, 2101 completion tokens. → #173 (fixed: a 256-token text-output allowance per Gemini entry) | Calls A, B `usage` |
 
 Whatever Q5 shows, production never sends `size` (spec §5.3).
 

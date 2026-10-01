@@ -150,7 +150,19 @@ class TestPostInitRefusals:
             ({"bound_source": None}, "bound_source"),
             ({"bound_source": "https://ai.google.dev/pricing"}, "bound_source"),
             ({"bound_source": "2026-09-30 Google said so"}, "bound_source"),
-            ({"output_image_tokens": None, "input_image_tokens": None}, "bound_source"),
+            (
+                {
+                    "output_image_tokens": None, "input_image_tokens": None,
+                    "output_text_tokens": None, "output_text_usd_per_token": None,
+                },
+                "bound_source",
+            ),  # fmt: skip
+            # The non-image output allowance (#173): a count and its rate, together.
+            ({"output_text_tokens": None}, "output_text"),
+            ({"output_text_usd_per_token": None}, "output_text"),
+            ({"output_text_tokens": 0}, "output_text_tokens"),
+            ({"output_text_usd_per_token": -0.000001}, "output_text_usd_per_token"),
+            ({"output_text_usd_per_token": float("inf")}, "output_text_usd_per_token"),
         ],
     )
     def test_bad_entry_is_refused_naming_id_and_field(

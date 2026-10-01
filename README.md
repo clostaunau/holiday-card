@@ -376,7 +376,7 @@ Set `HOLIDAY_CARD_AI_PROVIDER=openrouter` to make it your default
   the asset. There is no prompt and no default cap. A model with no
   recorded price or bound (every OpenAI model today, and
   `openai/gpt-image-2` via OpenRouter) exits 2 with `--max-cost`. The
-  default model on `moo-a6` with a reference bounds at $0.1355:
+  default model on `moo-a6` with a reference bounds at $0.1386:
 
   ```bash
   holiday-card ai-asset generate --provider openrouter --max-cost 0.15 \
