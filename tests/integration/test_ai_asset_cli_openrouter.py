@@ -757,3 +757,92 @@ class TestHelp:
         assert "/16" not in text
         assert "trim+bleed at 300 PPI" in text
         assert "--provider openrouter" in text
+
+
+# --------------------------------------------------------------------------- --transparent (#169)
+
+
+def _rgba_response(size: tuple[int, int], *, alpha: int = 0) -> HttpResponse:
+    img = Image.new("RGBA", size, (255, 255, 255, alpha))
+    w, h = size
+    img.paste((10, 120, 60, 255), (w // 4, h // 4, 3 * w // 4, 3 * h // 4))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    body = {
+        "data": [{"b64_json": base64.b64encode(buf.getvalue()).decode(), "media_type": "image/png"}],
+        "usage": {"cost": 0.1344},
+    }
+    return HttpResponse(200, {"content-type": "application/json"}, json.dumps(body).encode())
+
+
+@pytest.mark.usefixtures("key", "config")
+class TestTransparent:
+    def test_no_capable_model_exits_2_before_consent_and_any_call(
+        self, runner: CliRunner, tmp_path: Path, ref: Path, transport: FakeTransport, config: Path
+    ) -> None:
+        out = tmp_path / "x.png"
+        result = runner.invoke(app, _args(out, "--transparent", reference=ref))
+        assert result.exit_code == 2, result.output
+        text = _flat(result.output)
+        assert f"Error: --transparent is not supported by openrouter model '{DEFAULT_MODEL}'" in text
+        assert "No curated model offers a transparent background yet" in text
+        assert transport.calls == []
+        assert not out.exists()
+        assert not _consent_file(config).exists(), "consent was recorded"
+
+    def test_an_incapable_model_names_the_models_that_are_capable(
+        self,
+        runner: CliRunner,
+        tmp_path: Path,
+        ref: Path,
+        transport: FakeTransport,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        capable = _with_entry(monkeypatch, "test/motif", background_transparent=True)
+        result = runner.invoke(app, _args(tmp_path / "x.png", "--transparent", reference=ref))
+        assert result.exit_code == 2, result.output
+        text = _flat(result.output)
+        assert f"Models that do: openrouter {capable}" in text
+        assert transport.calls == []
+
+    def test_a_capable_model_bakes_an_rgba_motif(
+        self,
+        runner: CliRunner,
+        tmp_path: Path,
+        ref: Path,
+        transport: FakeTransport,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        model = _with_entry(monkeypatch, "test/motif", background_transparent=True)
+        transport.responses.append(_rgba_response((1792, 2400)))
+        out = tmp_path / "motif.png"
+        result = runner.invoke(
+            app, _args(out, "--model", model, "--transparent", reference=ref)
+        )
+        sidecar = _assert_ok_bake(result, out, transport)
+        assert transport.body["background"] == "transparent"
+        assert sidecar["background"] == "transparent"
+        with Image.open(out) as img:
+            assert img.mode == "RGBA"
+            assert img.getpixel((0, 0))[3] == 0
+        assert "Background: transparent (RGBA)" in _plain(result.output)
+
+    def test_an_ignored_transparent_request_exits_7_and_writes_nothing(
+        self,
+        runner: CliRunner,
+        tmp_path: Path,
+        ref: Path,
+        transport: FakeTransport,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Advertised isn't proof (#140): an opaque reply is refused, never baked.
+        model = _with_entry(monkeypatch, "test/motif", background_transparent=True)
+        transport.responses.append(_png_response((1792, 2400)))
+        out = tmp_path / "motif.png"
+        result = runner.invoke(
+            app, _args(out, "--model", model, "--transparent", reference=ref)
+        )
+        assert result.exit_code == 7, result.output
+        assert "transparent background was requested" in _flat(result.output)
+        assert not out.exists()
+        assert not out.with_suffix(".license.yaml").exists()

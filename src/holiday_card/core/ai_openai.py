@@ -91,19 +91,25 @@ class OpenAIImageClient:
         reference_path: str | None,
         shape: RequestShape,
         seed: int | None,
+        transparent: bool = False,
     ) -> GeneratedImage:
         """Generate (or, with a reference, edit) one image.
 
         Raises:
             ValueError: Before any API call, for a non-pixel ``shape``, any
-                ``seed`` (the Images API has none) or a size ``model``
-                does not accept.
+                ``seed`` (the Images API has none), a ``transparent``
+                background (not enabled for direct OpenAI, #169) or a size
+                ``model`` does not accept.
         """
         if not isinstance(shape, PixelSize):
             raise ValueError(f"openai takes a pixel size, got {shape!r}")
         if seed is not None:
             raise ValueError(
                 f"openai model {self._model!r} takes no seed; the image could not be reproduced"
+            )
+        if transparent:
+            raise ValueError(
+                f"openai model {self._model!r} is not enabled for a transparent background"
             )
         size = f"{shape.width_px}x{shape.height_px}"
         if not size_is_allowed(self._model, shape.width_px, shape.height_px):

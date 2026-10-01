@@ -6,6 +6,39 @@ regenerated on purpose, and which tests guard it. Moved out of
 limit). New entries go at the top of this file; `CLAUDE.md` gets at
 most a one-line pointer. User-facing notes belong in `RELEASE_NOTES.md`.
 
+- **2026-09-30 — `ai-asset generate --transparent` (issue #169)**: the
+  machinery for transparent-background motifs. No model is enabled; that
+  needs an owner-run live alpha proof (#179).
+  - **Capability.** `ai_providers.supports_transparent` / `transparent_models`:
+    OpenRouter reads the allowlist's `background_transparent`, and direct
+    OpenAI is `False` (an owner call).
+  - **CLI.** The `--transparent` check sits beside `--seed`, before consent
+    and the client, and exits 2 naming the capable models (or saying there
+    are none).
+  - **Clients.** `ImageClient.generate` gains `transparent: bool = False`.
+    The OpenRouter client refuses (usage) an incapable entry and one whose
+    advertised formats have no alpha (JPEG only: Riverflow Fast). It sends
+    `background: "transparent"` plus `output_format` png (else webp) when
+    advertised. `OpenAIImageClient` refuses it.
+  - **Bake.** `AIRequest.transparent` (also a kwarg of both builders) and
+    `open_generated_image(..., keep_alpha=True)` keep RGBA. The bake refuses
+    (`ImagePayloadError`, exit 7, nothing written) output with no alpha
+    channel or no pixel below alpha 255.
+  - **Resample.** Pillow's `resize` premultiplies RGBA, so LANCZOS doesn't
+    fringe with the transparent colour; a pixel test guards it.
+  - **Sidecar.** `LicenseRecord.background: Literal["transparent"] | None`.
+  - **Listing.** `ModelListing.transparent`, JSON `"transparent"` after
+    `"seed"` (additive; `schema_version` stays 1), and a `TRANSPARENT` table
+    column.
+  - **Render.** No changes: the #71 / #153 flatten already handles an RGBA
+    image over a solid backdrop and refuses one over a `background_image`.
+    `tests/integration/test_ai_motif.py` pins that (PNG pixel through the
+    alpha, moo-a6 with no `/SMask`, refusal naming `image_elements[0]`).
+    `bake_fake_ai_asset(..., transparent=True)` bakes a real motif.
+  - **Tests.** Guarded by `test_ai_assets.py::TestTransparentBake`,
+    `test_ai_openrouter.py::TestTransparentBackground` and
+    `test_ai_asset_cli_openrouter.py::TestTransparent`.
+
 - **2026-09-30 — Observed tier long edges for Gemini 3 Pro (issue #174,
   found by #140 T1)**: calls A / B decoded 1792×2400 at `3:4` / `2K` and
   3584×4800 at `4K`, not the nominal 2048 / 4096 long edge. Per-model,

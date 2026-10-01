@@ -39,6 +39,8 @@ __all__ = [
     "reference_limits",
     "resolve_model",
     "supports_seed",
+    "supports_transparent",
+    "transparent_models",
     "upstream_vendor",
     "make_image_client",
     "MODELS_SCHEMA_VERSION",
@@ -178,6 +180,23 @@ def supports_seed(provider: AIProvider, model: str) -> bool:
             assert_never(provider)
 
 
+def supports_transparent(provider: AIProvider, model: str) -> bool:
+    """Whether ``model`` can bake a motif on a transparent background (#169)."""
+    match provider:
+        case AIProvider.OPENAI:
+            # Not enabled for direct OpenAI: an owner call (#169).
+            return False
+        case AIProvider.OPENROUTER:
+            return ai_openrouter_models.openrouter_model(model).background_transparent
+        case _:
+            assert_never(provider)
+
+
+def transparent_models(provider: AIProvider) -> list[str]:
+    """The curated ``provider`` models :func:`supports_transparent` accepts, sorted."""
+    return sorted(m for m in known_models(provider) if supports_transparent(provider, m))
+
+
 def reference_limits(provider: AIProvider, model: str) -> tuple[int, int]:
     """The ``(min, max)`` number of reference images ``model`` accepts.
 
@@ -286,6 +305,7 @@ class ModelListing:
     resolutions: tuple[str, ...] | None  # None when the endpoint has no tiers / pixel-sized
     pixel_sizes: PixelSizeRule | None  # OpenAI direct only
     seed: bool
+    transparent: bool  # bakes a transparent-background motif (--transparent, #169)
     output_formats: tuple[str, ...]  # () when the endpoint advertises no output_format
     pricing: tuple[OpenRouterPrice, ...]  # () when no price is recorded
     terms_urls: tuple[str, ...]  # provider policy URLs, then the upstream terms URL
@@ -323,6 +343,7 @@ def _listings(provider: AIProvider) -> list[ModelListing]:
                     resolutions=None,
                     pixel_sizes=_pixel_size_rule(policy),
                     seed=supports_seed(provider, model),
+                    transparent=supports_transparent(provider, model),
                     output_formats=("png",),
                     pricing=(
                         ()
@@ -347,6 +368,7 @@ def _listings(provider: AIProvider) -> list[ModelListing]:
                     resolutions=entry.resolutions or None,
                     pixel_sizes=None,
                     seed=entry.seed,
+                    transparent=entry.background_transparent,
                     output_formats=entry.output_formats,
                     pricing=entry.pricing,
                     terms_urls=policy_urls_for(provider, entry.id),
@@ -388,6 +410,7 @@ def _listing_record(row: ModelListing) -> dict[str, object]:
             "max_pixels": rule.max_pixels,
         },
         "seed": row.seed,
+        "transparent": row.transparent,
         "output_formats": list(row.output_formats),
         "pricing": [
             {"billable": p.billable, "unit": p.unit, "usd": p.cost_usd} for p in row.pricing

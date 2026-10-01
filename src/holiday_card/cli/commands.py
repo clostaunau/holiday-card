@@ -1031,6 +1031,15 @@ def ai_asset_generate(
             "Refused for models without a seed."
         ),
     ),
+    transparent: bool = typer.Option(
+        False,
+        "--transparent",
+        help=(
+            "Bake a motif on a transparent background (RGBA PNG), for an image_elements "
+            "rect over a solid panel colour. Only for models whose listing says "
+            "TRANSPARENT yes; refused otherwise, never baked opaque."
+        ),
+    ),
     i_know_what_im_doing: bool = typer.Option(
         False,
         "--i-know-what-im-doing",
@@ -1112,6 +1121,8 @@ def ai_asset_generate(
         reference_limits,
         resolve_model,
         supports_seed,
+        supports_transparent,
+        transparent_models,
     )
 
     try:
@@ -1123,6 +1134,21 @@ def ai_asset_generate(
         typer.secho(
             f"Error: --seed is not supported by {provider.value} model {resolved_model!r} "
             "(it takes no seed, so the image could not be reproduced). Omit --seed.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(ExitCode.USAGE)
+    if transparent and not supports_transparent(provider, resolved_model):
+        capable = [f"{p.value} {m}" for p in AIProvider for m in transparent_models(p)]
+        typer.secho(
+            f"Error: --transparent is not supported by {provider.value} model "
+            f"{resolved_model!r} (it offers no transparent background). "
+            + (
+                f"Models that do: {', '.join(capable)}."
+                if capable
+                else "No curated model offers a transparent background yet "
+                "(see `holiday-card ai-asset models`)."
+            ),
             fg=typer.colors.RED,
             err=True,
         )
@@ -1236,6 +1262,7 @@ def ai_asset_generate(
             reference_path=reference_path,
             provider=client.provider,
             model=client.model,
+            transparent=transparent,
         )
     else:
         request = build_ai_request(
@@ -1247,6 +1274,7 @@ def ai_asset_generate(
             provider=client.provider,
             model=client.model,
             export_target=target.name,
+            transparent=transparent,
         )
 
     try:
@@ -1318,6 +1346,8 @@ def ai_asset_generate(
         f"  Size: {result.width_px}x{result.height_px}px @ {request.dpi} DPI (sRGB), "
         f"{result.native_ppi:.1f} PPI native"
     )
+    if request.transparent:
+        typer.echo("  Background: transparent (RGBA)")
     if result.native_ppi < request.dpi:
         typer.secho(
             f"  Warning: the model's output is {result.native_ppi:.1f} PPI at the "
@@ -1428,13 +1458,14 @@ def ai_asset_models(
                     aspects,
                     tiers,
                     "yes" if row.seed else "no",
+                    "yes" if row.transparent else "no",
                     _price_cell(row),
                     row.terms_urls[-1],
                     row.snapshot_date,
                 ])
             _echo_table(
                 ["PROVIDER", "ID", "DEFAULT", "ROUTE", "REFS", "ASPECTS", "TIERS", "SEED",
-                 "PRICE", "TERMS", "SNAPSHOT"],
+                 "TRANSPARENT", "PRICE", "TERMS", "SNAPSHOT"],
                 table,
             )  # fmt: skip
             typer.echo(f"\n{len(rows)} model(s).")

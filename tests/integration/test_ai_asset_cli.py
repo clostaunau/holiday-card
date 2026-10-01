@@ -51,10 +51,12 @@ class FakeImageClient:
         reference_path: str | None,
         shape: RequestShape,
         seed: int | None,
+        transparent: bool = False,
     ) -> GeneratedImage:
-        self.calls.append(
-            {"prompt": prompt, "reference_path": reference_path, "shape": shape, "seed": seed}
-        )
+        self.calls.append({
+            "prompt": prompt, "reference_path": reference_path, "shape": shape, "seed": seed,
+            "transparent": transparent,
+        })
         assert isinstance(shape, PixelSize)
         buf = io.BytesIO()
         size = self.returns or (shape.width_px, shape.height_px)
@@ -821,6 +823,30 @@ class TestSeedRefused:
             "Error: --seed is not supported by openai model 'gpt-image-2' (it takes no seed, "
             "so the image could not be reproduced). Omit --seed."
         ) in _flat(result.output)
+        assert calls == []
+        assert not out.exists()
+        assert not any(isolated_config.rglob("*")), "consent was recorded"
+
+
+class TestTransparentRefused:
+    def test_transparent_is_refused_for_direct_openai_before_consent_and_client(
+        self,
+        runner: CliRunner,
+        tmp_path: Path,
+        reference_png: Path,
+        isolated_config: Path,
+        factory: tuple,
+    ) -> None:
+        # #169: no silent opaque fallback; no shipped model is enabled yet.
+        calls, _ = factory
+        out = tmp_path / "x.png"
+        result = runner.invoke(app, _moo_args(reference_png, out, "--transparent"))
+        assert result.exit_code == 2, result.output
+        text = _flat(result.output)
+        assert (
+            "Error: --transparent is not supported by openai model 'gpt-image-2'"
+        ) in text
+        assert "No curated model offers a transparent background yet" in text
         assert calls == []
         assert not out.exists()
         assert not any(isolated_config.rglob("*")), "consent was recorded"

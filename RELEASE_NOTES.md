@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### `ai-asset generate --transparent` (motifs)
+
+`--transparent` bakes a motif (a sprig, an ornament, a border corner) as an
+RGBA PNG on a transparent background, for an `image_elements` rect over a
+panel's colour. The sidecar records `background: transparent`, and
+`ai-asset models` gains a `TRANSPARENT` column (`"transparent"` in the JSON;
+`schema_version` stays 1).
+
+It is refused (exit 2, before consent or any call) unless the model offers
+a transparent background, and the error names the models that do. **No
+curated model offers one yet:** each needs a live call proving real alpha
+first (#179). If a model ignores the request and returns an opaque image,
+the bake exits 7 and writes nothing. It never falls back to opaque.
+
+On `moo-a6` (PDF/X) a motif with alpha is flattened over a solid panel
+colour. Over a `background_image` it is refused, naming the element. On
+`letter`, SVG and PNG it composites live.
+
 ### OpenRouter: Gemini 3 Pro tier sizes are measured, not assumed
 
 `ai-asset generate --provider openrouter` picks the smallest resolution

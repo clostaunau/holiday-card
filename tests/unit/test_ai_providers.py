@@ -27,6 +27,8 @@ from holiday_card.core.ai_providers import (
     reference_limits,
     resolve_model,
     supports_seed,
+    supports_transparent,
+    transparent_models,
     upstream_vendor,
 )
 
@@ -259,3 +261,32 @@ class TestOpenRouterFactory:
             prompt="pine", reference_path=None, shape=AspectSize("3:4", "2K"), seed=None
         )
         assert len(fake.calls) == 1
+
+
+# --- transparent background (#169) -------------------------------------------------
+
+
+@pytest.mark.parametrize("model", sorted(MODEL_SIZE_POLICIES))
+def test_no_direct_openai_model_offers_a_transparent_background(model: str) -> None:
+    # Enabling direct OpenAI is an owner call (#169).
+    assert supports_transparent(AIProvider.OPENAI, model) is False
+
+
+def test_transparent_support_is_the_allowlist_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+    from types import MappingProxyType
+
+    from holiday_card.core import ai_openrouter_models
+
+    models = ai_openrouter_models.OPENROUTER_IMAGE_MODELS
+    flux = "black-forest-labs/flux.2-pro"
+    assert supports_transparent(AIProvider.OPENROUTER, flux) is False
+    assert transparent_models(AIProvider.OPENROUTER) == []
+    monkeypatch.setattr(
+        ai_openrouter_models,
+        "OPENROUTER_IMAGE_MODELS",
+        MappingProxyType({**models, flux: replace(models[flux], background_transparent=True)}),
+    )
+    assert supports_transparent(AIProvider.OPENROUTER, flux) is True
+    assert transparent_models(AIProvider.OPENROUTER) == [flux]
+    assert transparent_models(AIProvider.OPENAI) == []

@@ -34,6 +34,14 @@ offers only 1K / 2K). `gemini-3.1-flash-image` is the cheaper Google option.
 resolution tier, so expect a low-PPI warning at A6. No default is set here
 (#150, after #140).
 
+`transparent` is `background_transparent`, the capability
+`ai-asset generate --transparent` checks (#169). Every shipped entry is
+`False`, even where the catalogue advertises `transparent`. Advertised isn't
+proof (#140), so an entry is flipped only after an owner-run live call shows
+a decoded RGBA image with transparent pixels (#179; the 2026-10-01
+catalogue scan in #169 names the candidates). The bake refuses a
+"transparent" result with no alpha or no transparent pixel (exit 7).
+
 Left out: `recraft/recraft-v4.1`. On 2026-09-30 it has one endpoint
 (`recraft`, 0–1 references, no resolution tier, output_image/image/0.035),
 but `/providers` gives it `terms_of_service_url: null`. Also left out: every

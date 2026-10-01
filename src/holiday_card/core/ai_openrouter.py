@@ -577,6 +577,11 @@ def _key_redactor(api_key: SecretStr) -> Callable[[str], str]:
     return lambda text: sanitize_provider_text(text, secrets=(secret,))
 
 
+def _alpha_format(entry: OpenRouterModel) -> str | None:
+    """The advertised output format that carries alpha (png, else webp); None if none does."""
+    return next((f for f in ("png", "webp") if f in entry.output_formats), None)
+
+
 def _usage(message: str) -> ProviderError:
     return ProviderError(message, kind="usage", status=None)
 
@@ -609,7 +614,7 @@ class OpenRouterImageClient:
         return f"OpenRouterImageClient(model={self.model!r})"
 
     def _check(
-        self, shape: RequestShape, reference_path: str | None, seed: int | None
+        self, shape: RequestShape, reference_path: str | None, seed: int | None, transparent: bool
     ) -> AspectSize:
         entry = self._entry
         if not isinstance(shape, AspectSize):
@@ -624,6 +629,13 @@ class OpenRouterImageClient:
             raise _usage(f"{entry.id} has no resolution {shape.resolution!r}; it offers {offered}")
         if seed is not None and not entry.seed:
             raise _usage(f"{entry.id} does not take a seed")
+        if transparent and not entry.background_transparent:
+            raise _usage(f"{entry.id} does not offer a transparent background")
+        if transparent and entry.output_formats and _alpha_format(entry) is None:
+            raise _usage(
+                f"{entry.id} outputs only {', '.join(entry.output_formats)}, "
+                "which has no alpha channel for a transparent background"
+            )
         if reference_path is not None and entry.input_refs_max == 0:
             raise _usage(f"{entry.id} takes no reference image")
         if reference_path is None and entry.input_refs_min >= 1:
@@ -631,7 +643,12 @@ class OpenRouterImageClient:
         return shape
 
     def _body(
-        self, prompt: str, shape: AspectSize, reference_path: str | None, seed: int | None
+        self,
+        prompt: str,
+        shape: AspectSize,
+        reference_path: str | None,
+        seed: int | None,
+        transparent: bool,
     ) -> bytes:
         entry = self._entry
         body: dict[str, Any] = {
@@ -642,7 +659,12 @@ class OpenRouterImageClient:
         }
         if shape.resolution is not None:
             body["resolution"] = shape.resolution
-        if "png" in entry.output_formats:
+        if transparent:
+            body["background"] = "transparent"
+            alpha_format = _alpha_format(entry)
+            if alpha_format is not None:
+                body["output_format"] = alpha_format
+        elif "png" in entry.output_formats:
             body["output_format"] = "png"
         if seed is not None:
             body["seed"] = seed
@@ -673,6 +695,7 @@ class OpenRouterImageClient:
         reference_path: str | None,
         shape: RequestShape,
         seed: int | None,
+        transparent: bool = False,
     ) -> GeneratedImage:
         """Send one request (never retried) and parse the response.
 
@@ -680,8 +703,8 @@ class OpenRouterImageClient:
             ProviderError: For a local refusal (``usage``, before any call)
                 and for every transport or response failure.
         """
-        aspect = self._check(shape, reference_path, seed)
-        body = self._body(prompt, aspect, reference_path, seed)
+        aspect = self._check(shape, reference_path, seed, transparent)
+        body = self._body(prompt, aspect, reference_path, seed, transparent)
         response = self._transport(
             IMAGES_URL,
             headers=_request_headers(self._api_key),

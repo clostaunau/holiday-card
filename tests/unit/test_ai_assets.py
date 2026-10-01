@@ -89,12 +89,14 @@ class FakeImageClient:
         reference_path: str | None,
         shape: RequestShape,
         seed: int | None,
+        transparent: bool,
     ) -> GeneratedImage:
         if self.calls is None:
             self.calls = []
-        self.calls.append(
-            {"prompt": prompt, "reference_path": reference_path, "shape": shape, "seed": seed}
-        )
+        self.calls.append({
+            "prompt": prompt, "reference_path": reference_path, "shape": shape, "seed": seed,
+            "transparent": transparent,
+        })
         assert isinstance(shape, PixelSize)
         buf = io.BytesIO()
         size = self.returns or (shape.width_px, shape.height_px)
@@ -1129,3 +1131,111 @@ class TestPanelBackgroundRequest:
         )
         record = read_sidecar(out)
         assert (record.purpose, record.export_target) == ("page", None)
+
+
+# --- Transparent motifs (#169) ------------------------------------------------
+
+
+def _motif(size: tuple[int, int] = (64, 96)) -> Image.Image:
+    """An RGBA motif: an opaque green disc-ish square on a fully transparent field."""
+    img = Image.new("RGBA", size, (255, 0, 0, 0))  # transparent *red*: must never fringe
+    w, h = size
+    img.paste((10, 120, 60, 255), (w // 4, h // 4, 3 * w // 4, 3 * h // 4))
+    return img
+
+
+class TestTransparentBake:
+    def _run(
+        self, tmp_path: Path, client: FakeImageClient, *, transparent: bool = True
+    ) -> Path:
+        out = tmp_path / "out" / "motif.png"
+        generate_ai_asset(
+            prompt="watercolor holly sprig",
+            occasion=OccasionType.CHRISTMAS,
+            out_path=out,
+            request=replace(_small_request(), transparent=transparent),
+            client=client,
+            timestamp="2027-01-15T10:00:00Z",
+            consent_path=_consented(tmp_path),
+        )
+        return out
+
+    def test_the_client_is_asked_for_a_transparent_background(self, tmp_path: Path) -> None:
+        client = FakeImageClient(image=_motif())
+        self._run(tmp_path, client)
+        assert client.calls is not None
+        assert client.calls[0]["transparent"] is True
+
+    def test_an_opaque_request_asks_for_no_transparency(self, tmp_path: Path) -> None:
+        client = FakeImageClient()
+        self._run(tmp_path, client, transparent=False)
+        assert client.calls is not None
+        assert client.calls[0]["transparent"] is False
+
+    def test_the_bake_keeps_the_alpha_channel(self, tmp_path: Path) -> None:
+        out = self._run(tmp_path, FakeImageClient(image=_motif()))
+        with Image.open(out) as img:
+            assert img.format == "PNG"
+            assert img.mode == "RGBA"
+            assert img.size == (64, 96)
+            assert img.getpixel((1, 1))[3] == 0
+            assert img.getpixel((32, 48)) == (10, 120, 60, 255)
+
+    def test_the_sidecar_records_the_transparent_background(self, tmp_path: Path) -> None:
+        out = self._run(tmp_path, FakeImageClient(image=_motif()))
+        assert read_sidecar(out).background == "transparent"
+        assert "background: transparent" in out.with_suffix(".license.yaml").read_text()
+
+    def test_an_opaque_bake_records_no_background(self, tmp_path: Path) -> None:
+        out = self._run(tmp_path, FakeImageClient(), transparent=False)
+        assert read_sidecar(out).background is None
+
+    def test_an_opaque_bake_drops_any_alpha_the_model_returned(self, tmp_path: Path) -> None:
+        out = self._run(tmp_path, FakeImageClient(image=_motif()), transparent=False)
+        with Image.open(out) as img:
+            assert img.mode == "RGB"
+
+    def test_the_resample_does_not_fringe_with_transparent_colour(self, tmp_path: Path) -> None:
+        # 2x downsample: LANCZOS must weight by alpha, or the transparent red
+        # field bleeds into the motif's edge.
+        out = self._run(tmp_path, FakeImageClient(image=_motif((128, 192))))
+        with Image.open(out) as img:
+            rgba = img.convert("RGBA")
+            for x in range(64):
+                for y in range(96):
+                    r, g, _b, a = rgba.getpixel((x, y))
+                    if a >= 32:
+                        assert r <= g, f"red fringe at {(x, y)}: {rgba.getpixel((x, y))}"
+
+    @pytest.mark.parametrize(
+        ("image", "fmt", "media_type"),
+        [
+            (Image.new("RGB", (64, 96), (10, 120, 60)), "PNG", "image/png"),
+            (Image.new("RGB", (64, 96), (10, 120, 60)), "JPEG", "image/jpeg"),
+            (Image.new("RGBA", (64, 96), (10, 120, 60, 255)), "PNG", "image/png"),
+        ],
+        ids=["rgb-png", "jpeg", "opaque-rgba"],
+    )
+    def test_output_with_no_transparent_pixel_is_refused(
+        self, tmp_path: Path, image: Image.Image, fmt: str, media_type: ImageMediaType
+    ) -> None:
+        # Advertised isn't proof (#140): an ignored `background` must fail
+        # loud, never bake an opaque asset whose sidecar says transparent.
+        client = FakeImageClient(image=image, fmt=fmt, media_type=media_type)
+        with pytest.raises(ImagePayloadError, match="transparent"):
+            self._run(tmp_path, client)
+        assert not (tmp_path / "out").exists()
+
+
+class TestOpenGeneratedImageAlpha:
+    def test_keep_alpha_returns_rgba(self) -> None:
+        buf = io.BytesIO()
+        _motif().save(buf, "PNG")
+        img = open_generated_image(buf.getvalue(), "image/png", keep_alpha=True)
+        assert img.mode == "RGBA"
+        assert img.getpixel((0, 0))[3] == 0
+
+    def test_default_is_still_rgb(self) -> None:
+        buf = io.BytesIO()
+        _motif().save(buf, "PNG")
+        assert open_generated_image(buf.getvalue(), "image/png").mode == "RGB"

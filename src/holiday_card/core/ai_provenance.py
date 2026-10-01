@@ -166,6 +166,9 @@ class LicenseRecord(BaseModel):
     # None for a sidecar written before #168.
     purpose: Literal["page", "panel_background"] | None = None
     export_target: str | None = None
+    # "transparent" for an RGBA motif baked with --transparent (#169); None
+    # for an opaque bake and for every sidecar written before #169.
+    background: Literal["transparent"] | None = None
 
     # LEGACY(v1.3.0 sidecar, O7): delete in the first release after the one that ships this.
     @model_validator(mode="before")

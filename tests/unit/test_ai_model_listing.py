@@ -88,6 +88,7 @@ def test_openrouter_row_maps_its_allowlist_entry(model_id: str) -> None:
         resolutions=entry.resolutions or None,
         pixel_sizes=None,
         seed=entry.seed,
+        transparent=entry.background_transparent,
         output_formats=entry.output_formats,
         pricing=entry.pricing,
         terms_urls=(*PROVIDERS[AIProvider.OPENROUTER].policy_urls, entry.upstream_terms_url),
@@ -123,6 +124,7 @@ def test_openai_row_carries_its_size_policy(model_id: str, rule: PixelSizeRule) 
         resolutions=None,
         pixel_sizes=rule,
         seed=False,
+        transparent=False,
         output_formats=("png",),
         pricing=(),
         terms_urls=PROVIDERS[AIProvider.OPENAI].policy_urls,
@@ -180,6 +182,7 @@ def test_payload_is_versioned_and_plain_json_types() -> None:
         "resolutions": None,
         "pixel_sizes": None,
         "seed": True,
+        "transparent": False,
         "output_formats": ["png", "jpeg"],
         "pricing": [{"billable": "output_image", "unit": "megapixel", "usd": 0.03}],
         "terms_urls": [
@@ -233,3 +236,20 @@ def test_module_exports() -> None:
     assert {"ModelListing", "PixelSizeRule", "list_models", "model_listing_payload",
             "MODELS_SCHEMA_VERSION"} <= set(ai_providers.__all__)  # fmt: skip
     assert "MODEL_SIZE_POLICIES_VERIFIED" in ai_assets.__all__
+
+
+def test_a_transparent_capable_entry_is_listed_as_such(monkeypatch: pytest.MonkeyPatch) -> None:
+    # #169: the listing is where a user finds the models --transparent accepts.
+    from types import MappingProxyType
+
+    from holiday_card.core import ai_openrouter_models
+
+    gemini = OPENROUTER_IMAGE_MODELS["google/gemini-3-pro-image"]
+    monkeypatch.setattr(
+        ai_openrouter_models,
+        "OPENROUTER_IMAGE_MODELS",
+        MappingProxyType({gemini.id: replace(gemini, background_transparent=True)}),
+    )
+    (row,) = list_models(AIProvider.OPENROUTER)
+    assert row.transparent is True
+    assert model_listing_payload([row])["models"][0]["transparent"] is True

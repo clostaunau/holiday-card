@@ -34,6 +34,7 @@ class SolidImageClient:
     model: str
     color: tuple[int, int, int]
     provider: AIProvider = AIProvider.OPENAI
+    transparent: bool = False  # a motif: ``color`` in the middle half, transparent around it
 
     def generate(
         self,
@@ -42,11 +43,19 @@ class SolidImageClient:
         reference_path: str | None,
         shape: RequestShape,
         seed: int | None,
+        transparent: bool = False,
     ) -> GeneratedImage:
         del prompt, reference_path, seed  # the ImageClient signature; unused here
         assert isinstance(shape, PixelSize)
+        assert transparent == self.transparent
+        w, h = shape.width_px, shape.height_px
+        if transparent:
+            img = Image.new("RGBA", (w, h), (255, 255, 255, 0))
+            img.paste((*self.color, 255), (w // 4, h // 4, 3 * w // 4, 3 * h // 4))
+        else:
+            img = Image.new("RGB", (w, h), self.color)
         buf = io.BytesIO()
-        Image.new("RGB", (shape.width_px, shape.height_px), self.color).save(buf, "PNG")
+        img.save(buf, "PNG")
         return GeneratedImage(
             image_bytes=buf.getvalue(), media_type="image/png",
             cost_usd=None, cost_source="unknown", generation_id=None, provider_route=None,
@@ -61,11 +70,16 @@ def bake_fake_ai_asset(
     size: tuple[int, int] = (1314, 1824),
     color: tuple[int, int, int] = (10, 120, 60),
     timestamp: str = BAKE_TIMESTAMP,
+    transparent: bool = False,
 ) -> Path:
-    """Bake ``dir / name`` (+ its sidecar) through the real bake; return the asset path."""
+    """Bake ``dir / name`` (+ its sidecar) through the real bake; return the asset path.
+
+    ``transparent`` bakes an RGBA motif (#169): ``color`` over the middle half
+    of each axis, fully transparent around it.
+    """
     consent = dir / ".ai-consent.json"
     record_consent(consent, AIProvider.OPENAI)
-    client = SolidImageClient(model=model, color=color)
+    client = SolidImageClient(model=model, color=color, transparent=transparent)
     out = dir / name
     generate_ai_asset(
         prompt="watercolor pine bough border",
@@ -75,6 +89,7 @@ def bake_fake_ai_asset(
             prompt="watercolor pine bough border",
             width_px=size[0], height_px=size[1], shape=PixelSize(*size),
             provider=client.provider, model=model, dpi=300, reference_path=None,
+            transparent=transparent,
         ),
         client=client,
         consent_path=consent,

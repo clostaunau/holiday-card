@@ -44,8 +44,8 @@ MODELS_JSON_SCHEMA: dict[str, object] = {
                 "type": "object",
                 "additionalProperties": False,
                 "required": ["provider", "id", "default", "route", "upstream", "input_references",
-                             "aspect_ratios", "resolutions", "pixel_sizes", "seed", "output_formats",
-                             "pricing", "terms_urls", "snapshot_date"],
+                             "aspect_ratios", "resolutions", "pixel_sizes", "seed", "transparent",
+                             "output_formats", "pricing", "terms_urls", "snapshot_date"],
                 "properties": {
                     "provider": {"enum": ["openai", "openrouter"]},
                     "id": {"type": "string", "minLength": 1},
@@ -80,6 +80,7 @@ MODELS_JSON_SCHEMA: dict[str, object] = {
                         },
                     },
                     "seed": {"type": "boolean"},
+                    "transparent": {"type": "boolean"},
                     "output_formats": {"type": "array",
                                        "items": {"enum": ["png", "jpeg", "webp", "svg"]}},
                     "pricing": {
@@ -106,11 +107,11 @@ MODELS_JSON_SCHEMA: dict[str, object] = {
 
 KEY_ORDER = [
     "provider", "id", "default", "route", "upstream", "input_references", "aspect_ratios",
-    "resolutions", "pixel_sizes", "seed", "output_formats", "pricing", "terms_urls",
+    "resolutions", "pixel_sizes", "seed", "transparent", "output_formats", "pricing", "terms_urls",
     "snapshot_date",
 ]  # fmt: skip
 
-HEADER = "PROVIDER ID DEFAULT ROUTE REFS ASPECTS TIERS SEED PRICE TERMS SNAPSHOT"
+HEADER = "PROVIDER ID DEFAULT ROUTE REFS ASPECTS TIERS SEED TRANSPARENT PRICE TERMS SNAPSHOT"
 
 
 @pytest.fixture
@@ -169,6 +170,7 @@ def test_table_cells_of_an_openrouter_row(runner: CliRunner) -> None:
         "1:1,2:3,3:2,3:4,4:3,4:5,5:4,9:16,16:9,21:9",
         "1K,2K,4K",
         "no",
+        "no",
         "$0.00012/tok out-img + $0.000002/tok in-img",
         "https://ai.google.dev/gemini-api/terms",
         "2026-09-30",
@@ -180,13 +182,13 @@ def test_table_shows_dash_for_no_tiers_and_a_single_price_without_suffix(
 ) -> None:
     cells = _table_rows(_models(runner))["black-forest-labs/flux.2-pro"]
     assert cells[2] == ""  # no default marker: the empty cell keeps its column
-    assert cells[6:9] == ["-", "yes", "$0.03/MP"]
+    assert cells[6:10] == ["-", "yes", "no", "$0.03/MP"]
 
 
 def test_table_cells_of_openai_flexible_and_fixed_rows(runner: CliRunner) -> None:
     rows = _table_rows(_models(runner, "--provider", "openai"))
-    assert rows["gpt-image-2"][3:9] == [
-        "openai", "0-1", "any 1:3..3:1", "WxH /16 ≤3840", "no", "-",
+    assert rows["gpt-image-2"][3:10] == [
+        "openai", "0-1", "any 1:3..3:1", "WxH /16 ≤3840", "no", "no", "-",
     ]  # fmt: skip
     assert rows["gpt-image-1"][5:7] == ["1:1,3:2,2:3", "1024x1024,1536x1024,1024x1536"]
 
@@ -226,7 +228,7 @@ def test_price_with_a_recorded_openai_max_price(
     priced = replace(ai_assets.MODEL_SIZE_POLICIES["gpt-image-2"], max_price_usd=0.25)
     monkeypatch.setitem(ai_assets.MODEL_SIZE_POLICIES, "gpt-image-2", priced)
     rows = _table_rows(_models(runner, "--provider", "openai"))
-    assert rows["gpt-image-2"][8] == "$0.25/image"
+    assert rows["gpt-image-2"][9] == "$0.25/image"
 
 
 # --- json / yaml ----------------------------------------------------------------------
