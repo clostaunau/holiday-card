@@ -6,6 +6,20 @@ regenerated on purpose, and which tests guard it. Moved out of
 limit). New entries go at the top of this file; `CLAUDE.md` gets at
 most a one-line pointer. User-facing notes belong in `RELEASE_NOTES.md`.
 
+- **2026-09-30 — Gemini moderation 400 is a refusal (issue #172, found
+  by #140 call E)**: `google/gemini-3-pro-image` blocks a prompt with HTTP
+  **400** whose `error.metadata` has `block_reason` / `finish_reason`
+  `PROHIBITED_CONTENT` and no `error_type`, so `_status_kind` called it
+  `usage` (exit 2). `ORErrorMetadata` gains `block_reason` and
+  `finish_reason`; `_safety_block` checks both against
+  `_SAFETY_BLOCK_REASONS` (`PROHIBITED_CONTENT`, `SAFETY`, `BLOCKLIST`,
+  `IMAGE_SAFETY`), and a 400 that names one is `refused` (exit 6) with
+  `block reason …` in the message. The 403 rule is unchanged; any other
+  400, and a block reason on 404 / 413 / 422, stays `usage`. New
+  hand-made fixture `err_400_gemini_block.json` (the snapshot doc's body,
+  verbatim). Guarded by `test_ai_openrouter.py::TestErrorMapping::test_row_3_*`
+  and `test_ai_asset_cli_openrouter.py` row 15 / 16.
+
 - **2026-09-30 — panel-background bake sizing (issue #168, #153 Open
   question 1(c))**: `ai-asset generate --for-panel-background [--panel-size
   WxH]` sizes the bake for a panel `background_image` on `--export-for`.

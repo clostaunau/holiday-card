@@ -417,6 +417,31 @@ class TestErrorMapping:
         _expect("err_400", "usage", 400)
         assert "OpenRouter 400 invalid_request: Invalid aspect_ratio" in str(_refused("err_400"))
 
+    def test_row_3_400_gemini_moderation_block_is_refused(self) -> None:
+        # Live call E (#140): Gemini's safety block is a 400 with no error_type (#172).
+        _expect("err_400_gemini_block", "refused", 400)
+        text = str(_refused("err_400_gemini_block"))
+        assert "content moderation" in text and "PROHIBITED_CONTENT" in text
+
+    @pytest.mark.parametrize("reason", ["PROHIBITED_CONTENT", "SAFETY", "BLOCKLIST", "IMAGE_SAFETY"])
+    @pytest.mark.parametrize("field", ["block_reason", "finish_reason"])
+    def test_row_3_400_safety_reason_is_refused(self, field: str, reason: str) -> None:
+        body = {"error": {"code": 400, "message": "m", "metadata": {field: reason}}}
+        e = _refused(HttpResponse(400, {}, json.dumps(body).encode()))
+        assert (e.kind, e.status) == ("refused", 400)
+
+    @pytest.mark.parametrize("field", ["block_reason", "finish_reason"])
+    def test_row_3_400_other_reason_stays_usage(self, field: str) -> None:
+        body = {"error": {"code": 400, "message": "m", "metadata": {field: "MAX_TOKENS"}}}
+        e = _refused(HttpResponse(400, {}, json.dumps(body).encode()))
+        assert (e.kind, e.status) == ("usage", 400)
+
+    @pytest.mark.parametrize("status", [404, 413, 422])
+    def test_row_3_safety_reason_on_other_usage_status_stays_usage(self, status: int) -> None:
+        body = {"error": {"code": status, "message": "m", "metadata": {"block_reason": "SAFETY"}}}
+        e = _refused(HttpResponse(status, {}, json.dumps(body).encode()))
+        assert (e.kind, e.status) == ("usage", status)
+
     @pytest.mark.parametrize(
         "error_type",
         ["invalid_request", "invalid_image", "image_too_large", "image_too_small",

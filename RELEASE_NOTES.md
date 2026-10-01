@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### OpenRouter: Gemini content blocks exit 6
+
+When Gemini on OpenRouter blocks a prompt through content moderation (HTTP
+400 with `PROHIBITED_CONTENT`, `SAFETY`, `BLOCKLIST` or `IMAGE_SAFETY`),
+`ai-asset generate` now exits **6** ("the provider refused") instead of 2
+("invalid request"). Other 400s still exit 2.
+
 ### `ai-asset generate --for-panel-background`
 
 Bakes an image sized for a panel `background_image` rather than the whole

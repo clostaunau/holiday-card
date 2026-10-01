@@ -50,6 +50,7 @@ LEGACY_CONSENT = Path(__file__).parent.parent / "fixtures" / "ai" / "v1.3.0-ai-c
 # Row 15: fixture -> exit code.
 ERROR_EXITS = {
     "err_400": 2,
+    "err_400_gemini_block": 6,
     "err_401": 4,
     "err_402": 4,
     "err_402_in_flight": 7,

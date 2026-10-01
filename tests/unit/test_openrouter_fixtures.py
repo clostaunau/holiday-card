@@ -17,8 +17,8 @@ SCRIPT = REPO_ROOT / "scripts" / "make_openrouter_fixtures.py"
 
 EXPECTED = {
     "ok_png", "ok_jpeg", "ok_webp", "two_images", "empty_data", "svg", "mime_mismatch",
-    "bad_base64", "remote_url", "bomb_png", "not_json", "err_400", "err_401", "err_402",
-    "err_402_in_flight", "err_403_policy", "err_403_refusal", "err_403_permission",
+    "bad_base64", "remote_url", "bomb_png", "not_json", "err_400", "err_400_gemini_block", "err_401",
+    "err_402", "err_402_in_flight", "err_403_policy", "err_403_refusal", "err_403_permission",
     "err_429", "err_502", "err_524", "err_200_envelope",
 }  # fmt: skip
 
