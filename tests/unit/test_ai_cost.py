@@ -56,6 +56,8 @@ def _entry(*prices: OpenRouterPrice, **changes: object) -> OpenRouterModel:
         "max_output_megapixels": None,
         "output_image_tokens": None,
         "input_image_tokens": None,
+        "output_text_tokens": None,
+        "output_text_usd_per_token": None,
         "bound_source": None,
     }
     return replace(
@@ -122,15 +124,18 @@ class TestWorkedExamples:
 
     def test_per_token_gemini_3_pro(self) -> None:
         est = _or("google/gemini-3-pro-image", MOO_SHAPE_TIERED)
-        assert est.usd == pytest.approx(0.00012 * 1120 + 0.000002 * 560, abs=1e-9)
-        assert f"${est.usd:.4f}" == "$0.1355"
+        assert est.usd == pytest.approx(
+            0.00012 * 1120 + 0.000002 * 560 + 0.000012 * 256, abs=1e-9
+        )
+        assert f"${est.usd:.4f}" == "$0.1386"
         assert est.lines == (
             "input_image: 560 tok x $2e-06 = $0.00112",
             "output_image: 1120 tok x $0.00012 = $0.1344",
+            "output_text: 256 tok x $1.2e-05 = $0.003072",
         )
         check_cost_cap(est, 0.14)
         with pytest.raises(CostCapExceededError):
-            check_cost_cap(est, 0.13)
+            check_cost_cap(est, 0.138)
 
     def test_per_token_with_text_synthetic(self) -> None:
         assert len(PROMPT.encode("utf-8")) == 53
@@ -166,13 +171,50 @@ class TestRecordedBounds:
             "openai/gpt-image-2": (None, None, None),
         }
 
+    def test_non_image_output_allowance_at_the_text_rate(self) -> None:
+        # "$12.00 (text and thinking)" / "$1.50 (text and thinking)" per 1M
+        # tokens; 256 is a margin over #140's observed 87 / 101 (#173).
+        allowance = {
+            e.id: (e.output_text_tokens, e.output_text_usd_per_token)
+            for e in OPENROUTER_IMAGE_MODELS.values()
+        }
+        assert allowance == {
+            "google/gemini-3-pro-image": (256, 0.000012),
+            "google/gemini-3.1-flash-image": (256, 0.0000015),
+            "black-forest-labs/flux.2-pro": (None, None),
+            "bytedance-seed/seedream-4.5": (None, None),
+            "openai/gpt-image-2": (None, None),
+        }
+
     def test_flash_image_at_2k(self) -> None:
         est = _or("google/gemini-3.1-flash-image", MOO_SHAPE_TIERED)
-        assert est.usd == pytest.approx(0.00006 * 1680, abs=1e-9)
+        assert est.usd == pytest.approx(0.00006 * 1680 + 0.0000015 * 256, abs=1e-9)
 
     def test_gpt_image_2_via_openrouter_has_no_token_bound(self) -> None:
         with pytest.raises(NoPriceOnRecordError, match="openai/gpt-image-2"):
             _or("openai/gpt-image-2", MOO_SHAPE_UNTIERED)
+
+
+class TestObservedGeminiCost:
+    """#140's billed calls A / B (#173): the bound must cover the real cost."""
+
+    @pytest.mark.parametrize(
+        ("tier", "image_tokens", "completion_tokens", "observed_usd"),
+        [("2K", 1120, 1207, 0.136002), ("4K", 2000, 2101, 0.241770)],
+    )
+    def test_estimate_covers_the_observed_cost(
+        self, tier: str, image_tokens: int, completion_tokens: int, observed_usd: float
+    ) -> None:
+        entry = OPENROUTER_IMAGE_MODELS["google/gemini-3-pro-image"]
+        assert entry.output_image_tokens is not None
+        assert entry.output_image_tokens[tier] == image_tokens
+        assert entry.output_text_tokens is not None
+        assert completion_tokens - image_tokens <= entry.output_text_tokens
+        est = _or("google/gemini-3-pro-image", AspectSize("3:4", tier))
+        assert est.usd >= observed_usd
+        check_cost_cap(est, est.usd)  # a cap at the estimate is not exceeded by the bill
+        with pytest.raises(CostCapExceededError):
+            check_cost_cap(est, observed_usd)
 
 
 # --------------------------------------------------------------------------- one test per table row
@@ -196,6 +238,17 @@ class TestFormulaRows:
         assert with_ref.usd == pytest.approx(0.06, abs=1e-12)
         assert without.usd == pytest.approx(0.05, abs=1e-12)
         assert without.lines[1] == f"{billable}: 0 image x $0.01 = $0"
+
+    def test_output_text_allowance_is_added_after_the_rows(self) -> None:
+        entry = _entry(
+            OpenRouterPrice("output_image", "image", 0.05),
+            output_text_tokens=100,
+            output_text_usd_per_token=0.00001,
+            bound_source=SOURCE,
+        )
+        est = estimate_openrouter_cost(entry, MOO_SHAPE_TIERED, prompt=PROMPT, reference=None)
+        assert est.usd == pytest.approx(0.051, abs=1e-12)
+        assert est.lines[-1] == "output_text: 100 tok x $1e-05 = $0.001"
 
     def test_megapixel_output_prefers_the_recorded_ceiling_over_the_tier(self) -> None:
         entry = _entry(

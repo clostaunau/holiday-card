@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### `--max-cost` no longer under-estimates Gemini
+
+Gemini image models on OpenRouter also bill a few text/thinking output
+tokens beside the image, at a rate the OpenRouter price list does not show.
+The `--max-cost` upper bound now includes an allowance for them (256 tokens
+at Google's text-output price), so a cap set at the estimate is no longer
+exceeded by the bill. The default model on `moo-a6` with a reference now
+estimates $0.1386 (was $0.1355; the billed cost was $0.1360).
+
 ### OpenRouter: Gemini content blocks exit 6
 
 When Gemini on OpenRouter blocks a prompt through content moderation (HTTP

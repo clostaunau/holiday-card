@@ -260,12 +260,12 @@ class TestBake:
 # --------------------------------------------------------------------------- --max-cost (#151)
 
 
-ESTIMATE_LINE = "Estimated cost (upper bound): $0.1355"
+ESTIMATE_LINE = "Estimated cost (upper bound): $0.1386"
 
 
 @pytest.mark.usefixtures("key")
 class TestMaxCost:
-    """The default gemini model with the 8x8 fixture reference bounds at $0.1355."""
+    """The default gemini model with the 8x8 fixture reference bounds at $0.1386."""
 
     @pytest.fixture
     def consented(self, config: Path) -> bytes:
@@ -294,11 +294,12 @@ class TestMaxCost:
         assert _consent_file(config).read_bytes() == consented
         text = _flat(result.output)
         assert (
-            f"Error: estimated cost $0.1355 exceeds --max-cost $0.10 for {DEFAULT_MODEL} "
+            f"Error: estimated cost $0.1386 exceeds --max-cost $0.10 for {DEFAULT_MODEL} "
             "(openrouter)"
         ) in text
         assert "output_image: 1120 tok x $0.00012 = $0.1344" in text
         assert "input_image: 560 tok x $2e-06 = $0.00112" in text
+        assert "output_text: 256 tok x $1.2e-05 = $0.003072" in text
 
     def test_under_the_cap_bakes_and_prints_the_estimate(
         self, runner: CliRunner, tmp_path: Path, ref: Path, transport: FakeTransport
@@ -311,7 +312,7 @@ class TestMaxCost:
         assert text.index(ESTIMATE_LINE) < text.index("Cost: $0.13 (reported)")
         assert "above --max-cost" not in text and "Note:" not in text
         assert sidecar["cost_cap_usd"] == 0.14
-        assert sidecar["cost_estimate_usd"] == pytest.approx(0.13552, abs=1e-12)
+        assert sidecar["cost_estimate_usd"] == pytest.approx(0.138592, abs=1e-12)
 
     def test_reported_cost_above_the_cap_warns_but_keeps_the_asset(
         self, runner: CliRunner, tmp_path: Path, ref: Path, transport: FakeTransport

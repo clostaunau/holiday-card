@@ -6,6 +6,25 @@ regenerated on purpose, and which tests guard it. Moved out of
 limit). New entries go at the top of this file; `CLAUDE.md` gets at
 most a one-line pointer. User-facing notes belong in `RELEASE_NOTES.md`.
 
+- **2026-09-30 — `--max-cost` covers Gemini's non-image output tokens
+  (issue #173, found by #140 T2)**: billed calls A / B on
+  `google/gemini-3-pro-image` returned `completion_tokens` 1207 / 2101
+  against 1120 / 2000 image tokens; the extra 87 / 101 are billed at
+  $0.000012 (`upstream_inference_completions_cost` 0.135444 = 1120 ×
+  0.00012 + 87 × 0.000012), a rate with no catalogue `pricing[]` row, so
+  the estimate ($0.135520 at 2K) fell below the bill ($0.136002).
+  `OpenRouterModel` gains `output_text_tokens` + `output_text_usd_per_token`
+  (both or neither, count > 0, rate finite ≥ 0; they count as a bound for
+  `bound_source`), and `estimate_openrouter_cost` adds one
+  `output_text: N tok x $rate` line after the price rows. Both Gemini
+  entries record 256 tokens (a margin over 87 / 101, noted in
+  `bound_source`) at the vendor's "text and thinking" output price: Pro
+  $12.00/1M, Flash $1.50/1M. The refresh script carries both as reviewed
+  fields. Worked moo-a6 number for the default model is now $0.1386 (was
+  $0.1355); README updated. Guarded by
+  `test_ai_cost.py::TestObservedGeminiCost` (the two observed rows) and
+  `test_ai_openrouter_models.py::TestPostInitRefusals`.
+
 - **2026-09-30 — Gemini moderation 400 is a refusal (issue #172, found
   by #140 call E)**: `google/gemini-3-pro-image` blocks a prompt with HTTP
   **400** whose `error.metadata` has `block_reason` / `finish_reason`

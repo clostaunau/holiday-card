@@ -60,6 +60,8 @@ REVIEWED_FIELDS = (
     "max_output_megapixels",
     "output_image_tokens",
     "input_image_tokens",
+    "output_text_tokens",
+    "output_text_usd_per_token",
     "bound_source",
 )
 _NOT_COMPARED = {"snapshot_date", *REVIEWED_FIELDS}
@@ -195,7 +197,9 @@ def carry_reviewed(current: OpenRouterModel, live_resolutions: tuple[str, ...]) 
         allowed = set(live_resolutions) or {"default"}
         trimmed = {k: v for k, v in tokens.items() if k in allowed}
         kept["output_image_tokens"] = MappingProxyType(trimmed) if trimmed else None
-    bounds = ("max_output_megapixels", "output_image_tokens", "input_image_tokens")
+    bounds = (
+        "max_output_megapixels", "output_image_tokens", "input_image_tokens", "output_text_tokens"
+    )
     if all(kept[b] is None for b in bounds):
         kept["bound_source"] = None
     return kept
