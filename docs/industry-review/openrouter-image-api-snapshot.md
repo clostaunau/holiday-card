@@ -69,7 +69,7 @@ report `upstream_terms_url` as drift: the value is reviewed, not copied.
 | `flux.2-pro` | `https://bfl.ai/legal/terms-of-service` | partly: the consumer page defers API use to the Developer Terms | `https://bfl.ai/legal/developer-terms-of-service` ("you own all right, title, and interest in and to Output … personal or commercial purposes") | yes |
 | `seedream-4.5` | `https://docs.byteplus.com/en/docs/legal/docs-terms-of-service` | no: refers to the General Terms for AI Services | `https://docs.byteplus.com/en/docs/legal/AI-Services-terms` ("you own the Output … BytePlus does not claim ownership") | yes (label AI content where required) |
 | `gpt-image-2` | `https://openai.com/policies/row-terms-of-use/` | partly: individuals' terms, which say the Business Terms govern the API | `https://openai.com/policies/services-agreement/` ("Customer … owns all Output") | yes |
-| `gpt-image-2.5-sunburst` (2026-10-01, #179) | `https://openai.com/policies/row-terms-of-use/` | partly, as for `gpt-image-2`: the same `openai` endpoint and the same OpenAI API, so the same Business Terms | `https://openai.com/policies/services-agreement/` | yes |
+| `gpt-image-2.5-sunburst` (2026-10-01, #179) | `https://openai.com/policies/row-terms-of-use/` | partly, as for `gpt-image-2`. Inferred, not re-read: it is the same `openai` endpoint and the same OpenAI API, and the services agreement covers every OpenAI API service, not one model | `https://openai.com/policies/services-agreement/` | yes |
 
 Dropping an entry is a curation decision: delete it from `_ENTRIES`, and the
 drift guard in `tests/unit/test_ai_openrouter_models.py` changes with it.
