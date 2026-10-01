@@ -163,6 +163,13 @@ class TestPostInitRefusals:
             ({"output_text_tokens": 0}, "output_text_tokens"),
             ({"output_text_usd_per_token": -0.000001}, "output_text_usd_per_token"),
             ({"output_text_usd_per_token": float("inf")}, "output_text_usd_per_token"),
+            # Observed tier long edges (#174): known tiers, > 0, cited together.
+            ({"observed_long_edge_px": {"512": 600}}, "observed_long_edge_px"),
+            ({"observed_long_edge_px": {}}, "observed_long_edge_px"),
+            ({"observed_long_edge_px": {"2K": 0}}, "observed_long_edge_px"),
+            ({"observed_long_edge_px": None}, "observed_source"),
+            ({"observed_source": None}, "observed_source"),
+            ({"observed_source": "docs/snapshot.md"}, "observed_source"),
         ],
     )
     def test_bad_entry_is_refused_naming_id_and_field(
@@ -171,6 +178,29 @@ class TestPostInitRefusals:
         with pytest.raises(ValueError, match=field) as err:
             replace(_base(), **changes)  # type: ignore[arg-type]
         assert "google/gemini-3-pro-image" in str(err.value)
+
+
+class TestObservedLongEdge:
+    """#140 measured Gemini 3 Pro at 3:4: 2K is 2400 px and 4K 4800 px long (#174)."""
+
+    def test_gemini_pro_records_the_observed_tiers(self) -> None:
+        entry = OPENROUTER_IMAGE_MODELS["google/gemini-3-pro-image"]
+        assert dict(entry.observed_long_edge_px or {}) == {"2K": 2400, "4K": 4800}
+        assert entry.observed_source is not None
+        assert "openrouter-image-api-snapshot.md" in entry.observed_source
+
+    def test_no_other_curated_entry_claims_an_observation(self) -> None:
+        observed = {e.id for e in OPENROUTER_IMAGE_MODELS.values() if e.observed_long_edge_px}
+        assert observed == {"google/gemini-3-pro-image"}
+
+    def test_tier_long_edge_prefers_the_observation(self) -> None:
+        entry = OPENROUTER_IMAGE_MODELS["google/gemini-3-pro-image"]
+        # 1K was not observed (#140's call E was refused): it stays nominal.
+        assert [entry.tier_long_edge_px(t) for t in ("1K", "2K", "4K")] == [1024, 2400, 4800]
+
+    def test_tier_long_edge_is_nominal_without_an_observation(self) -> None:
+        entry = OPENROUTER_IMAGE_MODELS["bytedance-seed/seedream-4.5"]
+        assert [entry.tier_long_edge_px(t) for t in ("1K", "2K", "4K")] == [1024, 2048, 4096]
 
 
 def test_import_loads_only_the_standard_library() -> None:

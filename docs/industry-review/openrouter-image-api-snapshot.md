@@ -57,14 +57,26 @@ report `upstream_terms_url` as drift: the value is reviewed, not copied.
 Dropping an entry is a curation decision: delete it from `_ENTRIES`, and the
 drift guard in `tests/unit/test_ai_openrouter_models.py` changes with it.
 
-### Resolution tiers: an assumption
+### Resolution tiers: nominal, overridden per model by measurement (#174)
 
 `RESOLUTION_LONG_EDGE_PX` maps each tier to a nominal **long edge**:
-`512` → 512, `768` → 768, `1K` → 1024, `2K` → 2048, `4K` → 4096. The
-chooser (`ai_assets.choose_aspect_shape`) asks for the smallest tier whose
-long edge covers the bake's, or the largest tier offered. OpenRouter does not
-publish per-model pixel sizes. If #140 finds that a tier means something else
-(the short edge, or megapixels), change the table and this section together.
+`512` → 512, `768` → 768, `1K` → 1024, `2K` → 2048, `4K` → 4096.
+OpenRouter does not publish per-model pixel sizes, and #140 found the
+table wrong for `google/gemini-3-pro-image`: at `3:4`, `2K` decodes to
+**1792×2400** and `4K` to **3584×4800** (calls A, B). Google prices `2K` as
+"up to 2048x2048", so a tier is an area budget (about 4.2 MP at `2K`) and
+its long edge grows as the aspect leaves 1:1.
+
+So the table stays nominal and an entry may override a tier with
+`observed_long_edge_px`, cited in `observed_source`. Only the Gemini 3 Pro
+entry does: `2K` → 2400, `4K` → 4800, measured at `3:4` (the aspect every
+export target picks; it is not valid for a 1:1 request). `1K` was not
+observed (call E was refused), so it stays nominal at 1024. Other entries
+have no measurement and stay nominal. The chooser
+(`ai_assets.choose_aspect_shape`) asks for the smallest tier whose long
+edge (`OpenRouterModel.tier_long_edge_px`) covers the bake's, or the
+largest tier offered; a megapixel-priced `--max-cost` fallback uses the
+same long edge. Record a new measurement here and on the entry together.
 
 For the two export targets with geometry, every curated model picks `3:4`:
 letter (2550×3300) gets `4K` and moo-a6 (1314×1824) gets `2K`, or no tier
@@ -137,7 +149,7 @@ the attribution headers.
 | Q4 | Shape of an image content-policy refusal | **HTTP 400, not 403.** `error.metadata` carries `block_reason` / `finish_reason` `PROHIBITED_CONTENT` and no `error_type` or `provider_code`. Not billed. | Call E |
 | Q5 | Is `size: "1328x1824"` honoured on `openai/gpt-image-2`? | **Yes**: exactly 1328×1824. | Call D decode line |
 | Q6 | Unadvertised `output_format: "png"` on Gemini AI Studio | **Ignored**: 200 with `media_type: image/jpeg`, and the bytes are JPEG. | Call A |
-| T1 | Is `2K` a 2048 px long edge, as `RESOLUTION_LONG_EDGE_PX` assumes? | **No**: the long edge is 2400 at `2K` and 4800 at `4K` (3:4). → #174 | Calls A, B |
+| T1 | Is `2K` a 2048 px long edge, as `RESOLUTION_LONG_EDGE_PX` assumes? | **No**: the long edge is 2400 at `2K` and 4800 at `4K` (3:4). → #174 (fixed: the Gemini 3 Pro entry records them as `observed_long_edge_px`) | Calls A, B |
 | T2 | Are Gemini `2K` output tokens ≤ the 1120 bound? | `image_tokens` = **1120** (at the bound), but `completion_tokens` = **1207**. The extra 87 are billed at $0.000012/token, which no price row covers, so the real cost $0.136002 > the estimate $0.135520. At `4K`: 2000 image tokens, 2101 completion tokens. → #173 (fixed: a 256-token text-output allowance per Gemini entry) | Calls A, B `usage` |
 
 Whatever Q5 shows, production never sends `size` (spec §5.3).
@@ -362,5 +374,5 @@ a follow-up issue; this docs-only PR changes no code.
 | Q4 | 403 + `error_type` ∈ {`content_policy_violation`, `refusal`} → refused (#149) | **#172**: Gemini's block is a 400 with `block_reason`, which exits 2 "usage". |
 | Q5 | `size` is never sent (§5.3) | None. The rule stands whatever the answer. |
 | Q6 | `output_format` is sent only when the entry lists `png` (#149); the Gemini entry lists none; JPEG is accepted by `open_generated_image` | None. Gemini assets arrive as JPEG and are baked as usual. |
-| T1 | `RESOLUTION_LONG_EDGE_PX`: `2K` → 2048, `4K` → 4096 (#148) | **#174**: the observed long edges are 2400 / 4800. Tier choice for moo-a6 and letter is unchanged. |
+| T1 | `RESOLUTION_LONG_EDGE_PX`: `2K` → 2048, `4K` → 4096 (#148) | **#174** (fixed): the observed long edges are 2400 / 4800, recorded per entry. Tier choice for moo-a6 and letter is unchanged; a 2049–2400 px bake on Gemini 3 Pro now gets `2K`, not `4K`. |
 | T2 | Gemini `2K` / `4K` bounds are 1120 / 2000 output tokens (#151) | **#173**: about 87–101 non-image completion tokens are billed on top, so the estimate is about $0.0005–0.0007 short. |

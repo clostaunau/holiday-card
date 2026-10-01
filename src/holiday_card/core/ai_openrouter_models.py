@@ -43,8 +43,8 @@ PriceUnit = Literal["image", "megapixel", "token"]
 MAX_INPUT_REFERENCES = 16
 
 # Nominal long edge of each resolution tier. OpenRouter does not publish
-# per-model pixel sizes (spec §3); #140 measures the real W×H, and if a tier
-# turns out to mean something else this table changes with it.
+# per-model pixel sizes (spec §3); an entry overrides a tier only from a
+# measured, cited W×H (``observed_long_edge_px``, #174).
 RESOLUTION_LONG_EDGE_PX: Mapping[str, int] = MappingProxyType(
     {"512": 512, "768": 768, "1K": 1024, "2K": 2048, "4K": 4096}
 )
@@ -111,6 +111,17 @@ class OpenRouterModel:
     output_text_tokens: int | None = None
     output_text_usd_per_token: float | None = None
     bound_source: str | None = None
+    # Measured long edge per tier (#174), cited in ``observed_source``
+    # ("YYYY-MM-DD <where>"). A tier is an area budget, so the long edge
+    # depends on the aspect: record the 3:4 / 4:3 measurement every export
+    # target picks, never apply it to 1:1. Unlisted tiers stay nominal.
+    observed_long_edge_px: Mapping[str, int] | None = None
+    observed_source: str | None = None
+
+    def tier_long_edge_px(self, tier: str) -> int:
+        """The long edge of ``tier``: the observed one, else the nominal table's."""
+        observed = self.observed_long_edge_px or {}
+        return observed.get(tier, RESOLUTION_LONG_EDGE_PX[tier])
 
     def __post_init__(self) -> None:
         def bad(field: str, why: str) -> ValueError:
@@ -146,6 +157,7 @@ class OpenRouterModel:
         except ValueError as e:
             raise bad("snapshot_date", f"{self.snapshot_date!r} is not an ISO date") from e
         self._check_bounds(bad)
+        self._check_observed(bad)
         url = urlsplit(self.upstream_terms_url)
         host = (url.hostname or "").lower()
         if url.scheme != "https" or not host:
@@ -190,6 +202,28 @@ class OpenRouterModel:
                 raise bad("bound_source", "must cite an https:// source after the date")
 
 
+    def _check_observed(self, bad: Callable[[str, str], ValueError]) -> None:
+        observed = self.observed_long_edge_px
+        if observed is not None:
+            if not observed or not set(observed) <= set(self.resolutions):
+                raise bad(
+                    "observed_long_edge_px",
+                    f"keys {sorted(observed)} must be among {sorted(self.resolutions)}",
+                )
+            if any(n <= 0 for n in observed.values()):
+                raise bad("observed_long_edge_px", "every long edge must be > 0")
+        if (observed is None) != (self.observed_source is None):
+            raise bad("observed_source", "needed exactly when observed_long_edge_px is recorded")
+        if self.observed_source is not None:
+            stamp, _, where = self.observed_source.partition(" ")
+            try:
+                date.fromisoformat(stamp)
+            except ValueError as e:
+                raise bad("observed_source", "must start with an ISO date") from e
+            if not where.strip():
+                raise bad("observed_source", "must cite where it was measured after the date")
+
+
 def _prices(*rows: tuple[Billable, PriceUnit, float]) -> tuple[OpenRouterPrice, ...]:
     return tuple(OpenRouterPrice(*row) for row in rows)
 
@@ -225,6 +259,13 @@ _ENTRIES = (
         bound_source=(
             "2026-09-30 https://ai.google.dev/gemini-api/docs/pricing (Gemini 3 Pro Image);"
             " output_text_tokens is a margin over 87 / 101 observed by #140 (#173)"
+        ),
+        # #140 decoded 1792x2400 at 3:4 / 2K and 3584x4800 at 3:4 / 4K. 1K was
+        # not observed (call E was refused), so it stays nominal (#174).
+        observed_long_edge_px=MappingProxyType({"2K": 2400, "4K": 4800}),
+        observed_source=(
+            "2026-09-30 docs/industry-review/openrouter-image-api-snapshot.md"
+            " (#140 calls A and B, 3:4)"
         ),
     ),
     OpenRouterModel(

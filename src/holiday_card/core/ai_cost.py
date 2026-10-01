@@ -9,7 +9,8 @@ Per pricing row (``n_refs`` is 1 with a reference, else 0):
 
 * ``image``: ``cost × 1`` for the output (``n: 1``), ``cost × n_refs`` for inputs;
 * ``megapixel``: output ``cost × max_output_megapixels``, else the tier's
-  ``L × round(L × short / long)`` pixels; input ``cost × n_refs ×`` the
+  ``L × round(L × short / long)`` pixels (``L`` the entry's observed long
+  edge, else the nominal one, #174); input ``cost × n_refs ×`` the
   probed reference's exact megapixels;
 * ``token``: output ``cost × output_image_tokens[tier or "default"]``;
   input image ``cost × n_refs × input_image_tokens``; input text
@@ -102,9 +103,9 @@ def _line(row: OpenRouterPrice, quantity: str, unit: str, usd: float) -> str:
     return f"{row.billable}: {quantity} {unit} x ${row.cost_usd:g} = ${usd:.10g}"
 
 
-def _tier_megapixels(aspect_ratio: str, resolution: str) -> float:
+def _tier_megapixels(entry: OpenRouterModel, aspect_ratio: str, resolution: str) -> float:
     a, b = (float(part) for part in aspect_ratio.split(":"))
-    long_edge = TIER_LONG_EDGE_PX[resolution]
+    long_edge = entry.tier_long_edge_px(resolution)
     return long_edge * round(long_edge * min(a, b) / max(a, b)) / 1e6
 
 
@@ -143,7 +144,7 @@ def estimate_openrouter_cost(
                 if entry.max_output_megapixels is not None:
                     mp = entry.max_output_megapixels
                 elif shape.resolution is not None:
-                    mp = _tier_megapixels(shape.aspect_ratio, shape.resolution)
+                    mp = _tier_megapixels(entry, shape.aspect_ratio, shape.resolution)
                 else:
                     raise missing("megapixel-priced output with no max_output_megapixels or tier")
                 qty, unit, n = f"{mp:.10g}", "MP", mp
