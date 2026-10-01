@@ -29,7 +29,7 @@ most a one-line pointer. User-facing notes belong in `RELEASE_NOTES.md`.
   inner whitespace) exits by its kind, not with a traceback. Vendor names
   are checked at import (D4). `consent_notice` takes
   `model=` and, for a routed model, adds a bullet naming the vendor,
-  route and terms. `GenerationResult` gains `model` / `provider_route`
+  route and terms. `GenerationResult` gains `provider_route`
   for the CLI summary (`Provider: openrouter (route: …)`, `Model: …`).
   `ai_disclosure_label` is now `<model> via openrouter` for OpenRouter
   records. Help text: provider/keys/env var in the group help, the
