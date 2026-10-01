@@ -6,6 +6,31 @@ regenerated on purpose, and which tests guard it. Moved out of
 limit). New entries go at the top of this file; `CLAUDE.md` gets at
 most a one-line pointer. User-facing notes belong in `RELEASE_NOTES.md`.
 
+- **2026-09-30 — `ai-asset models` (issue #152, spec §5.2 M1 / §8 Phase
+  3)**: `core/ai_providers.py` gains `PixelSizeRule`, `ModelListing`,
+  `list_models(provider=None)` (sorted by `(provider, id)`, built from
+  `MODEL_SIZE_POLICIES` and `OPENROUTER_IMAGE_MODELS`, no network) and
+  `model_listing_payload` (the JSON/YAML document, `schema_version: 1`,
+  plain types only so `yaml.safe_dump` and `json.dumps` emit the same
+  payload). `ai_assets.MODEL_SIZE_POLICIES_VERIFIED = "2026-09-29"`
+  replaces the prose date. The CLI command reuses `ListFormat`,
+  `_echo_table` and `_unexpected_error`; its `--provider` has **no**
+  envvar, so `HOLIDAY_CARD_AI_PROVIDER` never filters a listing. Deviations
+  from the issue, since its anchors predate #148/#150/#151: there is no
+  `PriceComponent`, so `pricing` reuses `OpenRouterPrice` (JSON key
+  `usd` = `cost_usd`); `upstream` reuses `upstream_vendor_name` (keyed by
+  the pinned endpoint, D4 at import), so it reads "Google (AI Studio)" /
+  "ByteDance (Seed)", not a second author-segment map; prices print as
+  plain decimals (`Decimal.normalize`), since `f"{2e-06:g}"` is `2e-06`;
+  a billable suffix (`out-img`, `in-img`, …) appears only on multi-part
+  prices, output first. Listing loads Pillow via `ai_assets` (as
+  `known_models` already does) but never an adapter, `urllib.request` or
+  `openai`. Guarded by `tests/unit/test_ai_model_listing.py`,
+  `tests/unit/test_ai_models_command.py` (the `MODELS_JSON_SCHEMA`
+  contract, key order, table cells, generate's known-id cross-check, no
+  keys/consent/extra/network, params exactly `--provider`/`--format`) and
+  two broken-pipe cases. Tests collected 3930 → 3986.
+
 - **2026-09-30 — `ai-asset generate --max-cost USD` (issue #151, spec
   §6.7)**: new stdlib-only `core/ai_cost.py`. `estimate_max_cost` sums one
   upper bound per allowlist `pricing` row, offline: `image` rows cost

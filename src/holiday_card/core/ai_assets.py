@@ -65,6 +65,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "MODEL_SIZE_POLICIES",
+    "MODEL_SIZE_POLICIES_VERIFIED",
     "ModelSizePolicy",
     "AIRequest",
     "PixelSize",
@@ -133,9 +134,11 @@ def _flexible(model: str) -> ModelSizePolicy:
     )
 
 
-# Verified 2026-09-29 against the OpenAI image-generation guide and the
-# images.generate / images.edit API reference (see
-# docs/industry-review/openai-image-api-snapshot.md).
+# The date MODEL_SIZE_POLICIES was verified against the OpenAI
+# image-generation guide and the images.generate / images.edit API reference
+# (see docs/industry-review/openai-image-api-snapshot.md).
+MODEL_SIZE_POLICIES_VERIFIED = "2026-09-29"
+
 MODEL_SIZE_POLICIES: dict[str, ModelSizePolicy] = {
     "gpt-image-1": ModelSizePolicy("gpt-image-1", _LEGACY_SIZES),
     "gpt-image-1-mini": ModelSizePolicy("gpt-image-1-mini", _LEGACY_SIZES),

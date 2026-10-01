@@ -114,7 +114,8 @@ src/holiday_card/
     ai_provenance.py    # L3 provider-neutral LicenseRecord + per-provider consent (#147); the AI
                         #   PNG marker and require_sidecar: the one provenance check (#144)
     ai_providers.py     # AIProvider registry (key var + default model), resolve_model / supports_seed,
-                        #   make_image_client: the ONE client factory (#146; stdlib-only imports)
+                        #   make_image_client: the ONE client factory (#146; stdlib-only imports);
+                        #   list_models / model_listing_payload for `ai-asset models` (#152)
     ai_assets.py        # L3 POD-aware sizing, MODEL_SIZE_POLICIES (#87), PixelSize / AspectSize request shapes
                         #   + provider-neutral ImageClient (#146), generate orchestration,
                         #   decode_b64_image / open_generated_image: model bytes as untrusted input (#141)
@@ -159,7 +160,8 @@ src/holiday_card/
     icc/                # GRACoL2013_CRPC6.icc (3.4MB; OutputIntent for --export-for moo-a6)
                         #   + NOTICE (verbatim redistribution terms)
   cli/
-    commands.py         # Typer CLI: create, preview, templates, themes, validate
+    commands.py         # Typer CLI: create, preview, templates, themes, validate,
+                        #   ai-asset generate / models (curated, offline listing, #152)
     exit_codes.py       # ExitCode (0-7) + the root --help epilog (#80)
   utils/
     measurements.py     # inch ↔ point conversions; page constants
@@ -461,9 +463,9 @@ the "this will bite you" kind goes in Gotchas above. User-facing notes
 go in `RELEASE_NOTES.md`.
 
 In flight: the OpenRouter image-provider program (tracker #139); #141,
-#142, #143, #144, #145, #146, #147, #148, #149, #150 and #151 have landed
-(OpenRouter is usable; its default model is provisional until #140). Next:
-#152 (`ai-asset models`), #153. **Legacy-read deadline (O7):** delete the
+#142, #143, #144, #145, #146, #147, #148, #149, #150, #151 and #152 have
+landed (OpenRouter is usable; its default model is provisional until #140).
+Next: #153. **Legacy-read deadline (O7):** delete the
 `LicenseRecord` `openai_policy_url` reader (`# LEGACY(v1.3.0 sidecar…)`)
 in the first release after the one that ships #147.
 

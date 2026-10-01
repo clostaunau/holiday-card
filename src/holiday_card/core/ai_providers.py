@@ -20,12 +20,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, assert_never
+from typing import TYPE_CHECKING, Any, assert_never
 
 from holiday_card.core import ai_openrouter_models
+from holiday_card.core.ai_openrouter_models import OpenRouterPrice
 
 if TYPE_CHECKING:
-    from holiday_card.core.ai_assets import ImageClient
+    from holiday_card.core.ai_assets import ImageClient, ModelSizePolicy
 
 __all__ = [
     "AIProvider",
@@ -40,6 +41,11 @@ __all__ = [
     "supports_seed",
     "upstream_vendor",
     "make_image_client",
+    "MODELS_SCHEMA_VERSION",
+    "PixelSizeRule",
+    "ModelListing",
+    "list_models",
+    "model_listing_payload",
 ]
 
 
@@ -247,3 +253,150 @@ def make_image_client(provider: AIProvider, model: str | None = None) -> ImageCl
             )
         case _:
             assert_never(provider)
+
+
+# --- the curated model listing (`ai-asset models`, #152) -----------------------------
+
+MODELS_SCHEMA_VERSION = 1
+
+
+@dataclass(frozen=True)
+class PixelSizeRule:
+    """The pixel sizes a direct OpenAI model accepts: ``fixed`` sizes, or flexible bounds."""
+
+    fixed: tuple[tuple[int, int], ...] | None
+    multiple: int | None
+    max_edge: int | None
+    max_aspect: float | None
+    min_pixels: int | None
+    max_pixels: int | None
+
+
+@dataclass(frozen=True)
+class ModelListing:
+    """One curated image model, as ``ai-asset models`` lists it. No network."""
+
+    provider: AIProvider
+    id: str
+    default: bool  # == PROVIDERS[provider].default_model
+    route: str  # "openai" (direct) | the pinned OpenRouter provider_tag
+    upstream: str  # the vendor the request reaches
+    input_references: tuple[int, int]  # (min, max)
+    aspect_ratios: tuple[str, ...] | None  # None for pixel-sized models
+    resolutions: tuple[str, ...] | None  # None when the endpoint has no tiers / pixel-sized
+    pixel_sizes: PixelSizeRule | None  # OpenAI direct only
+    seed: bool
+    output_formats: tuple[str, ...]  # () when the endpoint advertises no output_format
+    pricing: tuple[OpenRouterPrice, ...]  # () when no price is recorded
+    terms_urls: tuple[str, ...]  # provider policy URLs, then the upstream terms URL
+    snapshot_date: str  # ISO date the capability data was verified
+
+
+def _pixel_size_rule(policy: ModelSizePolicy) -> PixelSizeRule:
+    if policy.fixed_sizes is not None:
+        return PixelSizeRule(policy.fixed_sizes, None, None, None, None, None)
+    return PixelSizeRule(
+        fixed=None,
+        multiple=policy.multiple,
+        max_edge=policy.max_edge,
+        max_aspect=policy.max_aspect,
+        min_pixels=policy.min_pixels,
+        max_pixels=policy.max_pixels,
+    )
+
+
+def _listings(provider: AIProvider) -> list[ModelListing]:
+    default = PROVIDERS[provider].default_model
+    match provider:
+        case AIProvider.OPENAI:
+            from holiday_card.core import ai_assets
+
+            return [
+                ModelListing(
+                    provider=provider,
+                    id=model,
+                    default=model == default,
+                    route="openai",
+                    upstream="OpenAI",
+                    input_references=reference_limits(provider, model),
+                    aspect_ratios=None,
+                    resolutions=None,
+                    pixel_sizes=_pixel_size_rule(policy),
+                    seed=supports_seed(provider, model),
+                    output_formats=("png",),
+                    pricing=(
+                        ()
+                        if policy.max_price_usd is None
+                        else (OpenRouterPrice("output_image", "image", policy.max_price_usd),)
+                    ),
+                    terms_urls=policy_urls_for(provider, model),
+                    snapshot_date=ai_assets.MODEL_SIZE_POLICIES_VERIFIED,
+                )
+                for model, policy in ai_assets.MODEL_SIZE_POLICIES.items()
+            ]
+        case AIProvider.OPENROUTER:
+            return [
+                ModelListing(
+                    provider=provider,
+                    id=entry.id,
+                    default=entry.id == default,
+                    route=entry.provider_tag,
+                    upstream=ai_openrouter_models.upstream_vendor_name(entry),
+                    input_references=(entry.input_refs_min, entry.input_refs_max),
+                    aspect_ratios=entry.aspect_ratios,
+                    resolutions=entry.resolutions or None,
+                    pixel_sizes=None,
+                    seed=entry.seed,
+                    output_formats=entry.output_formats,
+                    pricing=entry.pricing,
+                    terms_urls=policy_urls_for(provider, entry.id),
+                    snapshot_date=entry.snapshot_date,
+                )
+                for entry in ai_openrouter_models.OPENROUTER_IMAGE_MODELS.values()
+            ]
+        case _:
+            assert_never(provider)
+
+
+def list_models(provider: AIProvider | None = None) -> list[ModelListing]:
+    """The curated image models of ``provider`` (or of every provider), from checked-in tables.
+
+    Sorted by ``(provider, id)``. Makes no network call and imports no adapter.
+    """
+    providers = list(AIProvider) if provider is None else [provider]
+    rows = [row for p in providers for row in _listings(p)]
+    return sorted(rows, key=lambda r: (r.provider.value, r.id))
+
+
+def _listing_record(row: ModelListing) -> dict[str, object]:
+    rule = row.pixel_sizes
+    return {
+        "provider": row.provider.value,
+        "id": row.id,
+        "default": row.default,
+        "route": row.route,
+        "upstream": row.upstream,
+        "input_references": {"min": row.input_references[0], "max": row.input_references[1]},
+        "aspect_ratios": None if row.aspect_ratios is None else list(row.aspect_ratios),
+        "resolutions": None if row.resolutions is None else list(row.resolutions),
+        "pixel_sizes": None if rule is None else {
+            "fixed": None if rule.fixed is None else [list(size) for size in rule.fixed],
+            "multiple": rule.multiple,
+            "max_edge": rule.max_edge,
+            "max_aspect": rule.max_aspect,
+            "min_pixels": rule.min_pixels,
+            "max_pixels": rule.max_pixels,
+        },
+        "seed": row.seed,
+        "output_formats": list(row.output_formats),
+        "pricing": [
+            {"billable": p.billable, "unit": p.unit, "usd": p.cost_usd} for p in row.pricing
+        ],
+        "terms_urls": list(row.terms_urls),
+        "snapshot_date": row.snapshot_date,
+    }
+
+
+def model_listing_payload(rows: list[ModelListing]) -> dict[str, Any]:
+    """The versioned JSON / YAML document of ``rows``: plain lists, dicts and scalars only."""
+    return {"schema_version": MODELS_SCHEMA_VERSION, "models": [_listing_record(r) for r in rows]}
