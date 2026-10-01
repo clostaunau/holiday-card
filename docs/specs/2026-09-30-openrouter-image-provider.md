@@ -453,6 +453,11 @@ a traceback**. The OpenAI adapter maps its SDK errors onto the same `ProviderErr
 | **3: Operator conveniences** (per §9 Q1) | `--max-cost`; `ai-asset models` (curated listing: id, upstream, references, aspect/tiers, seed, price unit, terms URL). | optional |
 | **4: Richer placement** (per §9 Q1; benefits every provider) | Compiler support for `Panel.background_image`, restricted to a baked, sidecar-carrying, bleed-sized asset: drawn under vector content, bleed-extended, PPI-checked (#66), flattened and CMYK-converted on PDF/X (D10), and refused in photo slots. Later, optionally: transparent-background motif generation for allowlisted models that support `background: transparent`. | visibly richer cards |
 
+**2026-09-30: Phase 2 shipped** (#150: `--provider openrouter` wired end to end, the
+consent blurb, docs and the opt-in live smoke; the default model stays provisional until
+#140). The privacy-settings link is `https://openrouter.ai/workspaces/default/settings`,
+the page OpenRouter's data-collection guide links (verified 2026-09-30).
+
 **Critical path:** 0b → 1 → 2 (allowlist ∥ transport) → 2 (CLI wiring).
 0a gates only the choice of *default* model. Phase 4 depends on 0c and nothing else.
 

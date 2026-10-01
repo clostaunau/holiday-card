@@ -4,7 +4,7 @@ Builds one request for a curated model (:mod:`ai_openrouter_models`), sends
 it through an injected :class:`Transport` and turns the response into the
 :class:`~holiday_card.core.ai_assets.GeneratedImage` the bake consumes.
 Every failure is a redacted :class:`~holiday_card.core.ai_errors.ProviderError`.
-Not wired to the CLI yet (#150 registers the provider).
+``ai_providers.make_image_client`` builds it for ``--provider openrouter`` (#150).
 
 The production transport is ``urllib.request``, whose defaults are unsafe
 for a billed, secret-bearing call, so :func:`make_urllib_transport` sets
@@ -56,6 +56,7 @@ from holiday_card.core.ai_assets import (
     MAX_IMAGE_BYTES,
     AspectSize,
     GeneratedImage,
+    ImageClient,
     ImageMediaType,
     ImagePayloadError,
     RequestShape,
@@ -69,6 +70,7 @@ from holiday_card.core.ai_errors import (
     sanitize_provider_text,
 )
 from holiday_card.core.ai_openrouter_models import OpenRouterModel, openrouter_model
+from holiday_card.core.ai_providers import AIProvider
 from holiday_card.core.images import ImageSourceError, probe_image
 
 __all__ = [
@@ -566,8 +568,8 @@ def _usage(message: str) -> ProviderError:
 class OpenRouterImageClient:
     """Generates one image through OpenRouter ``POST /images`` for a curated model.
 
-    Implements :class:`~holiday_card.core.ai_assets.ImageClient` except for
-    ``provider``, which #150 adds with ``AIProvider.OPENROUTER``. Stores the
+    Implements :class:`~holiday_card.core.ai_assets.ImageClient` (checked
+    statically by :func:`_conforms_to_image_client`). Stores the
     ``SecretStr`` only; headers are built per call.
     """
 
@@ -578,6 +580,10 @@ class OpenRouterImageClient:
         _request_headers(api_key)  # refuses a blank key now, not at the first call
         self._api_key = api_key
         self._transport = transport
+
+    @property
+    def provider(self) -> AIProvider:
+        return AIProvider.OPENROUTER
 
     @property
     def model(self) -> str:
@@ -670,3 +676,8 @@ class OpenRouterImageClient:
         return parse_images_response(
             response, entry=self._entry, redact=_key_redactor(self._api_key)
         )
+
+
+def _conforms_to_image_client(client: OpenRouterImageClient) -> ImageClient:
+    """Never called: mypy checks that the client satisfies the ``ImageClient`` protocol."""
+    return client

@@ -42,6 +42,7 @@ from PIL import Image, ImageCms, PngImagePlugin
 from holiday_card.core.ai_openrouter_models import (
     RESOLUTION_LONG_EDGE_PX,
     aspect_ratio_value,
+    openrouter_model,
 )
 from holiday_card.core.ai_provenance import (
     AI_MARKER_KEY,
@@ -366,6 +367,8 @@ class GenerationResult:
     height_px: int
     native_ppi: float
     policy_urls: tuple[str, ...]
+    model: str  # the model actually called
+    provider_route: str | None  # the pinned OpenRouter endpoint; None for a direct provider
     overridden: list[RailViolation] = field(default_factory=list)
 
 
@@ -504,7 +507,8 @@ def choose_request_shape(
 ) -> RequestShape:
     """The request shape ``provider`` / ``model`` accepts for a target size.
 
-    OpenAI takes pixels: :func:`choose_request_size`.
+    OpenAI takes pixels: :func:`choose_request_size`. OpenRouter takes an
+    aspect ratio and a resolution tier: :func:`choose_aspect_shape`.
 
     Raises:
         ValueError: If ``model`` has no size policy.
@@ -512,6 +516,8 @@ def choose_request_shape(
     match provider:
         case AIProvider.OPENAI:
             return PixelSize(*choose_request_size(model, target_w, target_h))
+        case AIProvider.OPENROUTER:
+            return choose_aspect_shape(openrouter_model(model), target_w, target_h)
         case _:
             assert_never(provider)
 
@@ -679,5 +685,7 @@ def generate_ai_asset(
         height_px=target[1],
         native_ppi=native_ppi,
         policy_urls=policy_urls,
+        model=client.model,
+        provider_route=generated.provider_route,
         overridden=violations if override else [],
     )

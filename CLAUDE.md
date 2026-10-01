@@ -81,6 +81,8 @@ primitives (#74, D13).
 - pikepdf 8.0+ (PDF/X-1a post-processing for `--export-for moo-a6`)
 - fontTools 4.47+ (`fontTools.subset` only: glyph subsets embedded in SVG output, #76)
 - openai 1.0+ (**optional** `[ai]` extra; only `core/ai_openai.py` imports it)
+- OpenRouter `POST /images` over stdlib `urllib` (no extra; `core/ai_openrouter.py` is the
+  only `urllib.request` importer)
 
 ## Project layout
 
@@ -121,7 +123,7 @@ src/holiday_card/
                         #   pricing, upstream terms (stdlib only, #148)
     ai_openrouter.py    # L3 OpenRouter `/images` client over stdlib urllib (#149): the only
                         #   `urllib.request` importer; no redirects, capped read, split timeouts;
-                        #   not yet wired to the CLI (#150)
+                        #   wired to the CLI as `--provider openrouter` (#150)
     images.py           # Template image path containment + PNG/JPEG content probe (D5)
                         #   + effective-PPI print check on the IR (#66)
     template_checks.py  # check_template: fonts, bounds, default theme, compile smoke (#57)
@@ -167,12 +169,15 @@ tests/
                         #   test_dependency_policy, test_packaging_metadata, test_docs_counts
     __snapshots__/      # JSON snapshots of compile_card() output per template (16 files)
   integration/          # End-to-end CLI and backend tests; test_readme_examples runs every
-                        #   README `holiday-card` line (#88)
+                        #   README `holiday-card` line (#88); test_ai_asset_cli_openrouter drives
+                        #   the real factory + client over a FakeTransport (#150)
   visual/               # Per-panel pixel gate (#68): 21 templates × {png, pdf} × 4 panels at
                         #   144 DPI; baselines in fixtures/reference_cards/{png,pdf}/, generated
                         #   on Ubuntu by the visual-baselines workflow; eyeball before commit
   conformance/          # Cross-backend conformance vs the SVG oracle (#67, D12); regenerate
                         #   docs/conformance-matrix.md from capabilities.py
+  live/                 # Opt-in paid smoke (live_ai): skipped unless HOLIDAY_CARD_LIVE_OPENROUTER=1
+                        #   + OPENROUTER_API_KEY; never in CI (#150)
   fixtures/openrouter/  # Recorded OpenRouter responses (scripts/make_openrouter_fixtures.py)
   ai_fixtures.py        # bake_fake_ai_asset: a real marked asset + sidecar, no network (#144)
   rasterize.py          # Shared pypdfium2 PDF rasterizer (conformance + visual gate)
@@ -451,8 +456,9 @@ the "this will bite you" kind goes in Gotchas above. User-facing notes
 go in `RELEASE_NOTES.md`.
 
 In flight: the OpenRouter image-provider program (tracker #139); #141,
-#142, #143, #144, #145, #146, #147, #148 and #149 have landed. Next: #150
-(wire `AIProvider.OPENROUTER` into the CLI); #153 is unblocked too. **Legacy-read deadline (O7):** delete the
+#142, #143, #144, #145, #146, #147, #148, #149 and #150 have landed
+(OpenRouter is usable; its default model is provisional until #140). Next:
+#151 (`--max-cost`), #152 (`ai-asset models`), #153. **Legacy-read deadline (O7):** delete the
 `LicenseRecord` `openai_policy_url` reader (`# LEGACY(v1.3.0 sidecar…)`)
 in the first release after the one that ships #147.
 
@@ -498,6 +504,10 @@ the panel has already weighed in on most of the obvious moves.
   likenesses default to refuse with a `--i-know-what-im-doing` override.
   Implemented in `core/ai_rails.py` (`evaluate_rails`); extend the
   blocklists there, not in the CLI.
+- **A second AI provider (OpenRouter) was an owner decision** (spec
+  `docs/specs/2026-09-30-openrouter-image-provider.md` §2), not a
+  re-opening of the panel's verdict: every rail above applies to it
+  unchanged.
 
 If you want to evaluate a new feature proposal not covered above,
 spin up a fresh panel — the prompts are reproducible. Ask: "spin up

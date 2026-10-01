@@ -34,6 +34,7 @@ __all__ = [
     "RESOLUTION_LONG_EDGE_PX",
     "aspect_ratio_value",
     "openrouter_model",
+    "upstream_vendor_name",
 ]
 
 Billable = Literal["output_image", "input_image", "input_reference", "input_text"]
@@ -258,3 +259,24 @@ def openrouter_model(model_id: str) -> OpenRouterModel:
             "(only reviewed models are allowed; see "
             "docs/industry-review/openrouter-image-api-snapshot.md)"
         ) from None
+
+
+# The display name of each pinned endpoint's vendor, keyed by the slug of
+# ``provider_tag`` (before any ``/region``). The consent notice names it.
+_VENDOR_NAMES: Mapping[str, str] = MappingProxyType(
+    {
+        "google-ai-studio": "Google (AI Studio)",
+        "black-forest-labs": "Black Forest Labs",
+        "seed": "ByteDance (Seed)",
+        "openai": "OpenAI",
+    }
+)
+
+
+def upstream_vendor_name(entry: OpenRouterModel) -> str:
+    """The human name of the vendor ``entry``'s pinned endpoint sends the request to.
+
+    Raises:
+        KeyError: If the endpoint's slug has no name (a test covers every entry).
+    """
+    return _VENDOR_NAMES[entry.provider_tag.split("/")[0]]

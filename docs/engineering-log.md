@@ -6,6 +6,41 @@ regenerated on purpose, and which tests guard it. Moved out of
 limit). New entries go at the top of this file; `CLAUDE.md` gets at
 most a one-line pointer. User-facing notes belong in `RELEASE_NOTES.md`.
 
+- **2026-09-30 — `ai-asset generate --provider openrouter` end to end
+  (issue #150, OpenRouter program Phase 2)**: `AIProvider.OPENROUTER`
+  and its `ProviderInfo` (key `OPENROUTER_API_KEY`, provisional default
+  `google/gemini-3-pro-image` pending #140, policy URLs = OpenRouter ToS
+  + the account privacy settings `https://openrouter.ai/workspaces/default/settings`,
+  verified 2026-09-30 from the data-collection guide, which no longer
+  links `/settings/privacy`). Every `match provider` gained its branch:
+  `known_models` / `supports_seed` / `policy_urls_for` (+ the vendor's
+  `upstream_terms_url`) read the allowlist through the module at call
+  time; new `reference_limits` (the CLI's per-model S2 check, before
+  consent) and `upstream_vendor` (vendor name from the new
+  `ai_openrouter_models.upstream_vendor_name`, keyed by the
+  `provider_tag` slug). `make_image_client` builds
+  `OpenRouterImageClient` function-locally with
+  `transport=ai_openrouter.urllib_transport` read at call time (so tests
+  monkeypatch the module attribute); its missing-key error never
+  mentions the `[ai]` extra (O4). `OpenRouterImageClient.provider` is
+  added, and `_conforms_to_image_client` makes mypy (which runs on
+  `src/` only) check it against `ImageClient`. `consent_notice` takes
+  `model=` and, for a routed model, adds a bullet naming the vendor,
+  route and terms. `GenerationResult` gains `model` / `provider_route`
+  for the CLI summary (`Provider: openrouter (route: …)`, `Model: …`).
+  `ai_disclosure_label` is now `<model> via openrouter` for OpenRouter
+  records. Help text: provider/keys/env var in the group help, the
+  stale `--export-for` "(300 DPI, /16)" is "(trim+bleed at 300 PPI)",
+  and an OpenRouter docstring example. `FakeTransport` moved to
+  `tests/openrouter_fixtures.py`. Guarded by
+  `tests/integration/test_ai_asset_cli_openrouter.py` (issue rows 1–18
+  through the real factory and client), the new cases in
+  `test_ai_providers.py`, `test_ai_provenance.py`,
+  `test_ai_openrouter_models.py`, `test_ai_assets.py` and
+  `test_ai_disclosure.py`, and the opt-in `tests/live/test_openrouter_live.py`
+  (`live_ai`, skipped unless `HOLIDAY_CARD_LIVE_OPENROUTER=1` and a key).
+  Under `--debug` a `ProviderError` still exits with its code (the #142
+  contract); it sits redacted in the exit's exception context.
 - **2026-09-30 — AI imagery disclosed in PDF / SVG / PNG metadata
   (issue #145, OpenRouter program)**: `render_ir` gains
   `AI_DISCLOSURE_PREFIX`, `ai_disclosure(labels)` and

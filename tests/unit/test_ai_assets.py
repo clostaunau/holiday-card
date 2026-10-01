@@ -201,6 +201,16 @@ class TestChooseRequestShape:
         with pytest.raises(ValueError, match="dall-e-9"):
             choose_request_shape(AIProvider.OPENAI, "dall-e-9", 1314, 1824)
 
+    def test_openrouter_shape_is_the_aspect_and_tier(self) -> None:
+        # moo-a6 trim+bleed: 3:4 at the 2K tier (the golden request, #149).
+        assert choose_request_shape(
+            AIProvider.OPENROUTER, "google/gemini-3-pro-image", 1314, 1824
+        ) == AspectSize("3:4", "2K")
+
+    def test_openrouter_unknown_model_raises(self) -> None:
+        with pytest.raises(ValueError, match="foo/bar"):
+            choose_request_shape(AIProvider.OPENROUTER, "foo/bar", 1314, 1824)
+
     def test_aspect_size_is_a_request_shape(self) -> None:
         shape: RequestShape = AspectSize("3:4", "2K")
         assert (shape.aspect_ratio, shape.resolution) == ("3:4", "2K")
@@ -604,6 +614,8 @@ class TestProviderNeutralSidecar:
         assert record.provider_route is None
         assert record.policy_urls == ["https://openai.com/policies/usage-policies"]
         assert result.policy_urls == ("https://openai.com/policies/usage-policies",)
+        assert result.model == "gpt-image-2"
+        assert result.provider_route is None
 
 
 class TestRailsEnforced:

@@ -90,7 +90,7 @@ without pretending to be Canva.
 
 **The strongest cross-cutting agreement (5 of 6 critics):**
 authoring-time bake-to-disk, never render-time API call. The render
-pipeline must never call OpenAI. Generated assets are PNG files +
+pipeline must never call any model API (OpenAI, OpenRouter or any other). Generated assets are PNG files +
 sidecar provenance YAML committed to the repo.
 
 **Sequencing relative to the round-1 leapfrogs:**
