@@ -19,6 +19,7 @@ from typer.core import TyperGroup
 
 from holiday_card import __version__
 from holiday_card.cli.exit_codes import EXIT_CODES_HELP, ExitCode
+from holiday_card.core.ai_provenance import ai_disclosure_label
 from holiday_card.core.ai_providers import AIProvider, make_image_client
 from holiday_card.core.card_request import (
     BuildReport,
@@ -30,7 +31,11 @@ from holiday_card.core.card_request import (
     unwrap_validation_error,
     validation_message,
 )
-from holiday_card.core.compiler import SafeZoneWarning, UnsupportedFeatureError
+from holiday_card.core.compiler import (
+    SafeZoneWarning,
+    UnsupportedFeatureError,
+    embedded_ai_assets,
+)
 from holiday_card.core.export_targets import (
     REGISTRY as EXPORT_TARGET_REGISTRY,
 )
@@ -1323,6 +1328,9 @@ def _echo_content_summary(request: CardRequest, report: BuildReport, card: Card)
     front_message = request.message if request.message is not None else report.picked_cover
     if front_message and not request.voice:
         typer.echo(f"  Message: {_truncate(front_message, 50)}")
+    ai_labels = sorted({ai_disclosure_label(use.record) for use in embedded_ai_assets(card)})
+    if ai_labels:
+        typer.echo(f"  AI imagery: {'; '.join(ai_labels)} (disclosed in file metadata)")
 
 
 def _make_renderer(output_format: str) -> "IRReportLabRenderer | SVGRenderer":

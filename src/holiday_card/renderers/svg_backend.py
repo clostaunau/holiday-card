@@ -42,6 +42,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from holiday_card.core.render_ir import (
+    AI_IMAGERY_METADATA_KEY,
     BeginClip,
     BeginGroup,
     BeginPage,
@@ -65,14 +66,38 @@ from holiday_card.core.render_ir import (
     SolidPaint,
     Stroke,
     Transform,
+    ai_disclosure,
 )
 from holiday_card.renderers.font_registry import ttf_path_for
+from holiday_card.renderers.pdf_metadata import DIGITAL_SOURCE_COMPOSITE_AI, HC_NS, IPTC_EXT_NS
 from holiday_card.renderers.svg_fonts import css_family, font_face_css, svg_font_family
 
 __all__ = ["SVGRenderer"]
 
 _SVG_NS = "http://www.w3.org/2000/svg"
 ET.register_namespace("", _SVG_NS)
+# The AI-disclosure <metadata> block (#145): the same RDF properties as the PDF XMP.
+_RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+_DC_NS = "http://purl.org/dc/elements/1.1/"
+for _prefix, _uri in (
+    ("rdf", _RDF_NS), ("dc", _DC_NS), ("hc", HC_NS), ("Iptc4xmpExt", IPTC_EXT_NS),
+):
+    ET.register_namespace(_prefix, _uri)
+
+
+def _ai_metadata(labels: str) -> ET.Element:
+    """The RDF ``<metadata>`` disclosing the AI imagery named by ``labels``."""
+    metadata = ET.Element("metadata")
+    rdf = ET.SubElement(metadata, f"{{{_RDF_NS}}}RDF")
+    description = ET.SubElement(rdf, f"{{{_RDF_NS}}}Description", {f"{{{_RDF_NS}}}about": ""})
+    for tag, text in (
+        (f"{{{_DC_NS}}}description", ai_disclosure(labels)),
+        (f"{{{HC_NS}}}aiGenerated", "True"),
+        (f"{{{HC_NS}}}aiModels", labels),
+        (f"{{{IPTC_EXT_NS}}}DigitalSourceType", DIGITAL_SOURCE_COMPOSITE_AI),
+    ):
+        ET.SubElement(description, tag).text = text
+    return metadata
 
 
 class SVGRenderer:
@@ -196,6 +221,11 @@ class SVGRenderer:
                 elif key == "theme_id":
                     desc = ET.Element("desc")
                     desc.text = f"theme: {value}"
+                    self._root.insert(1, desc)
+                elif key == AI_IMAGERY_METADATA_KEY:
+                    self._root.insert(1, _ai_metadata(value))
+                    desc = ET.Element("desc", {"id": "ai-disclosure"})
+                    desc.text = ai_disclosure(value)
                     self._root.insert(1, desc)
 
     def _embed_fonts(self) -> None:

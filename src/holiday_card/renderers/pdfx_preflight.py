@@ -173,6 +173,7 @@ def _check_xmp(pdf: pikepdf.Pdf, add: _Add) -> None:
                 f"XMP {xmp_key} {raw!r} != /Info {info_key} {str(info[info_key])!r}")
 
     compare("dc:title", "/Title")
+    compare("dc:description", "/Subject")
     compare("pdf:Producer", "/Producer")
     compare("pdfx:GTS_PDFXVersion", "/GTS_PDFXVersion")
     compare_date("xmp:CreateDate", "/CreationDate")

@@ -14,8 +14,11 @@ adds the structural metadata a press / POD preflight expects on top:
   ``/Trapped /False`` (PDF/X-1a forbids ``/Unknown`` or absence).
 * **XMP metadata stream** mirroring those values: ``pdfx:GTS_PDFXVersion``
   = ``PDF/X-1a:2003`` (ISO 15930-4; ``PDF/X-1:2001`` is the 2001
-  identifier), ``dc:title``, ``pdf:Producer`` and ``xmp:CreateDate`` /
-  ``ModifyDate`` / ``MetadataDate`` equal to their /Info counterparts.
+  identifier), ``dc:title``, ``dc:description`` (``/Subject``),
+  ``pdf:Producer`` and ``xmp:CreateDate`` / ``ModifyDate`` /
+  ``MetadataDate`` equal to their /Info counterparts, plus the AI-imagery
+  disclosure keys when asked. The packet comes from the shared
+  ``pdf_metadata.build_xmp`` (#145).
 * **PDF version 1.4** (PDF/X-1a:2003 conformance level).
 
 Caller contract: the input PDF must already be CMYK-only, opaque and have
@@ -33,6 +36,7 @@ import pikepdf
 from pikepdf import Array, Dictionary, Name, String
 
 from holiday_card.core.color_management import default_cmyk_icc_path
+from holiday_card.renderers.pdf_metadata import build_xmp, iso_date
 from holiday_card.renderers.pdfx_preflight import pdf_date_to_datetime
 
 __all__ = [
@@ -62,6 +66,7 @@ def apply_pdfx1a(
     title: str | None = None,
     creator: str = "holiday-card",
     pdfx_version: str = "PDF/X-1a:2003",
+    ai_imagery: str | None = None,
 ) -> None:
     """In-place upgrade ``pdf_path`` to PDF/X conformance.
 
@@ -79,6 +84,9 @@ def apply_pdfx1a(
         pdfx_version: Conformance level label. Currently only
             ``"PDF/X-1a:2003"`` is implemented; other values raise
             ``PDFXVersionError``.
+        ai_imagery: The IR's ``ai_imagery`` labels when the file embeds AI
+            imagery: the XMP then carries the ``hc:`` and IPTC disclosure
+            keys (#145). ``/Subject`` is mirrored as ``dc:description``.
     """
     if pdfx_version not in _SUPPORTED_VERSIONS:
         raise PDFXVersionError(
@@ -133,13 +141,15 @@ def apply_pdfx1a(
         # XMP metadata stream. PDF/X requires an XMP packet declaring
         # the conformance level via the pdfx namespace; its values must
         # equal their /Info counterparts.
-        xmp_bytes = _build_xmp(
+        xmp_bytes = build_xmp(
             title=resolved_title,
+            subject=str(info["/Subject"]) if "/Subject" in info else None,
             creator=creator,
             producer=str(info["/Producer"]),
             pdfx_version=pdfx_version,
-            create_date=_iso_date(str(info["/CreationDate"])),
-            modify_date=_iso_date(str(info["/ModDate"])),
+            create_date=iso_date(str(info["/CreationDate"])),
+            modify_date=iso_date(str(info["/ModDate"])),
+            ai_imagery=ai_imagery,
         ).encode("utf-8")
         meta_stream = pdf.make_stream(
             xmp_bytes,
@@ -159,72 +169,3 @@ def _pdf_date_now() -> str:
     """Return the current time as a PDF date string (``D:YYYYMMDDHHmmSSZ``)."""
     now = datetime.now(UTC)
     return now.strftime("D:%Y%m%d%H%M%SZ")
-
-
-def _iso_date(pdf_date: str) -> str:
-    """Convert a PDF ``D:`` date to the ISO-8601 form XMP dates use."""
-    parsed = pdf_date_to_datetime(pdf_date)
-    if parsed is None:  # pragma: no cover - apply_pdfx1a rewrites bad dates
-        raise ValueError(f"unparsable PDF date {pdf_date!r}")
-    return parsed.isoformat()
-
-
-def _build_xmp(
-    *,
-    title: str,
-    creator: str,
-    producer: str,
-    pdfx_version: str,
-    create_date: str,
-    modify_date: str,
-) -> str:
-    """Return the XMP packet declaring PDF/X-1a:2003 conformance.
-
-    Adobe's pdfx namespace (``http://ns.adobe.com/pdfx/1.3/``) carries
-    the GTS_PDFX* keys preflights look for. For a PDF/X-1a:2003 file
-    ``GTS_PDFXVersion`` is ``PDF/X-1a:2003`` (ISO 15930-4); the
-    ``PDF/X-1:2001`` value belongs to the 2001 identification pair.
-    ``MetadataDate`` is the ``/Info /ModDate``: both change together. The
-    bracketing ``<?xpacket?>`` PI is part of the XMP specification, not
-    optional.
-    """
-    title_esc = _xml_escape(title)
-    creator_esc = _xml_escape(creator)
-    producer_esc = _xml_escape(producer)
-    version_esc = _xml_escape(pdfx_version)
-    return (
-        '<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>\n'
-        '<x:xmpmeta xmlns:x="adobe:ns:meta/">\n'
-        '  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\n'
-        '    <rdf:Description rdf:about=""\n'
-        '        xmlns:pdfx="http://ns.adobe.com/pdfx/1.3/"\n'
-        '        xmlns:pdf="http://ns.adobe.com/pdf/1.3/"\n'
-        '        xmlns:xmp="http://ns.adobe.com/xap/1.0/"\n'
-        '        xmlns:dc="http://purl.org/dc/elements/1.1/">\n'
-        f'      <pdfx:GTS_PDFXVersion>{version_esc}</pdfx:GTS_PDFXVersion>\n'
-        f'      <pdfx:GTS_PDFXConformance>{version_esc}</pdfx:GTS_PDFXConformance>\n'
-        f'      <pdf:Producer>{producer_esc}</pdf:Producer>\n'
-        '      <pdf:Trapped>False</pdf:Trapped>\n'
-        f'      <xmp:CreatorTool>{creator_esc}</xmp:CreatorTool>\n'
-        f'      <xmp:CreateDate>{create_date}</xmp:CreateDate>\n'
-        f'      <xmp:ModifyDate>{modify_date}</xmp:ModifyDate>\n'
-        f'      <xmp:MetadataDate>{modify_date}</xmp:MetadataDate>\n'
-        '      <dc:title>\n'
-        '        <rdf:Alt>\n'
-        f'          <rdf:li xml:lang="x-default">{title_esc}</rdf:li>\n'
-        '        </rdf:Alt>\n'
-        '      </dc:title>\n'
-        '    </rdf:Description>\n'
-        '  </rdf:RDF>\n'
-        '</x:xmpmeta>\n'
-        '<?xpacket end="r"?>\n'
-    )
-
-
-def _xml_escape(s: str) -> str:
-    return (
-        s.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )

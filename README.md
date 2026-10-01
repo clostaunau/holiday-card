@@ -365,6 +365,13 @@ Guardrails that ship on by default (see
   only as PNG, JPEG or WebP (one frame, at most 50 MP), or refused with
   exit 7 and nothing written; `--reference` must be a readable PNG or
   JPEG, checked before anything is uploaded.
+* **Disclosed in every file** — a card that embeds AI imagery says so in
+  its metadata, naming the model from the asset's sidecar: the PDF
+  `/Subject` (`Contains AI-generated imagery (gpt-image-2)`) and XMP
+  (`dc:description`, `hc:aiModels`, the IPTC `DigitalSourceType`), the
+  SVG `<desc>` and RDF `<metadata>`, and the PNG preview's
+  `Description`. In `--export-for` per-panel output only the panels that
+  embed AI imagery are marked. The artwork itself is unchanged.
 
 ## What this is not
 

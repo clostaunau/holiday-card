@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Cards with AI imagery say so in their metadata
+
+A card that embeds an AI asset now discloses it in every output format,
+naming the model recorded in the asset's sidecar: PDF `/Subject` is
+`Contains AI-generated imagery (<model>)`, mirrored in an XMP packet
+(`dc:description`) with `hc:aiGenerated`, `hc:aiModels` and the IPTC
+`DigitalSourceType` `compositeSynthetic`; SVG gains a
+`<desc id="ai-disclosure">` and an RDF `<metadata>` block with the same
+values; the PNG preview gains a `Description` text chunk. In per-panel
+output (`--export-for`) only the panels that embed AI imagery are
+marked. `create` and `preview` print an `AI imagery:` summary line. A
+card without AI imagery is written exactly as before, except that every
+`moo-a6` PDF's XMP now also carries `dc:description` equal to its
+`/Subject`, and the PDF/X preflight checks the two match.
+
 ### Provenance and consent are provider-neutral
 
 Every new `.license.yaml` sidecar names the `provider`, the

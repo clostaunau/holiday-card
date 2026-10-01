@@ -355,3 +355,48 @@ class TestTransformMatrix:
     def test_non_positive_scale_is_rejected(self, field: str, value: float) -> None:
         with pytest.raises(ValidationError):
             Transform(**{field: value})
+
+
+# ---------------------------------------------------------------------------
+# AI imagery disclosure helpers (#145)
+# ---------------------------------------------------------------------------
+
+
+def test_ai_disclosure_is_the_panel_string_for_one_model() -> None:
+    from holiday_card.core.render_ir import ai_disclosure
+
+    assert ai_disclosure("gpt-image-2") == "Contains AI-generated imagery (gpt-image-2)"
+
+
+def test_ai_disclosure_names_every_model() -> None:
+    from holiday_card.core.render_ir import AI_DISCLOSURE_PREFIX, ai_disclosure
+
+    text = ai_disclosure("gpt-image-2; google/gemini-3-pro-image")
+    assert text == f"{AI_DISCLOSURE_PREFIX} (gpt-image-2; google/gemini-3-pro-image)"
+
+
+def test_ai_imagery_labels_reads_the_set_metadata_record() -> None:
+    from holiday_card.core.render_ir import (
+        AI_IMAGERY_METADATA_KEY,
+        SetMetadata,
+        ai_imagery_labels,
+    )
+
+    commands = [
+        BeginPage(width=100, height=100),
+        SetMetadata(key="theme_id", value="t"),
+        SetMetadata(key=AI_IMAGERY_METADATA_KEY, value="gpt-image-1; gpt-image-2"),
+        EndPage(),
+    ]
+    assert ai_imagery_labels(commands) == "gpt-image-1; gpt-image-2"
+
+
+def test_ai_imagery_labels_is_none_without_the_record() -> None:
+    from holiday_card.core.render_ir import SetMetadata, ai_imagery_labels
+
+    commands = [
+        BeginPage(width=100, height=100),
+        SetMetadata(key="theme_id", value="t"),
+        EndPage(),
+    ]
+    assert ai_imagery_labels(commands) is None

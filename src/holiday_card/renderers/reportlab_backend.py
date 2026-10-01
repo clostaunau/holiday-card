@@ -32,6 +32,7 @@ from reportlab.pdfgen import canvas as _canvas
 
 from holiday_card.core.color_management import CMYKConverter, ColorRole
 from holiday_card.core.render_ir import (
+    AI_IMAGERY_METADATA_KEY,
     RGBA,
     BeginClip,
     BeginGroup,
@@ -55,6 +56,7 @@ from holiday_card.core.render_ir import (
     SetMetadata,
     SolidPaint,
     Stroke,
+    ai_disclosure,
 )
 from holiday_card.renderers.font_registry import (
     ensure_default_fonts_registered,
@@ -98,6 +100,7 @@ class IRReportLabRenderer:
     def __init__(self, color_space: Literal["srgb", "cmyk"] = "srgb") -> None:
         self.color_space: Literal["srgb", "cmyk"] = color_space
         self._cmyk = _default_cmyk_converter() if color_space == "cmyk" else None
+        self._ai_disclosed = False
 
     def render(self, commands: Iterable[RenderCommand], output: Path) -> None:
         """Consume ``commands`` and write a PDF at ``output``."""
@@ -109,6 +112,8 @@ class IRReportLabRenderer:
         # ReportLab's default initial font is base-14 Helvetica, which it
         # never embeds; every page's opening ``/F1 12 Tf`` then references
         # an unembedded font (PDF/X-1a forbids it, #69).
+        # An AI disclosure owns /Subject for this file, whatever the order (#145).
+        self._ai_disclosed = False
         canvas = _canvas.Canvas(
             str(output), pagesize=letter, initialFontName=resolve_font_id("Helvetica")
         )
@@ -236,7 +241,10 @@ class IRReportLabRenderer:
         # SetMetadata is intended as a free-form annotation channel.
         if cmd.key == "template_id":
             canvas.setTitle(cmd.value)
-        elif cmd.key == "theme_id":
+        elif cmd.key == AI_IMAGERY_METADATA_KEY:
+            canvas.setSubject(ai_disclosure(cmd.value))
+            self._ai_disclosed = True
+        elif cmd.key == "theme_id" and not self._ai_disclosed:
             canvas.setSubject(cmd.value)
 
     # ------------------------------------------------------------------
