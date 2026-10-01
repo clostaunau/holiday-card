@@ -30,7 +30,7 @@ first step (Wave 2 Step 1) of the migration plan in
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import Annotated, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -69,6 +69,9 @@ __all__ = [
     "DrawFoldLine",
     "SetMetadata",
     "AI_IMAGERY_METADATA_KEY",
+    "AI_DISCLOSURE_PREFIX",
+    "ai_disclosure",
+    "ai_imagery_labels",
     "BeginPage",
     "EndPage",
     "RenderCommand",
@@ -355,6 +358,14 @@ class DrawFoldLine(_IRBase):
 # document embeds: sorted, deduplicated disclosure labels joined by "; " (#144).
 AI_IMAGERY_METADATA_KEY: Final = "ai_imagery"
 
+# The disclosure every backend writes into its file metadata (#145).
+AI_DISCLOSURE_PREFIX: Final = "Contains AI-generated imagery"
+
+
+def ai_disclosure(labels: str) -> str:
+    """``Contains AI-generated imagery (gpt-image-2; google/gemini-3-pro-image)``."""
+    return f"{AI_DISCLOSURE_PREFIX} ({labels})"
+
 
 class SetMetadata(_IRBase):
     """Attach producer metadata (template id, theme, fold type, ...).
@@ -421,6 +432,14 @@ _OPEN_TO_CLOSE: dict[str, str] = {
     "begin_page": "end_page",
 }
 _CLOSE_TO_OPEN: dict[str, str] = {v: k for k, v in _OPEN_TO_CLOSE.items()}
+
+
+def ai_imagery_labels(commands: Sequence[RenderCommand]) -> str | None:
+    """The value of the ``ai_imagery`` SetMetadata in ``commands``, or None."""
+    for cmd in commands:
+        if isinstance(cmd, SetMetadata) and cmd.key == AI_IMAGERY_METADATA_KEY:
+            return cmd.value
+    return None
 
 
 def assert_balanced(commands: Iterable[object]) -> None:

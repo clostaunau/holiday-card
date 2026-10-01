@@ -132,7 +132,9 @@ src/holiday_card/
     svg_backend.py        # IR → SVG (browser-openable, self-contained: fonts embedded as glyph subsets)
     svg_fonts.py          # fontTools subset → `@font-face` data URI per font_id + GENERIC_FAMILY (#76)
     png_backend.py        # IR → PNG (powers `preview`); clips/dashes/text alpha honoured, bundled TTFs only
-    pdfx_postprocess.py   # pikepdf-based PDF/X-1a:2003 upgrade
+    pdf_metadata.py       # build_xmp: the ONE XMP builder (PDF/X + AI disclosure) + write_disclosure_xmp
+                          #   (non-PDF/X PDFs with AI imagery); pikepdf function-local (#145)
+    pdfx_postprocess.py   # pikepdf-based PDF/X-1a:2003 upgrade (XMP via pdf_metadata.build_xmp)
     pdfx_preflight.py     # Rule-based PDF/X-1a:2003 checker (D11; veraPDF has no PDF/X)
   data/                 # Package data shipped in the wheel (no __init__.py);
                         #   resolved only via core/data_paths.data_path()
@@ -449,9 +451,8 @@ the "this will bite you" kind goes in Gotchas above. User-facing notes
 go in `RELEASE_NOTES.md`.
 
 In flight: the OpenRouter image-provider program (tracker #139); #141,
-#142, #143, #144, #146, #147, #148 and #149 have landed. Next: #150
-(wire `AIProvider.OPENROUTER` into the CLI); #145 and #153 are
-unblocked too. **Legacy-read deadline (O7):** delete the
+#142, #143, #144, #145, #146, #147, #148 and #149 have landed. Next: #150
+(wire `AIProvider.OPENROUTER` into the CLI); #153 is unblocked too. **Legacy-read deadline (O7):** delete the
 `LicenseRecord` `openai_policy_url` reader (`# LEGACY(v1.3.0 sidecar…)`)
 in the first release after the one that ships #147.
 

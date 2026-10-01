@@ -70,6 +70,7 @@ from typing import Any
 from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageMath
 
 from holiday_card.core.render_ir import (
+    AI_IMAGERY_METADATA_KEY,
     RGBA,
     BeginClip,
     BeginGroup,
@@ -95,6 +96,7 @@ from holiday_card.core.render_ir import (
     SolidPaint,
     Stroke,
     Transform,
+    ai_disclosure,
 )
 
 __all__ = ["PNGRenderer"]
@@ -270,6 +272,9 @@ class PNGRenderer:
         info = PngInfo()
         for key, value in self._metadata.items():
             info.add_text(key, value)
+        if (labels := self._metadata.get(AI_IMAGERY_METADATA_KEY)) is not None:
+            # The registered PNG keyword a viewer shows; the AI disclosure (#145).
+            info.add_text("Description", ai_disclosure(labels))
         # The canvas starts opaque white and only ever takes source-over
         # composites, so it is opaque: dropping alpha is the RGB page.
         self._image.convert("RGB").save(output, "PNG", pnginfo=info)

@@ -138,7 +138,7 @@ def test_letter_pdf_without_ai_is_untouched(
     _invoke("create", "christmas-classic", "-o", "card.pdf")
     raw = Path("card.pdf").read_bytes()
     # ReportLab's own header comment: a pikepdf rewrite would drop it.
-    assert b"% ReportLab Generated PDF document" in raw
+    assert b" ReportLab Generated PDF document" in raw.splitlines()[1]
     with pikepdf.open("card.pdf") as pdf:
         assert str(pdf.docinfo["/Subject"]) == THEME
         assert "/Metadata" not in pdf.Root

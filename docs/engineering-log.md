@@ -6,6 +6,37 @@ regenerated on purpose, and which tests guard it. Moved out of
 limit). New entries go at the top of this file; `CLAUDE.md` gets at
 most a one-line pointer. User-facing notes belong in `RELEASE_NOTES.md`.
 
+- **2026-09-30 — AI imagery disclosed in PDF / SVG / PNG metadata
+  (issue #145, OpenRouter program)**: `render_ir` gains
+  `AI_DISCLOSURE_PREFIX`, `ai_disclosure(labels)` and
+  `ai_imagery_labels(commands)`, the one disclosure text every backend
+  writes from #144's `SetMetadata(ai_imagery)`. PDF: the ReportLab
+  backend's `/Subject` is the disclosure and wins over `theme_id` in either
+  command order (a per-`render()` flag, reset each call because the
+  per-panel generator reuses one renderer). New
+  `renderers/pdf_metadata.py` holds `build_xmp`, **moved** from
+  `pdfx_postprocess._build_xmp` (D17) with `_xml_escape` / `_iso_date` (now `xml_escape` / `iso_date`):
+  `dc:description` whenever `/Subject` exists, `pdfx:` keys only for
+  PDF/X, `hc:aiGenerated` / `hc:aiModels` /
+  `Iptc4xmpExt:DigitalSourceType` only with AI imagery. The IPTC term is
+  `compositeSynthetic` ("mix or composite of several elements, at least
+  one of which is Generative AI", cv.iptc.org read 2026-09-30), not the
+  issue's `compositeWithTrainedAlgorithmicMedia`, which IPTC defines as
+  genAI inpainting/outpainting of one image. `CardGenerator._finish_pdf`
+  routes a PDF/X file through `apply_pdfx1a(ai_imagery=)` and any other
+  PDF with AI imagery through `write_disclosure_xmp`; a PDF without AI
+  imagery never imports pikepdf and is byte-identical. Every moo-a6 XMP
+  now carries `dc:description` (it was missing although `/Info /Subject`
+  was set) and `pdfx_preflight._check_xmp` compares it with `/Subject`.
+  SVG: `<desc id="ai-disclosure">` + an RDF `<metadata>` (namespaces
+  registered at import, hoisted onto `<svg>` by ElementTree); pikepdf is
+  kept out of the SVG import (a subprocess test). PNG: `Description` text
+  chunk; the asset marker key never reaches a preview. CLI: `create` /
+  `preview` print `AI imagery: <labels> (disclosed in file metadata)`.
+  Tests: `tests/unit/test_pdf_metadata.py`,
+  `tests/integration/test_ai_disclosure.py`; no snapshot, golden or
+  visual baseline changed.
+
 - **2026-09-30 — Provider-neutral provenance sidecar and per-provider
   consent (issue #147, OpenRouter program)**: `ProviderInfo` gains
   `policy_urls` and `consent_blurb` (the spec §6.1 final shape) and

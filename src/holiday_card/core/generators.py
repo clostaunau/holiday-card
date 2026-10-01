@@ -36,7 +36,7 @@ from holiday_card.core.per_panel import (
     build_per_panel_card,
     build_per_panel_context,
 )
-from holiday_card.core.render_ir import RenderCommand
+from holiday_card.core.render_ir import RenderCommand, ai_imagery_labels
 from holiday_card.core.templates import load_template
 from holiday_card.core.themes import load_theme
 
@@ -522,19 +522,41 @@ class CardGenerator:
             return _pdf_renderer(color_space="cmyk")
         return self.renderer
 
-    def _maybe_apply_pdfx(self, path: Path, target: ExportTarget) -> None:
+    def _finish_pdf(
+        self, path: Path, target: ExportTarget, commands: list[RenderCommand],
+    ) -> None:
+        """Disclose embedded AI imagery in, and PDF/X-upgrade, a rendered PDF.
+
+        No-op for non-PDF outputs. A PDF/X target goes through
+        ``_maybe_apply_pdfx``; any other PDF that embeds AI imagery gets the
+        disclosure XMP (#145). A PDF without either is left byte-identical
+        and pikepdf is never imported. Failures propagate (D4).
+        """
+        if path.suffix.lower() != ".pdf":
+            return
+        labels = ai_imagery_labels(commands)
+        if target.pdfx is not None:
+            self._maybe_apply_pdfx(path, target, ai_imagery=labels)
+        elif labels is not None:
+            from holiday_card.renderers.pdf_metadata import write_disclosure_xmp
+            write_disclosure_xmp(path, ai_imagery=labels)
+
+    def _maybe_apply_pdfx(
+        self, path: Path, target: ExportTarget, *, ai_imagery: str | None = None,
+    ) -> None:
         """Post-process ``path`` to PDF/X-1a if the target requires it.
 
         No-op for non-PDF outputs and for targets without ``pdfx``.
         Imports the post-processor lazily so the pikepdf dependency is
-        only loaded when actually needed. The finished file is then
+        only loaded when actually needed. ``ai_imagery`` (the IR's labels)
+        adds the disclosure keys to the XMP. The finished file is then
         preflighted; any violation raises ``PDFXConformanceError`` (D4).
         """
         if target.pdfx is None or path.suffix.lower() != ".pdf":
             return
         from holiday_card.renderers import pdfx_preflight
         from holiday_card.renderers.pdfx_postprocess import apply_pdfx1a
-        apply_pdfx1a(path, pdfx_version=target.pdfx)
+        apply_pdfx1a(path, pdfx_version=target.pdfx, ai_imagery=ai_imagery)
         violations = pdfx_preflight.preflight_pdfx1a(path)
         if violations:
             raise pdfx_preflight.PDFXConformanceError(path, violations)
@@ -566,7 +588,7 @@ class CardGenerator:
             _enforce_print_resolution(commands, allow_low_res=allow_low_res)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         renderer.render(commands, output_path)
-        self._maybe_apply_pdfx(output_path, target)
+        self._finish_pdf(output_path, target, commands)
         return output_path
 
     def _generate_per_panel(
@@ -605,6 +627,6 @@ class CardGenerator:
         for stem, commands in compiled:
             out = output_dir / f"{stem}{ext}"
             renderer.render(commands, out)
-            self._maybe_apply_pdfx(out, target)
+            self._finish_pdf(out, target, commands)
             written.append(out)
         return written
