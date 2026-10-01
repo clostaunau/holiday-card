@@ -17,6 +17,8 @@ enum is refused locally instead of being clamped (§5.3).
 `GET /api/v1/images/models`, `GET /api/v1/images/models/{author}/{slug}/endpoints`
 and `GET /api/v1/providers`. The recording, trimmed to these models plus
 `recraft/recraft-v4.1`, is `tests/fixtures/openrouter/catalogue/`.
+`openai/gpt-image-2.5-sunburst` was fetched **2026-10-01** and added to the
+recording (and to `catalogue-drifted/`) by #179.
 
 | id | provider_tag | aspect_ratios ("auto" removed) | resolutions | refs | seed | output_formats | transparent | passthrough | pricing (billable / unit / USD) |
 |---|---|---|---|---|---|---|---|---|---|
@@ -25,6 +27,7 @@ and `GET /api/v1/providers`. The recording, trimmed to these models plus
 | `black-forest-labs/flux.2-pro` | `black-forest-labs` | 1:1 4:3 3:4 3:2 2:3 16:9 9:16 21:9 | — | 0–8 | yes | png jpeg | no | steps guidance safety_tolerance | output_image/megapixel/0.03 |
 | `bytedance-seed/seedream-4.5` | `seed` | 1:1 1:2 2:1 2:3 3:2 3:4 4:3 4:5 5:4 9:16 16:9 9:19.5 19.5:9 9:20 20:9 9:21 21:9 | 1K 2K 4K | 0–14 | yes | — | no | — | output_image/image/0.04; input_image/image/0 |
 | `openai/gpt-image-2` | `openai` | 1:1 3:2 2:3 4:3 3:4 16:9 9:16 21:9 | — | 0–16 | no | — | no (`auto`, `opaque` only) | moderation | input_image/token/0.000008; input_text/token/0.000005; output_image/token/0.00003 |
+| `openai/gpt-image-2.5-sunburst` | `openai` | 1:1 3:2 2:3 4:3 3:4 16:9 9:16 21:9 | — | 0–16 | no | — | **yes** (live-proven, #179) | moderation | input_image/token/0.000008; input_text/token/0.000005; output_image/token/0.00003 |
 
 Why these five: `gemini-3-pro-image` is the spec's provisional default
 (§6.8), and its AI Studio endpoint is pinned because it offers 4K (Vertex
@@ -32,15 +35,20 @@ offers only 1K / 2K). `gemini-3.1-flash-image` is the cheaper Google option.
 `flux.2-pro` and `seedream-4.5` are the two that advertise `seed`.
 `gpt-image-2` allows a comparison with the OpenAI-direct path; it has no
 resolution tier, so expect a low-PPI warning at A6. No default is set here
-(#150, after #140).
+(#150, after #140). `gpt-image-2.5-sunburst` (#179) is the sixth: the
+only entry with a transparent background, for `--transparent` motifs. It
+has `gpt-image-2`'s aspects and price rows, so the same low-PPI warning
+applies, and it has no `--max-cost` bound either (exit 2 with `--max-cost`).
 
 `transparent` is `background_transparent`, the capability
-`ai-asset generate --transparent` checks (#169). Every shipped entry is
-`False`, even where the catalogue advertises `transparent`. Advertised isn't
-proof (#140), so an entry is flipped only after an owner-run live call shows
-a decoded RGBA image with transparent pixels (#179; the 2026-10-01
-catalogue scan in #169 names the candidates). The bake refuses a
-"transparent" result with no alpha or no transparent pixel (exit 7).
+`ai-asset generate --transparent` checks (#169). Advertised isn't proof
+(#140), so an entry is flipped only after a live call shows a decoded RGBA
+image with transparent pixels. **Only `openai/gpt-image-2.5-sunburst` is
+`True`**, proven by the #179 call below; every other entry is `False`, even
+where the catalogue advertises `transparent` (the 2026-10-01 scan in #169
+lists the other candidates). The bake refuses a "transparent" result with
+no alpha or no transparent pixel (exit 7). Direct OpenAI (`--provider
+openai`) stays refused: an owner decision on #179.
 
 Left out: `recraft/recraft-v4.1`. On 2026-09-30 it has one endpoint
 (`recraft`, 0–1 references, no resolution tier, output_image/image/0.035),
@@ -61,6 +69,7 @@ report `upstream_terms_url` as drift: the value is reviewed, not copied.
 | `flux.2-pro` | `https://bfl.ai/legal/terms-of-service` | partly: the consumer page defers API use to the Developer Terms | `https://bfl.ai/legal/developer-terms-of-service` ("you own all right, title, and interest in and to Output … personal or commercial purposes") | yes |
 | `seedream-4.5` | `https://docs.byteplus.com/en/docs/legal/docs-terms-of-service` | no: refers to the General Terms for AI Services | `https://docs.byteplus.com/en/docs/legal/AI-Services-terms` ("you own the Output … BytePlus does not claim ownership") | yes (label AI content where required) |
 | `gpt-image-2` | `https://openai.com/policies/row-terms-of-use/` | partly: individuals' terms, which say the Business Terms govern the API | `https://openai.com/policies/services-agreement/` ("Customer … owns all Output") | yes |
+| `gpt-image-2.5-sunburst` (2026-10-01, #179) | `https://openai.com/policies/row-terms-of-use/` | partly, as for `gpt-image-2`: the same `openai` endpoint and the same OpenAI API, so the same Business Terms | `https://openai.com/policies/services-agreement/` | yes |
 
 Dropping an entry is a curation decision: delete it from `_ENTRIES`, and the
 drift guard in `tests/unit/test_ai_openrouter_models.py` changes with it.
@@ -384,3 +393,63 @@ a follow-up issue; this docs-only PR changes no code.
 | Q6 | `output_format` is sent only when the entry lists `png` (#149); the Gemini entry lists none; JPEG is accepted by `open_generated_image` | None. Gemini assets arrive as JPEG and are baked as usual. |
 | T1 | `RESOLUTION_LONG_EDGE_PX`: `2K` → 2048, `4K` → 4096 (#148) | **#174** (fixed): the observed long edges are 2400 / 4800, recorded per entry. Tier choice for moo-a6 and letter is unchanged; a 2049–2400 px bake on Gemini 3 Pro now gets `2K`, not `4K`. |
 | T2 | Gemini `2K` / `4K` bounds are 1120 / 2000 output tokens (#151) | **#173**: about 87–101 non-image completion tokens are billed on top, so the estimate is about $0.0005–0.0007 short. |
+
+## Live verification (#179): transparent background on `gpt-image-2.5-sunburst`
+
+One billed call, made 2026-10-01 by the agent with the owner's key and
+authorization (the owner picked sunburst over `-flare` and Riverflow v2.5
+Pro). The body is exactly what `OpenRouterImageClient._body` builds for
+`--transparent` at moo-a6's `3:4`: the call went through the production
+client with a recording transport. Recorded as in #140: no credential, image
+or raw body; `b64_json` is replaced by its length and a sha256 prefix, and
+the headers common to every response (listed under #140) are left out.
+
+Catalogue (re-read without a key, 2026-10-01): the `openai` endpoint
+advertises `background: [auto, transparent, opaque]`, `quality`, `n`,
+`input_references` 0–16 and `output_compression`, but **no
+`output_format`**. So production sends `background` and nothing else
+format-related; the proof covers that body shape.
+
+```json
+{"model": "openai/gpt-image-2.5-sunburst",
+ "prompt": "A single red and gold glass Christmas ornament with a small sprig of holly, centered, isolated on a transparent background. No text, no lettering.",
+ "n": 1, "aspect_ratio": "3:4", "background": "transparent",
+ "provider": {"only": ["openai"], "allow_fallbacks": false,
+              "options": {"openai": {"moderation": "auto"}}}}
+```
+
+- Sent 2026-10-01T07:04:06Z; **HTTP 200**; `time_total` 25.6 s.
+- Headers: `date: Thu, 01 Oct 2026 07:04:31 GMT`,
+  `x-generation-id: gen-img-1790838246-115gMRW6xT6j4AChOoF6`,
+  `x-provider-name: OpenAI`, `cf-ray: a4399c7e781c07c6-LAX`.
+- Redacted body:
+  ```json
+  {"created": 1790838269,
+   "data": [{"b64_json": "<base64: 3696628 chars, sha256 bed52696dfe4fe56>", "media_type": "image/png"}],
+   "usage": {"prompt_tokens": 37, "completion_tokens": 724, "total_tokens": 761, "cost": 0.021905, "is_byok": false,
+     "prompt_tokens_details": {"cached_tokens": 0},
+     "cost_details": {"upstream_inference_cost": 0.021905, "upstream_inference_prompt_cost": 0.000185,
+                      "upstream_inference_completions_cost": 0.02172},
+     "completion_tokens_details": {"reasoning_tokens": 0, "image_tokens": 724}}}
+  ```
+- Raw bytes: PNG, **mode `RGBA`**, **1152×1536**, 1 frame, 2,772,469 bytes.
+  Native PPI at moo-a6 **252.6** (warns, as `gpt-image-2` does).
+- Decode through `ai_assets.open_generated_image(..., keep_alpha=True)`:
+  `RGBA`; alpha band **min 0**, max 254. 47.0 % of pixels are fully
+  transparent; the subject is 50.6 % at alpha 250–253, and no pixel is
+  255. `_require_transparency` (the production check) **passes**.
+- Eyeballed composited over a solid green: a clean cut-out ornament with
+  holly, no halo or matte.
+- Replayed offline through `holiday-card ai-asset generate --provider
+  openrouter --model openai/gpt-image-2.5-sunburst --transparent
+  --export-for moo-a6`: exit 0, a 1314×1824 RGBA asset with
+  `background: transparent` in the sidecar, and the CLI's request body
+  equal to the one above.
+
+**Spend:** 1 billed call, `usage.cost` **$0.021905**.
+
+**Consequences.** `background_transparent=True` on the new
+`openai/gpt-image-2.5-sunburst` entry, the only one (#179). The subject's
+alpha of 250–253, never 255, changes nothing downstream: any image with an
+alpha channel already needs a known solid backdrop on PDF/X (`flatten.py`,
+#169), and on screen 0.4–2 % of the backdrop shows through the subject.

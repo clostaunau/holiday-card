@@ -180,6 +180,7 @@ class TestRecordedBounds:
             "black-forest-labs/flux.2-pro": (2048 * 2048 / 1e6, None, None),
             "bytedance-seed/seedream-4.5": (None, None, None),
             "openai/gpt-image-2": (None, None, None),
+            "openai/gpt-image-2.5-sunburst": (None, None, None),
         }
 
     def test_non_image_output_allowance_at_the_text_rate(self) -> None:
@@ -195,6 +196,7 @@ class TestRecordedBounds:
             "black-forest-labs/flux.2-pro": (None, None),
             "bytedance-seed/seedream-4.5": (None, None),
             "openai/gpt-image-2": (None, None),
+            "openai/gpt-image-2.5-sunburst": (None, None),
         }
 
     def test_flash_image_at_2k(self) -> None:
@@ -471,7 +473,8 @@ def test_every_entry_estimates_or_has_no_price_for_every_target() -> None:
                 else:
                     assert est.usd >= 0 and est.lines
     print(f"entries without a complete --max-cost bound: {sorted(lacking) or 'none'}")
-    assert lacking == {"openai/gpt-image-2"}
+    # sunburst (#179) is priced like gpt-image-2: no cited bound for either.
+    assert lacking == {"openai/gpt-image-2", "openai/gpt-image-2.5-sunburst"}
 
 
 def test_tier_table_is_the_choosers_table() -> None:

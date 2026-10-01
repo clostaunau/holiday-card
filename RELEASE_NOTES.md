@@ -11,9 +11,12 @@ panel's colour. The sidecar records `background: transparent`, and
 `schema_version` stays 1).
 
 It is refused (exit 2, before consent or any call) unless the model offers
-a transparent background, and the error names the models that do. **No
-curated model offers one yet:** each needs a live call proving real alpha
-first (#179). If a model ignores the request and returns an opaque image,
+a transparent background, and the error names the models that do. **One
+model offers it: `--provider openrouter --model
+openai/gpt-image-2.5-sunburst`** (#179), enabled only after a live call
+returned a real RGBA PNG. Like `gpt-image-2` it outputs 1152 × 1536 at 3:4,
+so a `moo-a6` motif warns at 252.6 PPI, and it has no `--max-cost` bound.
+Direct OpenAI (`--provider openai`) still refuses `--transparent`. If a model ignores the request and returns an opaque image,
 the bake exits 7 and writes nothing. It never falls back to opaque.
 
 On `moo-a6` (PDF/X) a motif with alpha is flattened over a solid panel

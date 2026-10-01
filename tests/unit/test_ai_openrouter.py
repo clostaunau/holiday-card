@@ -849,10 +849,19 @@ class TestTransparentBackground:
         assert info.value.kind == "usage"
         assert fake.calls == []
 
-    @pytest.mark.parametrize("model", sorted(OPENROUTER_IMAGE_MODELS))
-    def test_no_shipped_model_is_capable_until_a_live_call_proves_alpha(self, model: str) -> None:
-        # Flip one only with an owner-run call showing real alpha (#169).
-        assert OPENROUTER_IMAGE_MODELS[model].background_transparent is False
+    def test_only_the_live_proven_model_is_capable(self) -> None:
+        # Flip one only with a live call showing real alpha (#169); #179 proved sunburst.
+        capable = [m for m, e in OPENROUTER_IMAGE_MODELS.items() if e.background_transparent]
+        assert capable == ["openai/gpt-image-2.5-sunburst"]
+
+    def test_sunburst_is_sent_background_transparent_and_no_output_format(self) -> None:
+        # It advertises no output_format; #179's live call proved this exact body.
+        client, fake = _client("openai/gpt-image-2.5-sunburst")
+        client.generate(prompt="x", reference_path=None, shape=AspectSize("3:4", None),
+                        seed=None, transparent=True)  # fmt: skip
+        assert fake.body["background"] == "transparent"
+        assert "output_format" not in fake.body
+        assert fake.body["provider"]["only"] == ["openai"]
 
     def test_a_capable_model_is_sent_background_transparent(
         self, monkeypatch: pytest.MonkeyPatch

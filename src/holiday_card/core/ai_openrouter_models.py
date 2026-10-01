@@ -354,6 +354,28 @@ _ENTRIES = (
         upstream_terms_url="https://openai.com/policies/services-agreement/",
         snapshot_date=_SNAPSHOT,
     ),
+    # #179: the only entry with background_transparent, flipped after a live
+    # call decoded RGBA with transparent pixels (see the snapshot doc). It
+    # advertises no output_format, so none is sent; same terms as gpt-image-2.
+    OpenRouterModel(
+        id="openai/gpt-image-2.5-sunburst",
+        provider_tag="openai",
+        aspect_ratios=("1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16", "21:9"),
+        resolutions=(),
+        input_refs_min=0,
+        input_refs_max=16,
+        seed=False,
+        output_formats=(),
+        background_transparent=True,
+        passthrough=("moderation",),
+        pricing=_prices(
+            ("input_image", "token", 0.000008),
+            ("input_text", "token", 0.000005),
+            ("output_image", "token", 0.00003),
+        ),
+        upstream_terms_url="https://openai.com/policies/services-agreement/",
+        snapshot_date="2026-10-01",
+    ),
 )
 
 OPENROUTER_IMAGE_MODELS: Mapping[str, OpenRouterModel] = MappingProxyType(

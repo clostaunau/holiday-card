@@ -160,7 +160,7 @@ class TestMain:
     ) -> None:
         assert script.main(["--from-dir", str(CATALOGUE)]) == 0
         out = capsys.readouterr().out
-        assert "0 differences in 5 curated models" in out
+        assert "0 differences in 6 curated models" in out
         assert "1 catalogue models are not curated" in out
         assert _table_rows(out) == []
 
@@ -170,8 +170,8 @@ class TestMain:
         assert script.main(["--from-dir", str(DRIFTED)]) == 1
         out = capsys.readouterr().out
         assert "# OpenRouter image allowlist drift: fetched " in out
-        assert "(entries snapshot 2026-09-30)" in out
-        assert "3 differences in 5 curated models" in out
+        assert "(entries snapshot 2026-09-30, 2026-10-01)" in out  # sunburst: #179
+        assert "3 differences in 6 curated models" in out
         assert sorted(_table_rows(out)) == sorted(
             [
                 [
@@ -218,8 +218,9 @@ class TestMain:
         out = capsys.readouterr().out
         blocks = [b for b in out.split("\n\n") if b.strip().startswith("OpenRouterModel(")]
         entries = [eval(b.strip().rstrip(","), vars(ai_openrouter_models)) for b in blocks]
-        assert {e.id: replace(e, snapshot_date="2026-09-30") for e in entries} == dict(
-            OPENROUTER_IMAGE_MODELS
+        curated = OPENROUTER_IMAGE_MODELS
+        assert {e.id: replace(e, snapshot_date=curated[e.id].snapshot_date) for e in entries} == (
+            dict(curated)
         )
 
     def test_emit_python_comments_a_gone_entry(
