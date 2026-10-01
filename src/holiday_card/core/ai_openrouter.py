@@ -46,7 +46,7 @@ from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Final, NamedTuple, NoReturn, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Final, NamedTuple, NoReturn, Protocol, TypeVar
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
@@ -569,7 +569,7 @@ class OpenRouterImageClient:
     """Generates one image through OpenRouter ``POST /images`` for a curated model.
 
     Implements :class:`~holiday_card.core.ai_assets.ImageClient` (checked
-    statically by :func:`_conforms_to_image_client`). Stores the
+    statically by ``_conforms`` at the end of this module). Stores the
     ``SecretStr`` only; headers are built per call.
     """
 
@@ -678,6 +678,5 @@ class OpenRouterImageClient:
         )
 
 
-def _conforms_to_image_client(client: OpenRouterImageClient) -> ImageClient:
-    """Never called: mypy checks that the client satisfies the ``ImageClient`` protocol."""
-    return client
+if TYPE_CHECKING:  # mypy checks that the client satisfies the ``ImageClient`` protocol
+    _conforms: type[ImageClient] = OpenRouterImageClient

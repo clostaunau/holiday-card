@@ -23,8 +23,11 @@ most a one-line pointer. User-facing notes belong in `RELEASE_NOTES.md`.
   `transport=ai_openrouter.urllib_transport` read at call time (so tests
   monkeypatch the module attribute); its missing-key error never
   mentions the `[ai]` extra (O4). `OpenRouterImageClient.provider` is
-  added, and `_conforms_to_image_client` makes mypy (which runs on
-  `src/` only) check it against `ImageClient`. `consent_notice` takes
+  added, and a `TYPE_CHECKING` assignment `_conforms: type[ImageClient] =
+  OpenRouterImageClient` makes mypy (which runs on `src/` only) check it
+  against `ImageClient`. A client-construction `ProviderError` (a key with
+  inner whitespace) exits by its kind, not with a traceback. Vendor names
+  are checked at import (D4). `consent_notice` takes
   `model=` and, for a routed model, adds a bullet naming the vendor,
   route and terms. `GenerationResult` gains `model` / `provider_route`
   for the CLI summary (`Provider: openrouter (route: …)`, `Model: …`).

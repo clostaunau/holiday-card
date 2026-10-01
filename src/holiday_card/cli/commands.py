@@ -20,7 +20,7 @@ from typer.core import TyperGroup
 from holiday_card import __version__
 from holiday_card.cli.exit_codes import EXIT_CODES_HELP, ExitCode
 from holiday_card.core.ai_provenance import ai_disclosure_label
-from holiday_card.core.ai_providers import AIProvider, make_image_client
+from holiday_card.core.ai_providers import PROVIDERS, AIProvider, make_image_client
 from holiday_card.core.card_request import (
     BuildReport,
     CardRequest,
@@ -979,10 +979,9 @@ def ai_asset_generate(
     model: str | None = typer.Option(
         None,
         "--model",
-        help=(
-            "Model id for --provider (default: gpt-image-2 for openai, "
-            "google/gemini-3-pro-image for openrouter)."
-        ),
+        help="Model id for --provider (default: "
+        + ", ".join(f"{info.default_model} for {p.value}" for p, info in PROVIDERS.items())
+        + ").",
     ),
     seed: int | None = typer.Option(
         None,
@@ -1015,7 +1014,6 @@ def ai_asset_generate(
     Through OpenRouter (OPENROUTER_API_KEY; no install extra):
 
         holiday-card ai-asset generate --provider openrouter \\
-          --model google/gemini-3-pro-image \\
           --subject "watercolor pine bough border, sage green and burgundy" \\
           --reference path/to/reference.png --occasion christmas -o assets/ai/border.png
     """
@@ -1160,6 +1158,9 @@ def ai_asset_generate(
     except AIDependencyError as e:
         typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(ExitCode.ENVIRONMENT) from e
+    except ProviderError as e:  # e.g. a key with whitespace inside it, refused before any call
+        typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(_PROVIDER_EXIT[e.kind]) from e
 
     # Size for the model the client actually calls (#87).
     request = build_ai_request(
@@ -1217,10 +1218,10 @@ def ai_asset_generate(
     typer.echo(f"  Provenance: {result.sidecar_path.name}")
     route = f" (route: {result.provider_route})" if result.provider_route else ""
     typer.echo(f"  Provider: {client.provider.value}{route}")
-    typer.echo(f"  Model: {result.model}")
+    typer.echo(f"  Model: {client.model}")
     typer.echo(
         f"  Size: {result.width_px}x{result.height_px}px @ {request.dpi} DPI (sRGB), "
-        f"{result.native_ppi:.1f} PPI native from {client.model}"
+        f"{result.native_ppi:.1f} PPI native"
     )
     if result.native_ppi < request.dpi:
         typer.secho(

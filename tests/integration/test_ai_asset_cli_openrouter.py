@@ -331,6 +331,24 @@ class TestKey:
         assert "Traceback" not in text
         assert transport.calls == []
 
+    def test_a_malformed_key_is_an_environment_error_not_a_traceback(
+        self,
+        runner: CliRunner,
+        tmp_path: Path,
+        ref: Path,
+        transport: FakeTransport,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        bad = "sk-or-v1 " + "ab" * 32  # whitespace inside: refused when the headers are built
+        monkeypatch.setenv("OPENROUTER_API_KEY", bad)
+        result = runner.invoke(app, _args(tmp_path / "x.png", reference=ref))
+        assert result.exit_code == 4, result.output
+        text = _plain(result.output)
+        assert "Traceback" not in text
+        assert bad not in text
+        assert "ab" * 32 not in _chain_text(result.exception)
+        assert transport.calls == []
+
     def test_row09_an_openai_key_does_not_cross_providers(
         self,
         runner: CliRunner,

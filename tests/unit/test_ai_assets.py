@@ -614,7 +614,6 @@ class TestProviderNeutralSidecar:
         assert record.provider_route is None
         assert record.policy_urls == ["https://openai.com/policies/usage-policies"]
         assert result.policy_urls == ("https://openai.com/policies/usage-policies",)
-        assert result.model == "gpt-image-2"
         assert result.provider_route is None
 
 

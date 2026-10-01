@@ -274,9 +274,13 @@ _VENDOR_NAMES: Mapping[str, str] = MappingProxyType(
 
 
 def upstream_vendor_name(entry: OpenRouterModel) -> str:
-    """The human name of the vendor ``entry``'s pinned endpoint sends the request to.
-
-    Raises:
-        KeyError: If the endpoint's slug has no name (a test covers every entry).
-    """
+    """The human name of the vendor ``entry``'s pinned endpoint sends the request to."""
     return _VENDOR_NAMES[entry.provider_tag.split("/")[0]]
+
+
+# A curated entry whose vendor has no name fails at import, not at first use (D4).
+_unnamed = sorted(
+    e.id for e in _ENTRIES if e.provider_tag.split("/")[0] not in _VENDOR_NAMES
+)
+if _unnamed:  # pragma: no cover - a test covers every shipped entry
+    raise ValueError(f"OpenRouter model(s) {', '.join(_unnamed)}: add the vendor to _VENDOR_NAMES")

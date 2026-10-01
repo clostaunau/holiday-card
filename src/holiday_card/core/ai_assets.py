@@ -367,7 +367,6 @@ class GenerationResult:
     height_px: int
     native_ppi: float
     policy_urls: tuple[str, ...]
-    model: str  # the model actually called
     provider_route: str | None  # the pinned OpenRouter endpoint; None for a direct provider
     overridden: list[RailViolation] = field(default_factory=list)
 
@@ -685,7 +684,6 @@ def generate_ai_asset(
         height_px=target[1],
         native_ppi=native_ppi,
         policy_urls=policy_urls,
-        model=client.model,
         provider_route=generated.provider_route,
         overridden=violations if override else [],
     )

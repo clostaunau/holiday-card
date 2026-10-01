@@ -100,10 +100,7 @@ def consent_notice(provider: AIProvider, *, path: Path, model: str | None = None
     """
     vendor_bullet = ""
     if model is not None and (vendor := upstream_vendor(provider, model)) is not None:
-        from holiday_card.core.ai_openrouter_models import openrouter_model
-
-        name, terms_url = vendor
-        route = openrouter_model(model).provider_tag
+        name, terms_url, route = vendor
         vendor_bullet = (
             f"  * For {model} the upstream vendor is {name} (route {route});\n"
             f"    its terms govern the output: {terms_url}\n"

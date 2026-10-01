@@ -211,6 +211,7 @@ class TestOpenRouterRegistry:
         assert upstream_vendor(AIProvider.OPENROUTER, "google/gemini-3-pro-image") == (
             "Google (AI Studio)",
             "https://ai.google.dev/gemini-api/terms",
+            "google-ai-studio/global",
         )
         assert upstream_vendor(AIProvider.OPENAI, "gpt-image-2") is None
 

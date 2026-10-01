@@ -187,14 +187,18 @@ def reference_limits(provider: AIProvider, model: str) -> tuple[int, int]:
             assert_never(provider)
 
 
-def upstream_vendor(provider: AIProvider, model: str) -> tuple[str, str] | None:
-    """``(vendor name, terms URL)`` of the vendor a routed ``model`` reaches; ``None`` if direct."""
+def upstream_vendor(provider: AIProvider, model: str) -> tuple[str, str, str] | None:
+    """``(vendor name, terms URL, route)`` of the vendor a routed ``model`` reaches.
+
+    ``None`` for a direct provider.
+    """
     match provider:
         case AIProvider.OPENAI:
             return None
         case AIProvider.OPENROUTER:
             entry = ai_openrouter_models.openrouter_model(model)
-            return (ai_openrouter_models.upstream_vendor_name(entry), entry.upstream_terms_url)
+            name = ai_openrouter_models.upstream_vendor_name(entry)
+            return (name, entry.upstream_terms_url, entry.provider_tag)
         case _:
             assert_never(provider)
 
