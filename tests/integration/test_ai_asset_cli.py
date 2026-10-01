@@ -837,7 +837,7 @@ class TestTransparentRefused:
         isolated_config: Path,
         factory: tuple,
     ) -> None:
-        # #169: no silent opaque fallback; no shipped model is enabled yet.
+        # #169: no silent opaque fallback; #179 enabled sunburst on OpenRouter only.
         calls, _ = factory
         out = tmp_path / "x.png"
         result = runner.invoke(app, _moo_args(reference_png, out, "--transparent"))
@@ -846,7 +846,7 @@ class TestTransparentRefused:
         assert (
             "Error: --transparent is not supported by openai model 'gpt-image-2'"
         ) in text
-        assert "No curated model offers a transparent background yet" in text
+        assert "Models that do: openrouter openai/gpt-image-2.5-sunburst." in text
         assert calls == []
         assert not out.exists()
         assert not any(isolated_config.rglob("*")), "consent was recorded"

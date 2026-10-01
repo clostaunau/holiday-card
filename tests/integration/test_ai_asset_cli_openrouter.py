@@ -41,6 +41,7 @@ from openrouter_fixtures import (
 
 KEY = "sk-or-v1-" + "ab" * 32
 DEFAULT_MODEL = "google/gemini-3-pro-image"
+SUNBURST = "openai/gpt-image-2.5-sunburst"
 PRIVACY_URL = "https://openrouter.ai/workspaces/default/settings"
 TERMS_URL = "https://openrouter.ai/terms"
 GEMINI_TERMS = "https://ai.google.dev/gemini-api/terms"
@@ -777,7 +778,7 @@ def _rgba_response(size: tuple[int, int], *, alpha: int = 0) -> HttpResponse:
 
 @pytest.mark.usefixtures("key", "config")
 class TestTransparent:
-    def test_no_capable_model_exits_2_before_consent_and_any_call(
+    def test_the_default_model_exits_2_naming_sunburst_before_consent_and_any_call(
         self, runner: CliRunner, tmp_path: Path, ref: Path, transport: FakeTransport, config: Path
     ) -> None:
         out = tmp_path / "x.png"
@@ -785,7 +786,7 @@ class TestTransparent:
         assert result.exit_code == 2, result.output
         text = _flat(result.output)
         assert f"Error: --transparent is not supported by openrouter model '{DEFAULT_MODEL}'" in text
-        assert "No curated model offers a transparent background yet" in text
+        assert f"Models that do: openrouter {SUNBURST}." in text
         assert transport.calls == []
         assert not out.exists()
         assert not _consent_file(config).exists(), "consent was recorded"
@@ -802,7 +803,7 @@ class TestTransparent:
         result = runner.invoke(app, _args(tmp_path / "x.png", "--transparent", reference=ref))
         assert result.exit_code == 2, result.output
         text = _flat(result.output)
-        assert f"Models that do: openrouter {capable}" in text
+        assert f"Models that do: openrouter {SUNBURST}, openrouter {capable}." in text
         assert transport.calls == []
 
     def test_a_capable_model_bakes_an_rgba_motif(
@@ -826,6 +827,28 @@ class TestTransparent:
             assert img.mode == "RGBA"
             assert img.getpixel((0, 0))[3] == 0
         assert "Background: transparent (RGBA)" in _plain(result.output)
+
+    def test_sunburst_bakes_an_rgba_motif_from_the_live_proven_body(
+        self, runner: CliRunner, tmp_path: Path, ref: Path, transport: FakeTransport
+    ) -> None:
+        # #179: the shipped entry, no patching; the body is the one the live call proved.
+        transport.responses.append(_rgba_response((1152, 1536)))
+        out = tmp_path / "motif.png"
+        result = runner.invoke(
+            app, _args(out, "--model", SUNBURST, "--transparent", reference=ref)
+        )
+        sidecar = _assert_ok_bake(result, out, transport)
+        body = transport.body
+        assert (body["model"], body["aspect_ratio"], body["background"]) == (
+            SUNBURST, "3:4", "transparent"
+        )
+        assert "output_format" not in body
+        assert body["provider"]["only"] == ["openai"]
+        assert sidecar["background"] == "transparent"
+        assert sidecar["model"] == SUNBURST
+        with Image.open(out) as img:
+            assert img.mode == "RGBA"
+            assert img.getpixel((0, 0))[3] == 0
 
     def test_an_ignored_transparent_request_exits_7_and_writes_nothing(
         self,

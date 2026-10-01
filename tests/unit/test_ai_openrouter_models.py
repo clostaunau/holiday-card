@@ -28,6 +28,7 @@ CURATED = {
     "black-forest-labs/flux.2-pro",
     "bytedance-seed/seedream-4.5",
     "openai/gpt-image-2",
+    "openai/gpt-image-2.5-sunburst",
 }
 
 ENTRIES = sorted(OPENROUTER_IMAGE_MODELS.values(), key=lambda e: e.id)
@@ -91,13 +92,35 @@ class TestPinnedEndpointFacts:
         assert openrouter_model(model).seed is True
 
     @pytest.mark.parametrize(
-        "model", ["google/gemini-3-pro-image", "google/gemini-3.1-flash-image", "openai/gpt-image-2"]
+        "model",
+        [
+            "google/gemini-3-pro-image",
+            "google/gemini-3.1-flash-image",
+            "openai/gpt-image-2",
+            "openai/gpt-image-2.5-sunburst",
+        ],
     )
     def test_unseeded_models(self, model: str) -> None:
         assert openrouter_model(model).seed is False
 
     def test_gpt_image_2_has_no_transparent_background(self) -> None:
         assert openrouter_model("openai/gpt-image-2").background_transparent is False
+
+    def test_sunburst_is_the_transparent_capable_gpt_image(self) -> None:
+        # #179: enabled only after a live call decoded RGBA with transparent pixels.
+        entry = openrouter_model("openai/gpt-image-2.5-sunburst")
+        assert entry.background_transparent is True
+        assert entry.provider_tag == "openai"
+        assert entry.output_formats == ()
+        assert entry.passthrough == ("moderation",)
+
+    def test_sunburst_shares_gpt_image_2s_aspects_prices_and_terms(self) -> None:
+        sunburst = openrouter_model("openai/gpt-image-2.5-sunburst")
+        gpt2 = openrouter_model("openai/gpt-image-2")
+        assert sunburst.aspect_ratios == gpt2.aspect_ratios
+        assert sunburst.pricing == gpt2.pricing
+        # The reviewed page that governs output ownership, not /providers' ROW terms.
+        assert sunburst.upstream_terms_url == "https://openai.com/policies/services-agreement/"
 
     def test_flux_advertises_output_formats_and_no_resolution(self) -> None:
         entry = openrouter_model("black-forest-labs/flux.2-pro")

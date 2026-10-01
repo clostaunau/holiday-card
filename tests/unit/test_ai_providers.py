@@ -265,6 +265,8 @@ class TestOpenRouterFactory:
 
 # --- transparent background (#169) -------------------------------------------------
 
+SUNBURST = "openai/gpt-image-2.5-sunburst"
+
 
 @pytest.mark.parametrize("model", sorted(MODEL_SIZE_POLICIES))
 def test_no_direct_openai_model_offers_a_transparent_background(model: str) -> None:
@@ -281,12 +283,18 @@ def test_transparent_support_is_the_allowlist_flag(monkeypatch: pytest.MonkeyPat
     models = ai_openrouter_models.OPENROUTER_IMAGE_MODELS
     flux = "black-forest-labs/flux.2-pro"
     assert supports_transparent(AIProvider.OPENROUTER, flux) is False
-    assert transparent_models(AIProvider.OPENROUTER) == []
+    assert transparent_models(AIProvider.OPENROUTER) == [SUNBURST]
     monkeypatch.setattr(
         ai_openrouter_models,
         "OPENROUTER_IMAGE_MODELS",
         MappingProxyType({**models, flux: replace(models[flux], background_transparent=True)}),
     )
     assert supports_transparent(AIProvider.OPENROUTER, flux) is True
-    assert transparent_models(AIProvider.OPENROUTER) == [flux]
+    assert transparent_models(AIProvider.OPENROUTER) == [flux, SUNBURST]
     assert transparent_models(AIProvider.OPENAI) == []
+
+
+def test_sunburst_on_openrouter_is_transparent_but_not_on_direct_openai() -> None:
+    # #179: the live proof was over OpenRouter; direct OpenAI stays refused (owner call).
+    assert supports_transparent(AIProvider.OPENROUTER, SUNBURST) is True
+    assert supports_transparent(AIProvider.OPENAI, "gpt-image-2.5-sunburst") is False

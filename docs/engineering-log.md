@@ -6,6 +6,33 @@ regenerated on purpose, and which tests guard it. Moved out of
 limit). New entries go at the top of this file; `CLAUDE.md` gets at
 most a one-line pointer. User-facing notes belong in `RELEASE_NOTES.md`.
 
+- **2026-10-01 — `--transparent` enabled on `openai/gpt-image-2.5-sunburst`
+  (issue #179)**: the #169 machinery gets its first capable model.
+  - **Owner decisions.** Sunburst (not `-flare` or Riverflow v2.5 Pro);
+    OpenRouter only (direct OpenAI keeps refusing); the agent ran the one
+    billed call with the owner's key.
+  - **Live proof.** One call ($0.021905) through the production client
+    returned PNG `RGBA` 1152×1536, alpha min 0 (47 % fully transparent),
+    and `_require_transparency` passed. The record is the "Live verification
+    (#179)" section of `docs/industry-review/openrouter-image-api-snapshot.md`.
+    The endpoint advertises no `output_format`, so none is sent; the proof
+    covers exactly that body.
+  - **Allowlist.** A sixth entry with `background_transparent=True`, the
+    same aspects, price rows and `moderation` passthrough as `gpt-image-2`,
+    and `snapshot_date` 2026-10-01. Terms: the reviewed services-agreement
+    URL, not the ROW terms `/providers` lists. No `--max-cost` bounds, as
+    for `gpt-image-2`.
+  - **Fixtures.** The sunburst model row and endpoint were added to
+    `tests/fixtures/openrouter/catalogue/` and `catalogue-drifted/` (from
+    the 2026-10-01 fetch). The refresh tests now read "6 curated models"
+    and "(entries snapshot 2026-09-30, 2026-10-01)", and the `--emit
+    python` round trip keeps each entry's own snapshot date.
+  - **Tests.** `test_no_shipped_model_is_capable_until_a_live_call_proves_alpha`
+    became `test_only_the_live_proven_model_is_capable`. The CLI refusal now
+    names `openrouter openai/gpt-image-2.5-sunburst`. A new CLI bake test
+    uses the shipped entry unpatched and pins the proven body (no
+    `output_format`, `provider.only == ["openai"]`).
+
 - **2026-09-30 — `ai-asset generate --transparent` (issue #169)**: the
   machinery for transparent-background motifs. No model is enabled; that
   needs an owner-run live alpha proof (#179).

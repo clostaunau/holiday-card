@@ -369,8 +369,10 @@ Set `HOLIDAY_CARD_AI_PROVIDER=openrouter` to make it your default
 * `--seed` works only for models that take one (e.g.
   `black-forest-labs/flux.2-pro`).
 * `--transparent` bakes an RGBA motif for `image_elements`. It works only
-  for models whose `ai-asset models` row says `TRANSPARENT yes`, and none
-  does yet: each needs a live call proving real alpha first.
+  for models whose `ai-asset models` row says `TRANSPARENT yes`; today
+  that is only `--provider openrouter --model openai/gpt-image-2.5-sunburst`,
+  enabled after a live call proved real alpha. Its 3:4 output is
+  1152 × 1536, so a `moo-a6` motif warns at 252.6 PPI.
 * **Cost cap** — `--max-cost USD` (opt-in) estimates an *upper bound*
   for the call **offline**, from the curated price list and its cited
   vendor bounds, and refuses with exit 2 before any call when the
