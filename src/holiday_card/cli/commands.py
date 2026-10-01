@@ -10,18 +10,27 @@ import os
 import sys
 import warnings
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, NoReturn
 
 import typer
+import yaml
 from pydantic import ValidationError
 from typer.core import TyperGroup
 
 from holiday_card import __version__
 from holiday_card.cli.exit_codes import EXIT_CODES_HELP, ExitCode
 from holiday_card.core.ai_provenance import ai_disclosure_label
-from holiday_card.core.ai_providers import PROVIDERS, AIProvider, make_image_client
+from holiday_card.core.ai_providers import (
+    PROVIDERS,
+    AIProvider,
+    ModelListing,
+    list_models,
+    make_image_client,
+    model_listing_payload,
+)
 from holiday_card.core.card_request import (
     BuildReport,
     CardRequest,
@@ -1288,6 +1297,104 @@ def ai_asset_generate(
     typer.echo(
         "  Personal use only — AI imagery is not recommended for cards you sell."
     )
+
+
+_BILLABLE_SUFFIX = {
+    "output_image": "out-img",
+    "input_image": "in-img",
+    "input_reference": "in-ref",
+    "input_text": "in-txt",
+}
+_PRICE_UNIT = {"image": "image", "megapixel": "MP", "token": "tok"}
+
+
+def _usd(usd: float) -> str:
+    # Plain decimal, never rounded or in exponent form: 2e-06 reads as $0.000002.
+    return "$" + format(Decimal(repr(usd)).normalize(), "f")
+
+
+def _price_cell(row: ModelListing) -> str:
+    # Output first; a billable suffix only when there is more than one component.
+    parts = sorted(row.pricing, key=lambda p: p.billable != "output_image")
+    many = len(parts) > 1
+    return " + ".join(
+        f"{_usd(p.cost_usd)}/{_PRICE_UNIT[p.unit]}"
+        + (f" {_BILLABLE_SUFFIX[p.billable]}" if many else "")
+        for p in parts
+    ) or "-"
+
+
+def _ratio(w: int, h: int) -> str:
+    d = math.gcd(w, h)
+    return f"{w // d}:{h // d}"
+
+
+def _size_cells(row: ModelListing) -> tuple[str, str]:
+    # (ASPECTS, TIERS): the aspect enum and tiers, or an OpenAI model's pixel-size rule.
+    rule = row.pixel_sizes
+    if rule is None:
+        return ",".join(row.aspect_ratios or ()) or "-", ",".join(row.resolutions or ()) or "-"
+    if rule.fixed is not None:
+        return (
+            ",".join(_ratio(w, h) for w, h in rule.fixed),
+            ",".join(f"{w}x{h}" for w, h in rule.fixed),
+        )
+    aspects = "any" if rule.max_aspect is None else f"any 1:{rule.max_aspect:g}..{rule.max_aspect:g}:1"
+    tiers = f"WxH /{rule.multiple}" + ("" if rule.max_edge is None else f" ≤{rule.max_edge}")
+    return aspects, tiers
+
+
+@ai_asset_app.command("models")
+def ai_asset_models(
+    provider: AIProvider | None = typer.Option(
+        None,
+        "--provider",
+        case_sensitive=False,
+        help="Only this provider's models: openai or openrouter. Default: every provider.",
+    ),
+    format: ListFormat = _LIST_FORMAT_OPTION,
+) -> None:
+    """Lists the image models this version of holiday-card supports (a curated, reviewed list). No network.
+
+    The ID column is what ``ai-asset generate --model`` takes. Needs no API
+    key and no consent; prices and capabilities are the checked-in snapshot.
+    """
+    try:
+        rows = list_models(provider)
+        if format is ListFormat.JSON:
+            typer.echo(json.dumps(model_listing_payload(rows), indent=2))
+        elif format is ListFormat.YAML:
+            typer.echo(yaml.safe_dump(model_listing_payload(rows), sort_keys=False), nl=False)
+        else:
+            table = []
+            for row in rows:
+                aspects, tiers = _size_cells(row)
+                table.append([
+                    row.provider.value,
+                    row.id,
+                    "*" if row.default else "",
+                    row.route,
+                    f"{row.input_references[0]}-{row.input_references[1]}",
+                    aspects,
+                    tiers,
+                    "yes" if row.seed else "no",
+                    _price_cell(row),
+                    row.terms_urls[-1],
+                    row.snapshot_date,
+                ])
+            _echo_table(
+                ["PROVIDER", "ID", "DEFAULT", "ROUTE", "REFS", "ASPECTS", "TIERS", "SEED",
+                 "PRICE", "TERMS", "SNAPSHOT"],
+                table,
+            )  # fmt: skip
+            typer.echo(f"\n{len(rows)} model(s).")
+            for listed in dict.fromkeys(row.provider for row in rows):
+                for url in PROVIDERS[listed].policy_urls:
+                    typer.echo(f"{listed.value} policy: {url}")
+    except (typer.Exit, BrokenPipeError):
+        raise
+    except Exception as e:
+        _unexpected_error("Error listing AI models", e)
 
 
 def _open_in_default_viewer(path: Path) -> None:

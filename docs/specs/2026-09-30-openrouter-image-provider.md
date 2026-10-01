@@ -458,6 +458,9 @@ consent blurb, docs and the opt-in live smoke; the default model stays provision
 #140). The privacy-settings link is `https://openrouter.ai/workspaces/default/settings`,
 the page OpenRouter's data-collection guide links (verified 2026-09-30).
 
+**2026-09-30: Phase 3 shipped** (#151 `--max-cost`; #152 `ai-asset models`, the curated,
+offline listing with a versioned JSON document, `schema_version: 1`; no `--all`, no fetch).
+
 **Critical path:** 0b → 1 → 2 (allowlist ∥ transport) → 2 (CLI wiring).
 0a gates only the choice of *default* model. Phase 4 depends on 0c and nothing else.
 

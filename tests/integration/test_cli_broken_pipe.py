@@ -38,6 +38,8 @@ def _run_with_closed_stdout(*args: str) -> subprocess.CompletedProcess[bytes]:
         ("templates",),
         ("templates", "--format", "json"),
         ("themes",),
+        ("ai-asset", "models"),
+        ("ai-asset", "models", "--format", "json"),
         ("--version",),
     ],
     ids=lambda a: " ".join(a),

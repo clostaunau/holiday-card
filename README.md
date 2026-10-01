@@ -319,6 +319,8 @@ holiday-card ai-asset generate \
   --occasion christmas \
   --export-for moo-a6 \
   --output assets/ai/pine-bough-border.png
+
+holiday-card ai-asset models   # the curated image models this version supports (no network)
 ```
 
 ### OpenRouter (optional second provider)

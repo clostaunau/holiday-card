@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### `ai-asset models`
+
+`holiday-card ai-asset models [--provider openai|openrouter] [--format table|json|yaml]`
+lists the curated image models this version supports (references, aspects and
+tiers, seed, price, terms URL), offline, with no API key or consent; the JSON
+document is versioned (`schema_version: 1`).
+
 ### `ai-asset generate --max-cost USD`
 
 An opt-in cost cap. The CLI estimates an upper bound for the call
