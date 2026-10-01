@@ -350,7 +350,12 @@ Guardrails that ship on by default (see
   `<asset>.license.yaml` recording the prompt, model, seed, timestamp,
   the cost the provider reported (or `unknown` when it reports none;
   nothing is estimated), and the OpenAI policy URL in force at
-  generation time.
+  generation time. The PNG itself is marked as AI-generated, and a
+  card that places it refuses to render (exit 2) once the sidecar is
+  missing or belongs to another file.
+* **Never a photo** — `create` / `preview -i` refuse any AI asset (exit 2,
+  rail 8: no photo replacement), even one that only has a sidecar; place
+  it as a template image element instead.
 * **Untrusted output, checked inputs** — the model's image is decoded
   only as PNG, JPEG or WebP (one frame, at most 50 MP), or refused with
   exit 7 and nothing written; `--reference` must be a readable PNG or

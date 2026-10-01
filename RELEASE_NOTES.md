@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### AI assets are marked, need their sidecar, and are never a photo
+
+`ai-asset generate` now marks every PNG it writes as AI-generated (an
+`iTXt` chunk naming its `.license.yaml` sidecar, the model and the
+timestamp; no directory). A card that places an AI asset renders only
+while that sidecar is present, valid and matches the asset, and a
+compiled card records the models behind the AI imagery it embeds (the
+PNG preview carries it as `ai_imagery`).
+
+**Behaviour change:** `create` / `preview -i` with an AI asset used to
+fill the photo slot; they now exit 2 ("rail 8: no photo replacement"),
+for a marked asset and for an older asset that only has a sidecar. A
+template image whose sidecar is missing, unreadable or from another
+asset now exits 2 too (and `validate` reports it). Restore the sidecar
+or re-bake the asset with `holiday-card ai-asset generate`.
+
 ### Releases are now tag-driven
 
 The version lives only in `holiday_card.__version__`, and pushing a

@@ -12,6 +12,7 @@ from typing import Literal, Protocol, runtime_checkable
 
 __all__ = ["CardGenerator", "PhotoSlotError", "Renderer", "fill_photo_slots"]
 
+from holiday_card.core.ai_provenance import is_ai_asset, photo_slot_refusal
 from holiday_card.core.compiler import compile_card
 from holiday_card.core.export_targets import ExportTarget, get_target
 from holiday_card.core.images import (
@@ -179,6 +180,14 @@ def _slot_name(k: int) -> str:
     return "photo" if k == 1 else f"photo-{k}"
 
 
+def _probe_photo(path: Path) -> Path:
+    """Probe ``path`` as a photo; an AI asset is refused (rail 8, #144)."""
+    probed = probe_image(path).path
+    if is_ai_asset(probed):
+        raise photo_slot_refusal(probed)
+    return probed
+
+
 def fill_photo_slots(card: Card, photos: Sequence[Path]) -> None:
     """Put the k-th photo into every image element whose slot is the k-th slot.
 
@@ -190,6 +199,7 @@ def fill_photo_slots(card: Card, photos: Sequence[Path]) -> None:
     Raises:
         PhotoSlotError: The template has no slots, or fewer slots than photos.
         ImageSourceError: A photo is missing or not a readable PNG/JPEG.
+        AIProvenanceError: A photo is an AI asset, marked or legacy (rail 8).
     """
     if not photos:
         return
@@ -202,7 +212,7 @@ def fill_photo_slots(card: Card, photos: Sequence[Path]) -> None:
             f"{card.template_id} has {len(slots)} photo slot(s); "
             f"got {len(photos)} --image values"
         )
-    by_slot = {_slot_name(k): str(probe_image(p).path) for k, p in enumerate(photos, 1)}
+    by_slot = {_slot_name(k): str(_probe_photo(p)) for k, p in enumerate(photos, 1)}
     for element in elements:
         if element.slot in by_slot:
             element.source_path = by_slot[element.slot]

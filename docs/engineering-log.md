@@ -7,6 +7,60 @@ limit). New entries go at the top of this file; `CLAUDE.md` gets at
 most a one-line pointer. User-facing notes belong in `RELEASE_NOTES.md`.
 
 
+- **2026-09-30 — AI assets are marked, need an intact sidecar, and never
+  fill a photo slot (issue #144, OpenRouter program)**: the sidecar was
+  never checked (`read_sidecar` had no caller in `src/`), a baked PNG
+  carried nothing that said "AI", and `create -i ai.png` put an AI asset
+  in a photo slot past the prompt-side rail 8. The bake now passes
+  `pnginfo=` an uncompressed `iTXt` chunk `holiday-card:ai-generated`
+  (`AI_MARKER_KEY`) holding `marker_text(AIMarker(v=1, sidecar=<basename>,
+  model=client.model, timestamp=…))`: compact sorted-key JSON, the sidecar
+  by basename only (the validator refuses `/` and `\`), so no directory
+  leaks. New in `core/ai_provenance.py`: `AIProvenanceError(ImageSourceError)`
+  (so the CLI's `ValueError` branch makes it `Error: …`, exit 2, with no CLI
+  change, and `validate` reports it as `<compile>`), `read_ai_marker(path)`
+  (`None` for a non-PNG or an unmarked PNG; an unparsable or `v != 1`
+  payload raises, D4; call it only after `probe_image`), `is_ai_asset`
+  (marked, **or** a sibling sidecar: the legacy rule, since v1.3.0 assets
+  and editor re-saves have no marker), `require_sidecar(path) ->
+  LicenseRecord` (refuses: not an AI asset, renamed (marker's sidecar ≠
+  `sidecar_path_for(path).name`), missing, unparsable / invalid YAML, marker
+  `model` / `timestamp` ≠ the sidecar's; `raise … from e`),
+  `photo_slot_refusal(path)` (the one rail-8 message, `model unknown: <why>`
+  when the sidecar is unreadable) and `ai_disclosure_label(record)` (the
+  model; #147 adds the provider; the only place a label is built). The
+  binding is model + timestamp, not a file hash, so a colour tweak still
+  renders (open question 2's default). `compiler.embedded_ai_assets(card)
+  -> list[AIAssetUse(path, where, record)]` walks every image element in
+  panel then element order, skips relative paths (`_compile_image` refuses
+  them), probes, and for an AI asset raises with `where` =
+  `<template>/<panel>/image_elements[i] (id 'x')` when it sits in a `slot`
+  (rail 8, even a template placeholder) or its sidecar check fails.
+  `compile_card` calls it **after** the panels (probe errors keep their
+  order) and, when non-empty, inserts one `SetMetadata(key=
+  AI_IMAGERY_METADATA_KEY ("ai_imagery", new in `render_ir`), value=
+  "; ".join(sorted labels))` right after the card metadata; with no AI
+  asset nothing is added, so all compile snapshots and visual baselines
+  are unchanged. No new IR command or `ImageRef` field (disclosure is per
+  document; paths stay out of the IR). The PNG backend already writes it as
+  a `tEXt` chunk; PDF / SVG ignore it until #145. `fill_photo_slots` probes
+  each photo through `_probe_photo`, which refuses any AI asset before any
+  element changes (not `PhotoSlotError`: its "Templates with photo slots"
+  advice is wrong here). Not done (default of open question 1): refusing AI
+  assets in sympathy-class templates at render time. New shared helper
+  `tests/ai_fixtures.py` (`bake_fake_ai_asset`: the real bake with an
+  in-test client, no network or key; #145 / #153 reuse it). Guarded by
+  `TestAIMarker` / `TestIsAIAsset` / `TestRequireSidecar` in
+  `test_ai_provenance.py`, `TestBakeMarker` in `test_ai_assets.py`, the new
+  `tests/unit/test_compiler_ai_assets.py` (placement, sorted / deduplicated
+  labels, refusals (a tampered marker names its element), order, and no
+  `ai_imagery` for all 21 templates),
+  `TestAIAssetRefused` in `test_generators_photo_slots.py` and
+  `tests/integration/test_ai_asset_embed.py` (`create` / `validate` with and
+  without the sidecar, per-panel-pdf and moo-a6 export, `create` / `preview
+  -i` with a marked and a legacy asset: exit 2, no file, no traceback).
+  Tests 3804 → 3870 (collected).
+
 - **2026-09-30 — OpenRouter `/images` client over a hardened stdlib
   transport (issue #149, OpenRouter program)**: new `core/ai_openrouter.py`
   (stdlib + Pillow + pydantic; the **only** `src/` importer of

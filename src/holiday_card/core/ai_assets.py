@@ -37,15 +37,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, assert_never
 
-from PIL import Image, ImageCms
+from PIL import Image, ImageCms, PngImagePlugin
 
 from holiday_card.core.ai_openrouter_models import (
     RESOLUTION_LONG_EDGE_PX,
     aspect_ratio_value,
 )
 from holiday_card.core.ai_provenance import (
+    AI_MARKER_KEY,
+    AIMarker,
     LicenseRecord,
     has_consented,
+    marker_text,
+    sidecar_path_for,
     write_sidecar,
 )
 from holiday_card.core.ai_providers import AIProvider
@@ -568,8 +572,9 @@ def generate_ai_asset(
 
     Enforces consent and hard rails *before* spending any money, then
     resamples the result to exactly ``request.width_px`` ×
-    ``request.height_px`` and writes an sRGB-tagged 300 PPI PNG and a
-    ``<asset>.license.yaml`` sidecar. The sidecar's ``model`` is
+    ``request.height_px`` and writes an sRGB-tagged 300 PPI PNG, marked with
+    an :data:`~holiday_card.core.ai_provenance.AI_MARKER_KEY` ``iTXt`` chunk,
+    and a ``<asset>.license.yaml`` sidecar. The sidecar's ``model`` is
     ``client.model``, the model actually called.
 
     Raises:
@@ -604,12 +609,19 @@ def generate_ai_asset(
     rgb = open_generated_image(generated.image_bytes, generated.media_type)
     generated_w, generated_h = rgb.size
     baked = _cover_resample(rgb, target)
+    # The marker names the sidecar by basename only: it travels with the
+    # file, so it must not leak the author's directories.
+    marker = PngImagePlugin.PngInfo()
+    marker.add_itxt(AI_MARKER_KEY, marker_text(AIMarker(
+        sidecar=sidecar_path_for(out_path).name, model=client.model, timestamp=timestamp,
+    )))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     baked.save(
         out_path,
         format="PNG",
         icc_profile=_srgb_profile_bytes(),
         dpi=(request.dpi, request.dpi),
+        pnginfo=marker,
     )
     native_ppi = min(generated_w / target[0], generated_h / target[1]) * request.dpi
 

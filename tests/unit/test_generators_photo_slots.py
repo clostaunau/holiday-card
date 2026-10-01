@@ -140,3 +140,63 @@ class TestFillPhotoSlots:
         card = _card(_img("photo"))
         with pytest.raises(ImageSourceError, match="not found"):
             fill_photo_slots(card, [tmp_path / "missing.jpg"])
+
+
+class TestAIAssetRefused:
+    """#144, rail 8: an AI asset never replaces a photo, and nothing changes."""
+
+    def _card(self) -> Card:
+        return _card(_img("photo"), _img("photo-2"))
+
+    def test_marked_ai_asset_is_refused(self, tmp_path: Path) -> None:
+        from ai_fixtures import bake_fake_ai_asset
+        from holiday_card.core.ai_provenance import AIProvenanceError
+
+        card = self._card()
+        before = card.model_copy(deep=True)
+        asset = bake_fake_ai_asset(tmp_path, size=(64, 96))
+        with pytest.raises(AIProvenanceError) as exc:
+            fill_photo_slots(card, [asset])
+        msg = str(exc.value)
+        assert "rail 8" in msg
+        assert "model gpt-image-2" in msg
+        assert card == before
+
+    def test_legacy_sidecar_only_asset_is_refused(self, tmp_path: Path) -> None:
+        from holiday_card.core.ai_provenance import (
+            AIProvenanceError,
+            LicenseRecord,
+            write_sidecar,
+        )
+
+        legacy = tmp_path / "legacy.png"
+        Image.new("RGB", (40, 40), "green").save(legacy)
+        write_sidecar(legacy, LicenseRecord(prompt="p", model="gpt-image-1", timestamp="t"))
+        card = self._card()
+        before = card.model_copy(deep=True)
+        with pytest.raises(AIProvenanceError, match="rail 8"):
+            fill_photo_slots(card, [legacy])
+        assert card == before
+
+    def test_marked_asset_without_its_sidecar_says_model_unknown(self, tmp_path: Path) -> None:
+        from ai_fixtures import bake_fake_ai_asset
+        from holiday_card.core.ai_provenance import AIProvenanceError, sidecar_path_for
+
+        asset = bake_fake_ai_asset(tmp_path, size=(64, 96))
+        sidecar_path_for(asset).unlink()
+        with pytest.raises(AIProvenanceError, match="model unknown"):
+            fill_photo_slots(self._card(), [asset])
+
+    def test_ai_asset_as_second_photo_leaves_the_first_unapplied(
+        self, tmp_path: Path, red_jpg: Path,
+    ) -> None:
+        from ai_fixtures import bake_fake_ai_asset
+        from holiday_card.core.ai_provenance import AIProvenanceError
+
+        card = self._card()
+        before = card.model_copy(deep=True)
+        asset = bake_fake_ai_asset(tmp_path, size=(64, 96))
+        with pytest.raises(AIProvenanceError):
+            fill_photo_slots(card, [red_jpg, asset])
+        assert card == before
+        assert _sources(card) == [PLACEHOLDER, PLACEHOLDER]

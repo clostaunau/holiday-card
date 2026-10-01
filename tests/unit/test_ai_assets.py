@@ -853,3 +853,24 @@ class TestBakePayload:
         with pytest.raises(ImagePayloadError):
             self._run(tmp_path, FakeImageClient(raw=_EPS), out=out)
         assert not out.parent.exists()
+
+
+class TestBakeMarker:
+    """#144: the bake marks its PNG with an iTXt chunk naming the sidecar."""
+
+    def test_baked_asset_carries_the_marker(self, tmp_path: Path) -> None:
+        from holiday_card.core.ai_provenance import AI_MARKER_KEY, AIMarker
+
+        client = FakeImageClient(model="gpt-image-1", returns=(1024, 1536))
+        out = TestResampleToTarget()._moo_a6_run(tmp_path, client)
+
+        with Image.open(out) as img:
+            payload = img.text[AI_MARKER_KEY]  # type: ignore[attr-defined]
+            assert img.info["dpi"] == pytest.approx((300, 300), abs=0.01)
+            assert img.info.get("icc_profile")
+        marker = AIMarker.model_validate_json(payload)
+        assert marker.model == "gpt-image-1"
+        assert marker.sidecar == out.with_suffix(".license.yaml").name
+        assert marker.timestamp == "2027-01-15T10:00:00Z"
+        assert "/" not in payload
+        assert str(tmp_path) not in payload

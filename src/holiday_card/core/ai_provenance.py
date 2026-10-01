@@ -7,8 +7,15 @@ A2 and A5):
    gets a sibling ``<asset>.license.yaml`` capturing the prompt, model,
    seed, timestamp, the provider-reported cost (or ``unknown``), the OpenAI policy URL at generation time, and
    a placeholder for the user's own commercial-use determination. The
-   render pipeline refuses to embed any AI asset whose sidecar is
-   missing — this is what preserves the reproducibility moat.
+   bake also marks the PNG with an ``iTXt`` chunk (:data:`AI_MARKER_KEY`)
+   naming its sidecar. :func:`require_sidecar` is the one check, and it is
+   enforced by ``compiler.embedded_ai_assets`` (every compile, so
+   ``create``, ``preview`` and ``validate``) and by
+   ``generators.fill_photo_slots``, which refuses any AI asset as a photo
+   (rail 8); #153 adds panel backgrounds to the compiler walk. The marker
+   is detection, not DRM: an editor re-save or a JPEG conversion may drop
+   it, so a sibling sidecar alone also marks a file as an AI asset (the
+   legacy rule, which v1.3.0 assets rely on).
 
 2. **First-use consent.** A one-time, logged acknowledgement that the
    user has read the OpenAI usage policy, the IP-responsibility caveat,
@@ -21,10 +28,14 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from PIL import Image
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
+# No cycle: core.images never imports this module.
+from holiday_card.core.images import ImageSourceError
 
 __all__ = [
     "OPENAI_USAGE_POLICY_URL",
@@ -36,6 +47,15 @@ __all__ = [
     "default_consent_path",
     "has_consented",
     "record_consent",
+    "AI_MARKER_KEY",
+    "AIProvenanceError",
+    "AIMarker",
+    "marker_text",
+    "read_ai_marker",
+    "is_ai_asset",
+    "require_sidecar",
+    "photo_slot_refusal",
+    "ai_disclosure_label",
 ]
 
 # Captured into every sidecar so a later OpenAI ToS change can be diffed
@@ -119,6 +139,124 @@ def read_sidecar(asset_path: Path) -> LicenseRecord:
         )
     data = yaml.safe_load(sidecar.read_text())
     return LicenseRecord.model_validate(data)
+
+
+AI_MARKER_KEY: Final = "holiday-card:ai-generated"
+
+
+class AIProvenanceError(ImageSourceError):
+    """An AI asset is used without intact provenance, or where AI imagery is refused (rail 8)."""
+
+
+class AIMarker(BaseModel):
+    """The ``iTXt`` payload the bake writes into every AI asset."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    v: Literal[1] = 1
+    sidecar: str = Field(min_length=1)  # basename of the sidecar, never a path
+    model: str = Field(min_length=1)
+    timestamp: str = Field(min_length=1)
+
+    @field_validator("sidecar")
+    @classmethod
+    def _basename_only(cls, value: str) -> str:
+        if "/" in value or "\\" in value:
+            raise ValueError("the marker names the sidecar by basename, never a path")
+        return value
+
+
+def marker_text(marker: AIMarker) -> str:
+    """Serialize ``marker`` as compact, sorted-key JSON (the ``iTXt`` value)."""
+    return json.dumps(marker.model_dump(), sort_keys=True, separators=(",", ":"))
+
+
+def read_ai_marker(path: Path) -> AIMarker | None:
+    """Return the AI marker in ``path``, or ``None`` if it is not a marked PNG.
+
+    Call it only on a file that has passed ``images.probe_image`` (the bomb
+    and format checks). A marker that is present but unreadable raises
+    :class:`AIProvenanceError`: a tampered marker is not "no marker" (D4).
+    """
+    with Image.open(path) as img:
+        if img.format != "PNG":
+            return None
+        text = getattr(img, "text", {}).get(AI_MARKER_KEY)
+    if text is None:
+        return None
+    try:
+        return AIMarker.model_validate_json(text)
+    except ValidationError as e:
+        raise AIProvenanceError(
+            f"AI asset {path} has an unreadable {AI_MARKER_KEY} marker; re-bake it with "
+            "'holiday-card ai-asset generate'"
+        ) from e
+
+
+def is_ai_asset(path: Path) -> bool:
+    """True if ``path`` carries the AI marker or has a sibling sidecar (legacy assets)."""
+    return read_ai_marker(path) is not None or sidecar_path_for(path).exists()
+
+
+def require_sidecar(path: Path) -> LicenseRecord:
+    """Load and cross-check the provenance of the AI asset ``path``.
+
+    Raises :class:`AIProvenanceError` when the file is not an AI asset, was
+    renamed away from the sidecar its marker names, has no sidecar, has one
+    that is not a valid :class:`LicenseRecord`, or has one whose ``model`` /
+    ``timestamp`` differ from the marker's (the sidecar of another asset).
+    A legacy asset (no marker) passes when its sidecar validates.
+    """
+    marker = read_ai_marker(path)
+    sidecar = sidecar_path_for(path)
+    if marker is None and not sidecar.exists():
+        raise AIProvenanceError(f"{path} is not an AI asset (no marker, no sidecar)")
+    if marker is not None and marker.sidecar != sidecar.name:
+        raise AIProvenanceError(
+            f"AI asset {path} was renamed without its sidecar: its marker names "
+            f"{marker.sidecar}, not {sidecar.name}; rename it back or re-bake it"
+        )
+    try:
+        record = read_sidecar(path)
+    except FileNotFoundError as e:
+        raise AIProvenanceError(
+            f"AI asset {path} has no provenance sidecar {sidecar.name}; re-bake it with "
+            "'holiday-card ai-asset generate' or restore the sidecar"
+        ) from e
+    except (yaml.YAMLError, ValidationError, OSError, UnicodeDecodeError) as e:
+        raise AIProvenanceError(
+            f"AI asset {path} has an unreadable provenance sidecar {sidecar.name}; "
+            "re-bake it with 'holiday-card ai-asset generate' or restore the sidecar"
+        ) from e
+    if marker is not None:
+        for field_name in ("model", "timestamp"):
+            if getattr(marker, field_name) != getattr(record, field_name):
+                raise AIProvenanceError(
+                    f"AI asset {path} does not match its sidecar {sidecar.name}: the "
+                    f"marker's {field_name} is {getattr(marker, field_name)!r}, the "
+                    f"sidecar's {getattr(record, field_name)!r} (a sidecar from another asset?)"
+                )
+    return record
+
+
+def photo_slot_refusal(path: Path) -> AIProvenanceError:
+    """The rail-8 error for the AI asset ``path`` offered as a photo."""
+    try:
+        model = f"model {require_sidecar(path).model}"
+    except AIProvenanceError as e:
+        model = f"model unknown: {e}"
+    return AIProvenanceError(
+        f"{path} is an AI-generated asset ({model}); AI imagery never replaces a photo "
+        "(rail 8: no photo replacement). Place it as a template image element instead."
+    )
+
+
+def ai_disclosure_label(record: LicenseRecord) -> str:
+    """The human-readable label a disclosure names for ``record``.
+
+    The ONLY place the label is built (#147 extends it with the provider).
+    """
+    return record.model
 
 
 def default_consent_path() -> Path:
