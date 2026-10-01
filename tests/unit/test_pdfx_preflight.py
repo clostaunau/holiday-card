@@ -229,6 +229,13 @@ class TestInfoAndXmp:
         assert any(v.rule == "xmp.mismatch" and "dc:title" in v.detail
                    for v in violations), violations
 
+    def test_xmp_description_must_match_info_subject(self, clean_pdf: Path) -> None:
+        _mutate(clean_pdf, lambda pdf: pdf.docinfo.__setitem__(
+            "/Subject", String("christmas-red-green")))
+        violations = preflight_pdfx1a(clean_pdf)
+        assert any(v.rule == "xmp.mismatch" and "dc:description" in v.detail
+                   for v in violations), violations
+
     def test_xmp_mod_date_must_match_info(self, clean_pdf: Path) -> None:
         _mutate(clean_pdf, lambda pdf: pdf.docinfo.__setitem__(
             "/ModDate", String("D:20000101000000Z")))
