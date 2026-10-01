@@ -105,3 +105,256 @@ A candidate whose provider has no terms URL is printed with
 refuses. So an unreviewed entry cannot be pasted in by accident. Review the
 terms, update the entries, this table and `snapshot_date`, and re-record the
 fixture with `--save-dir`, trimmed as above.
+
+## Live verification (#140)
+
+Sources: `POST https://openrouter.ai/api/v1/images` (billed calls, run by the
+owner) and the three catalogue endpoints above, re-read without a key.
+(Catalogue re-fetched **2026-10-01 04:21 UTC**. Billed calls run
+**2026-10-01 04:34–04:36 UTC** with a dedicated key.) This section answers
+the spec's §3 "Live verification still owed" list
+(`docs/specs/2026-09-30-openrouter-image-provider.md`), which was written
+without a key.
+
+No credential, image or raw response body is recorded here. Each `b64_json`
+is replaced by its length and a sha256 prefix. Response headers are copied
+without `set-cookie`, and request headers are limited to `Content-Type` and
+the attribution headers.
+
+### Answers
+
+| # | Question | Answer | Evidence |
+|---|---|---|---|
+| Q1 | Does `/images` return `X-Generation-Id`? | **Yes**, on every 200 (`x-generation-id: gen-img-<unix>-<20 chars>`), next to `x-provider-name`. It is absent on the 400. `GeneratedImage.generation_id` can be filled. | Calls A–D headers |
+| Q2 | Default model W×H at `3:4` | `2K` → **1792×2400**, native PPI at moo-a6 **394.7**. `4K` → **3584×4800**, 789.5 PPI. `2K` clears 300 PPI. | Calls A, B decode lines |
+| Q3 | Unadvertised `seed` on `openai/gpt-image-2` | **Silently dropped**: 200, normal image, billed. Nothing in the response shows that it was dropped. | Call C |
+| Q4 | Shape of an image content-policy refusal | **HTTP 400, not 403.** `error.metadata` carries `block_reason` / `finish_reason` `PROHIBITED_CONTENT` and no `error_type` or `provider_code`. Not billed. | Call E |
+| Q5 | Is `size: "1328x1824"` honoured on `openai/gpt-image-2`? | **Yes**: exactly 1328×1824. | Call D decode line |
+| Q6 | Unadvertised `output_format: "png"` on Gemini AI Studio | **Ignored**: 200 with `media_type: image/jpeg`, and the bytes are JPEG. | Call A |
+| T1 | Is `2K` a 2048 px long edge, as `RESOLUTION_LONG_EDGE_PX` assumes? | **No**: the long edge is 2400 at `2K` and 4800 at `4K` (3:4). → #174 | Calls A, B |
+| T2 | Are Gemini `2K` output tokens ≤ the 1120 bound? | `image_tokens` = **1120** (at the bound), but `completion_tokens` = **1207**. The extra 87 are billed at $0.000012/token, which no price row covers, so the real cost $0.136002 > the estimate $0.135520. At `4K`: 2000 image tokens, 2101 completion tokens. → #173 | Calls A, B `usage` |
+
+Whatever Q5 shows, production never sends `size` (spec §5.3).
+
+`gpt-image-2` at `3:4` with `quality: low` returned **1152×1536**, which is
+252.6 PPI at moo-a6 (call C). This is below 300, so it warns, as the spec
+expected.
+
+**Spend:** **4 billed calls** (A, B, C, D; E's 400 was not billed), total
+`usage.cost` **$0.389862** (0.136002 + 0.241770 + 0.005565 + 0.006525). `/key`
+after the run: `limit` 50, `limit_remaining` 49.610138, `usage` 0.389862.
+The key's usage equals the sum of the calls exactly. The key's credit limit
+was $50, not the $1.00 the issue suggested, so the $1.00 ceiling was held by
+the stop rule, not by the key. Call B was run although A had already cleared
+300 PPI; it stayed within the five-call budget.
+
+**Account privacy settings at run time:** not captured.
+
+### Catalogue deltas since 2026-09-30 (Step 0)
+
+**None.** `scripts/refresh_openrouter_models.py` reported **0 differences in
+5 curated models**; 50 catalogue models are not curated. The catalogue still
+lists **55** image models. None of the issue's stop conditions fired:
+- the `google-ai-studio/global` tag, the `2K` / `4K` tiers and `3:4` are all
+  still offered for `google/gemini-3-pro-image`;
+- Vertex still offers only `1K` / `2K`.
+
+Neither Gemini endpoint advertises `seed` or `output_format`, and
+`openai/gpt-image-2` advertises neither. So calls A, C and D each sent a
+parameter that the endpoint does not advertise, on purpose.
+
+### Per-call records
+
+Common request headers: `Content-Type: application/json`,
+`X-OpenRouter-Title: holiday-card`,
+`HTTP-Referer: https://github.com/clostaunau/holiday-card`,
+`X-OpenRouter-App-Visibility: hidden`. The reference image (`__REF__`) is
+`data:image/png;base64,<64×64 flat RGB (46, 94, 62) PNG, 186 bytes>`.
+
+Every response carried these headers (`set-cookie` dropped):
+
+```
+content-type: application/json
+access-control-allow-origin: *
+access-control-expose-headers: X-Generation-Id,X-Provider-Name,request-id,cf-ray
+permissions-policy: payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com" "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")
+referrer-policy: no-referrer, strict-origin-when-cross-origin
+x-content-type-options: nosniff
+server: cloudflare
+```
+
+Each call below lists only the headers that differ. No response carried
+`Retry-After`, `request-id` or any rate-limit header.
+
+#### Call A: default candidate, `3:4` / `2K`, the §6.2 body shape
+
+```json
+{"model": "google/gemini-3-pro-image",
+ "prompt": "Watercolor pine bough border with red berries on a plain cream background. No text, no lettering.",
+ "n": 1, "aspect_ratio": "3:4", "resolution": "2K", "output_format": "png",
+ "input_references": [{"type": "image_url", "image_url": {"url": "__REF__"}}],
+ "provider": {"only": ["google-ai-studio/global"], "allow_fallbacks": false}}
+```
+
+- Sent 2026-10-01T04:34:23Z; **HTTP 200**; `time_total` 32.0 s.
+- Headers:
+  ```
+  HTTP/2 200
+  date: Thu, 01 Oct 2026 04:34:54 GMT
+  x-generation-id: gen-img-1790829263-IsDxAD6HYDnBBhQ96S7m
+  x-provider-name: Google AI Studio
+  cf-ray: a438c133e92fa63a-LAX
+  ```
+- Redacted body:
+  ```json
+  {"created": 0,
+   "data": [{"b64_json": "<base64: 4384112 chars, sha256 e9087fcf694011c9>", "media_type": "image/jpeg"}],
+   "usage": {"prompt_tokens": 279, "completion_tokens": 1207, "total_tokens": 1486, "cost": 0.136002, "is_byok": false,
+     "prompt_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0, "audio_tokens": 0, "video_tokens": 0},
+     "cost_details": {"upstream_inference_cost": 0.136002, "upstream_inference_prompt_cost": 0.000558,
+                      "upstream_inference_completions_cost": 0.135444},
+     "completion_tokens_details": {"reasoning_tokens": 0, "image_tokens": 1120}}}
+  ```
+- Decode: `image/jpeg`, JPEG, RGB, **1792×2400**, 1 frame.
+- Native PPI at moo-a6, `min(1792/1314, 2400/1824) × 300` = **394.7**.
+- A2: not needed. `output_format` was not rejected.
+- `created` is `0` on Gemini responses (it is a real timestamp on OpenAI's).
+
+#### Call B: `4K`
+
+Same body as A with `"resolution": "4K"`. This call was not needed, because A
+already cleared 1314×1824. It was run anyway.
+
+- Sent 2026-10-01T04:35:01Z; **HTTP 200**; `time_total` 34.7 s.
+- Headers: `date: Thu, 01 Oct 2026 04:35:34 GMT`,
+  `x-generation-id: gen-img-1790829301-qzNI334NagAL5fMTLTaK`,
+  `x-provider-name: Google AI Studio`, `cf-ray: a438c220989955c7-LAX`.
+- Redacted body:
+  ```json
+  {"created": 0,
+   "data": [{"b64_json": "<base64: 14048764 chars, sha256 317f191feb9db11f>", "media_type": "image/jpeg"}],
+   "usage": {"prompt_tokens": 279, "completion_tokens": 2101, "total_tokens": 2380, "cost": 0.24177, "is_byok": false,
+     "prompt_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0, "audio_tokens": 0, "video_tokens": 0},
+     "cost_details": {"upstream_inference_cost": 0.24177, "upstream_inference_prompt_cost": 0.000558,
+                      "upstream_inference_completions_cost": 0.241212},
+     "completion_tokens_details": {"reasoning_tokens": 0, "image_tokens": 2000}}}
+  ```
+- Decode: `image/jpeg`, JPEG, RGB, **3584×4800**, 1 frame. Native PPI at moo-a6 **789.5**.
+
+#### Call C: unadvertised `seed` on `openai/gpt-image-2`, plus its `3:4` size
+
+```json
+{"model": "openai/gpt-image-2",
+ "prompt": "Watercolor pine bough border with red berries on a plain cream background. No text, no lettering.",
+ "n": 1, "aspect_ratio": "3:4", "quality": "low", "output_format": "png", "seed": 42,
+ "provider": {"only": ["openai"], "allow_fallbacks": false}}
+```
+
+`quality: low`. The spec's single data point (16:9 → 1536×864) used `high`.
+
+- Sent 2026-10-01T04:35:41Z; **HTTP 200**; `time_total` 13.3 s.
+- Headers: `date: Thu, 01 Oct 2026 04:35:53 GMT`,
+  `x-generation-id: gen-img-1790829341-J3JL2avYRBn01gXNEc0w`,
+  `x-provider-name: OpenAI`, `cf-ray: a438c3163e792ab8-LAX`.
+- Redacted body:
+  ```json
+  {"created": 1790829353,
+   "data": [{"b64_json": "<base64: 3469192 chars, sha256 dbd9133b5286c1ce>", "media_type": "image/png"}],
+   "usage": {"prompt_tokens": 27, "completion_tokens": 181, "total_tokens": 208, "cost": 0.005565, "is_byok": false,
+     "prompt_tokens_details": {"cached_tokens": 0},
+     "cost_details": {"upstream_inference_cost": 0.005565, "upstream_inference_prompt_cost": 0.000135,
+                      "upstream_inference_completions_cost": 0.00543},
+     "completion_tokens_details": {"reasoning_tokens": 0, "image_tokens": 181}}}
+  ```
+- Decode: `image/png`, PNG, RGB, **1152×1536**, 1 frame. Native PPI at moo-a6 **252.6**.
+- C2: not needed. The seed was not rejected.
+
+#### Call D: `size: "1328x1824"` on `openai/gpt-image-2`
+
+```json
+{"model": "openai/gpt-image-2",
+ "prompt": "Watercolor pine bough border with red berries on a plain cream background. No text, no lettering.",
+ "n": 1, "size": "1328x1824", "quality": "low", "output_format": "png",
+ "provider": {"only": ["openai"], "allow_fallbacks": false}}
+```
+
+The body has no `aspect_ratio` on purpose: the docs say an explicit size
+with a mismatched ratio is a 400.
+
+- Sent 2026-10-01T04:35:58Z; **HTTP 200**; `time_total` 14.5 s.
+- Headers: `date: Thu, 01 Oct 2026 04:36:12 GMT`,
+  `x-generation-id: gen-img-1790829358-cBSmvUcnfQj99tm7dDCN`,
+  `x-provider-name: OpenAI`, `cf-ray: a438c3849adf539e-LAX`.
+- Redacted body:
+  ```json
+  {"created": 1790829372,
+   "data": [{"b64_json": "<base64: 3985540 chars, sha256 85fa155e229a97f5>", "media_type": "image/png"}],
+   "usage": {"prompt_tokens": 27, "completion_tokens": 213, "total_tokens": 240, "cost": 0.006525, "is_byok": false,
+     "prompt_tokens_details": {"cached_tokens": 0},
+     "cost_details": {"upstream_inference_cost": 0.006525, "upstream_inference_prompt_cost": 0.000135,
+                      "upstream_inference_completions_cost": 0.00639},
+     "completion_tokens_details": {"reasoning_tokens": 0, "image_tokens": 213}}}
+  ```
+- Decode: `image/png`, PNG, RGB, **1328×1824**, 1 frame. Honoured exactly;
+  native PPI at moo-a6 300.0.
+
+#### Call E: content-policy refusal shape
+
+```json
+{"model": "google/gemini-3-pro-image",
+ "prompt": "Mickey Mouse wearing a Santa hat, official Disney character art",
+ "n": 1, "aspect_ratio": "3:4", "resolution": "1K", "output_format": "png",
+ "provider": {"only": ["google-ai-studio/global"], "allow_fallbacks": false}}
+```
+
+This is the trademark prompt that the local rails already refuse
+(`tests/integration/test_ai_asset_cli.py`).
+
+- Sent 2026-10-01T04:36:16Z; **HTTP 400**; `time_total` 15.0 s. Not billed:
+  the key's usage equals the sum of A–D.
+- Headers: `HTTP/2 400`, `date: Thu, 01 Oct 2026 04:36:31 GMT`,
+  `cf-ray: a438c3f48fe9d7af-LAX`. There is **no** `x-generation-id` and no
+  `x-provider-name`.
+- Body, verbatim:
+  ```json
+  {"error":{"message":"Gemini blocked this request through content moderation.","code":400,
+   "metadata":{"provider_name":"Google AI Studio","finish_reason":"PROHIBITED_CONTENT","candidate_count":1,"block_reason":"PROHIBITED_CONTENT"}}}
+  ```
+- So upstream does refuse, but as a 400 with no `error_type`. The shipped
+  client treats it as `usage` (exit 2), not `refused` (exit 6). → #172
+
+#### Free follow-ups
+
+- `GET /api/v1/generation?id=…`: not captured. It was run with a literal
+  `<id>` placeholder and returned 404 `Generation <id> not found`.
+
+### Recommended default
+
+**Confirmed by the owner as O11** (spec §10).
+
+| Field | Value |
+|---|---|
+| Model id | `google/gemini-3-pro-image` |
+| Pinned `provider_tag` | `google-ai-studio/global` |
+| Aspect / resolution for moo-a6 | `3:4` / `2K` |
+| Observed W×H | 1792×2400 (JPEG) |
+| Native PPI at moo-a6 | **394.7** (≥ 300) |
+| Observed cost (`usage.cost`) | $0.136002 with one reference image |
+| `input_references` range | 0–14 (catalogue, 2026-10-01) |
+
+### Consequences for later issues
+
+#148–#153 and #168 all landed on `main` before this verification ran. So
+each answer is checked against the shipped code. A contradiction is filed as
+a follow-up issue; this docs-only PR changes no code.
+
+| Answer | Shipped behaviour | Consequence |
+|---|---|---|
+| Q1 | `ai_openrouter` reads `x-generation-id` when it matches `[A-Za-z0-9_-]{1,128}` (#149) | None. The observed ids match. |
+| Q2 | `PROVIDERS[OPENROUTER].default_model` is `google/gemini-3-pro-image` (#150) | None. Confirmed as O11; it is no longer provisional. |
+| Q3 | a seed on an entry with `seed=False` is refused locally, before any call (#149) | None. Upstream would drop it silently, so the local refusal is the only signal. Keep it. |
+| Q4 | 403 + `error_type` ∈ {`content_policy_violation`, `refusal`} → refused (#149) | **#172**: Gemini's block is a 400 with `block_reason`, which exits 2 "usage". |
+| Q5 | `size` is never sent (§5.3) | None. The rule stands whatever the answer. |
+| Q6 | `output_format` is sent only when the entry lists `png` (#149); the Gemini entry lists none; JPEG is accepted by `open_generated_image` | None. Gemini assets arrive as JPEG and are baked as usual. |
+| T1 | `RESOLUTION_LONG_EDGE_PX`: `2K` → 2048, `4K` → 4096 (#148) | **#174**: the observed long edges are 2400 / 4800. Tier choice for moo-a6 and letter is unchanged. |
+| T2 | Gemini `2K` / `4K` bounds are 1120 / 2000 output tokens (#151) | **#173**: about 87–101 non-image completion tokens are billed on top, so the estimate is about $0.0005–0.0007 short. |
