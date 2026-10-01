@@ -28,6 +28,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from holiday_card.core.ai_provenance import (
+    AIProvenanceError,
+    LicenseRecord,
+    ai_disclosure_label,
+    is_ai_asset,
+    photo_slot_refusal,
+    require_sidecar,
+)
 from holiday_card.core.errors import UnsupportedFeatureError
 from holiday_card.core.flatten import Flattener, flatten_transparency
 from holiday_card.core.images import ImageSourceError, probe_image
@@ -55,6 +63,7 @@ from holiday_card.core.models import (
     Triangle,
 )
 from holiday_card.core.render_ir import (
+    AI_IMAGERY_METADATA_KEY,
     RGBA,
     BeginClip,
     BeginGroup,
@@ -96,9 +105,11 @@ from holiday_card.utils.measurements import (
 )
 
 __all__ = [
+    "AIAssetUse",
     "CompileContext",
     "SafeZoneWarning",
     "compile_card",
+    "embedded_ai_assets",
     "flatten_transparency",
     "UnknownFontError",
     "UnsupportedFeatureError",
@@ -192,11 +203,20 @@ def compile_card(card: Card, ctx: CompileContext | None = None) -> list[RenderCo
         safe_margin=geometry.safe_margin_pts,
     ))
     commands.extend(_emit_metadata(card))
+    metadata_end = len(commands)
 
     panels = impose_letter(card.panels, card.fold_type) if ctx.impose else card.panels
     fit = _panel_fit_transform(panels, ctx) if ctx.panel_fit != "native" else None
     for panel in panels:
         commands.extend(_compile_panel(panel, card, ctx, measurer, fit))
+
+    # After the panels, so path / probe errors keep their messages and order.
+    uses = embedded_ai_assets(card)
+    if uses:
+        labels = sorted({ai_disclosure_label(u.record) for u in uses})
+        commands.insert(
+            metadata_end, SetMetadata(key=AI_IMAGERY_METADATA_KEY, value="; ".join(labels)),
+        )
 
     if ctx.emit_fold_lines:
         commands.extend(_emit_fold_lines(card.fold_type, ctx))
@@ -205,6 +225,56 @@ def compile_card(card: Card, ctx: CompileContext | None = None) -> list[RenderCo
 
     assert_balanced(commands)
     return commands
+
+
+# ---------------------------------------------------------------------------
+# AI assets (#144)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class AIAssetUse:
+    """One AI asset a card embeds, with its checked provenance."""
+
+    path: Path  # absolute, as probed
+    where: str  # "<template>/<panel>/image_elements[i] (id 'x')"
+    record: LicenseRecord
+
+
+def embedded_ai_assets(card: Card) -> list[AIAssetUse]:
+    """Every AI asset ``card`` embeds, in panel then element order.
+
+    An AI asset (marked, or legacy with a sibling sidecar) must have intact
+    provenance (``require_sidecar``) and may not sit in a photo slot, even
+    as a template's placeholder (rail 8). Relative paths are skipped:
+    ``_compile_image`` refuses them.
+
+    Raises:
+        AIProvenanceError: naming the element, for either failure.
+        ImageSourceError: a path that is not a readable PNG/JPEG.
+    """
+    uses: list[AIAssetUse] = []
+    # #153 extends this walk to panel.background_image.
+    for panel in card.panels:
+        for i, element in enumerate(panel.image_elements):
+            path = Path(element.source_path)
+            if not path.is_absolute():
+                continue
+            path = probe_image(path).path
+            if not is_ai_asset(path):
+                continue
+            where = (
+                f"{card.template_id}/{panel.position.value}/image_elements[{i}] "
+                f"(id {element.id!r})"
+            )
+            if element.slot is not None:
+                raise AIProvenanceError(f"{where}: {photo_slot_refusal(path)}")
+            try:
+                record = require_sidecar(path)
+            except AIProvenanceError as e:
+                raise AIProvenanceError(f"{where}: {e}") from e
+            uses.append(AIAssetUse(path=path, where=where, record=record))
+    return uses
 
 
 # ---------------------------------------------------------------------------

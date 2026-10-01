@@ -109,7 +109,8 @@ src/holiday_card/
     data_paths.py       # data_path(kind): the ONE resolver for bundled data (+ env overrides)
     ai_errors.py        # ProviderError (refused/environment/usage/transient) + redact / sanitize (stdlib only, #142)
     ai_rails.py         # L3 hard category rails (occasion + prompt blocklists)
-    ai_provenance.py    # L3 LicenseRecord sidecar + first-use consent gate
+    ai_provenance.py    # L3 LicenseRecord sidecar + first-use consent gate; the AI PNG marker
+                        #   and require_sidecar: the one provenance check (#144)
     ai_providers.py     # AIProvider registry (key var + default model), resolve_model / supports_seed,
                         #   make_image_client: the ONE client factory (#146; stdlib-only imports)
     ai_assets.py        # L3 POD-aware sizing, MODEL_SIZE_POLICIES (#87), PixelSize / AspectSize request shapes
@@ -171,6 +172,7 @@ tests/
   conformance/          # Cross-backend conformance vs the SVG oracle (#67, D12); regenerate
                         #   docs/conformance-matrix.md from capabilities.py
   fixtures/openrouter/  # Recorded OpenRouter responses (scripts/make_openrouter_fixtures.py)
+  ai_fixtures.py        # bake_fake_ai_asset: a real marked asset + sidecar, no network (#144)
   rasterize.py          # Shared pypdfium2 PDF rasterizer (conformance + visual gate)
   ast_imports.py        # The one AST import walker
 LICENSE                 # MIT
@@ -431,6 +433,11 @@ template editing; a JSON "render plan" backend for downstream tooling.
   member is a mypy error until it is wired everywhere (#146).
 - Translucency over anything but a containing solid fill is refused on
   PDF/X targets (moo-a6) (#71).
+- An AI asset (marked PNG, or any file with a sibling `.license.yaml`)
+  renders only with an intact sidecar and never in a photo slot; the
+  checks live in `compiler.embedded_ai_assets` and `fill_photo_slots`,
+  both through `ai_provenance.require_sidecar` (#144). Tests bake one with
+  `tests/ai_fixtures.bake_fake_ai_asset`.
 
 ## Engineering log
 
@@ -441,9 +448,10 @@ here**: CLAUDE.md gets at most a one-line pointer, and a new rule of
 the "this will bite you" kind goes in Gotchas above. User-facing notes
 go in `RELEASE_NOTES.md`.
 
-In flight: the OpenRouter image-provider program (tracker #139); #148,
-#149, #143, #146, #141, #142 have landed, and #150 (wire
-`AIProvider.OPENROUTER` into the CLI) is next.
+In flight: the OpenRouter image-provider program (tracker #139); #141,
+#142, #143, #144, #146, #148 and #149 have landed. Next: #147, then
+#150 (wire `AIProvider.OPENROUTER` into the CLI); #145 and #153 are
+unblocked too.
 
 ## Strategic context — read before adding major features
 

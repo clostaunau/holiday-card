@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable
-from typing import Annotated, Literal
+from typing import Annotated, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -68,6 +68,7 @@ __all__ = [
     "EndClip",
     "DrawFoldLine",
     "SetMetadata",
+    "AI_IMAGERY_METADATA_KEY",
     "BeginPage",
     "EndPage",
     "RenderCommand",
@@ -348,6 +349,11 @@ class DrawFoldLine(_IRBase):
     start: Point
     end: Point
     style: Literal["dashed", "solid"] = "dashed"
+
+
+# The SetMetadata key under which the compiler lists the AI imagery a
+# document embeds: sorted, deduplicated disclosure labels joined by "; " (#144).
+AI_IMAGERY_METADATA_KEY: Final = "ai_imagery"
 
 
 class SetMetadata(_IRBase):
