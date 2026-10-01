@@ -158,6 +158,10 @@ class LicenseRecord(BaseModel):
     # The user fills this in themselves; we never decide it for them.
     commercial_use_determination: str = "UNREVIEWED"
     override_reasons: list[str] = Field(default_factory=list)
+    # Set only when --max-cost was given (#151): the cap and the offline
+    # upper-bound estimate it was checked against.
+    cost_cap_usd: float | None = None
+    cost_estimate_usd: float | None = None
 
     # LEGACY(v1.3.0 sidecar, O7): delete in the first release after the one that ships this.
     @model_validator(mode="before")

@@ -38,6 +38,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, fields
 from datetime import date
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from holiday_card.core.ai_openrouter_models import (
@@ -50,9 +51,18 @@ API = "https://openrouter.ai/api/v1"
 TIMEOUT_S = 30
 TODO_REVIEW = "TODO-REVIEW"
 GONE = "GONE: no endpoint with this provider_tag"
-# A reviewed value: the terms review may replace the catalogue's URL with the
-# page that governs output ownership, so it is not drift.
-_NOT_COMPARED = {"snapshot_date", "upstream_terms_url"}
+# Reviewed values, carried over from the committed entry and never drift: the
+# terms review may replace the catalogue's URL with the page that governs
+# output ownership, and the --max-cost bounds come from cited vendor pages,
+# not the catalogue (#151).
+REVIEWED_FIELDS = (
+    "upstream_terms_url",
+    "max_output_megapixels",
+    "output_image_tokens",
+    "input_image_tokens",
+    "bound_source",
+)
+_NOT_COMPARED = {"snapshot_date", *REVIEWED_FIELDS}
 
 
 class UsageError(Exception):
@@ -172,6 +182,25 @@ def entry_from_catalogue(
     return OpenRouterModel(**_entry_fields(model, endpoint, providers, snapshot_date=snapshot_date))
 
 
+def carry_reviewed(current: OpenRouterModel, live_resolutions: tuple[str, ...]) -> dict[str, Any]:
+    """The :data:`REVIEWED_FIELDS` of ``current``, kept for a live entry.
+
+    A token bound for a tier the endpoint no longer offers is dropped (the
+    ``resolutions`` row reports that drift); with no bound left, so is the
+    source.
+    """
+    kept = {f: getattr(current, f) for f in REVIEWED_FIELDS}
+    tokens = current.output_image_tokens
+    if tokens is not None:
+        allowed = set(live_resolutions) or {"default"}
+        trimmed = {k: v for k, v in tokens.items() if k in allowed}
+        kept["output_image_tokens"] = MappingProxyType(trimmed) if trimmed else None
+    bounds = ("max_output_megapixels", "output_image_tokens", "input_image_tokens")
+    if all(kept[b] is None for b in bounds):
+        kept["bound_source"] = None
+    return kept
+
+
 def _fmt(value: Any) -> str:
     if isinstance(value, tuple):
         return "; ".join(_fmt(v) for v in value) if any(
@@ -186,7 +215,7 @@ def diff_entry(current: OpenRouterModel, live: OpenRouterModel | None) -> list[F
     """The fields of ``current`` the live endpoint no longer matches.
 
     ``live is None`` (the pinned endpoint is gone) is one ``endpoint`` row.
-    ``snapshot_date`` and the reviewed ``upstream_terms_url`` are not compared.
+    ``snapshot_date`` and the :data:`REVIEWED_FIELDS` are not compared.
     """
     if live is None:
         return [FieldDiff(current.id, current.provider_tag, "endpoint", "pinned", GONE)]
@@ -225,6 +254,10 @@ def _py(value: Any) -> str:
         return json.dumps(value)
     if isinstance(value, OpenRouterPrice):
         return f"OpenRouterPrice({_py(value.billable)}, {_py(value.unit)}, {value.cost_usd!r})"
+    if isinstance(value, MappingProxyType):
+        return "MappingProxyType({" + ", ".join(
+            f"{_py(k)}: {_py(v)}" for k, v in value.items()
+        ) + "})"
     if isinstance(value, tuple):
         if len(value) == 1:
             return f"({_py(value[0])},)"
@@ -302,7 +335,7 @@ def main(argv: list[str] | None = None) -> int:
                 gone.append(current.id)
                 continue
             live = _entry_fields(models[current.id], endpoint, providers, snapshot_date=today)
-            live["upstream_terms_url"] = current.upstream_terms_url  # keep the reviewed page
+            live |= carry_reviewed(current, live["resolutions"])
             diffs += diff_entry(current, OpenRouterModel(**live))
             emitted.append(live)
         for model_id, endpoint in added:

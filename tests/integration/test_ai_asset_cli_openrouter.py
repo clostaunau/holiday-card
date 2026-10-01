@@ -203,6 +203,8 @@ class TestBake:
         for url in (TERMS_URL, PRIVACY_URL, GEMINI_TERMS):
             assert f"Policy: {url}" in text
         assert "Personal use only" in text
+        assert "Estimated cost" not in text and "--max-cost" not in text  # opt-in only
+        assert "cost_cap_usd" in sidecar and sidecar["cost_cap_usd"] is None
 
     def test_row02_env_default_selects_openrouter(
         self,
@@ -252,6 +254,133 @@ class TestBake:
         result = runner.invoke(app, _args(out, reference=ref))
         _assert_ok_bake(result, out, transport)
         assert "Cost: unknown" in _plain(result.output)
+
+
+# --------------------------------------------------------------------------- --max-cost (#151)
+
+
+ESTIMATE_LINE = "Estimated cost (upper bound): $0.1355"
+
+
+@pytest.mark.usefixtures("key")
+class TestMaxCost:
+    """The default gemini model with the 8x8 fixture reference bounds at $0.1355."""
+
+    @pytest.fixture
+    def consented(self, config: Path) -> bytes:
+        from holiday_card.core.ai_provenance import record_consent
+        from holiday_card.core.ai_providers import AIProvider
+
+        record_consent(_consent_file(config), AIProvider.OPENROUTER)
+        return _consent_file(config).read_bytes()
+
+    def test_over_the_cap_exits_2_before_any_call(
+        self,
+        runner: CliRunner,
+        tmp_path: Path,
+        ref: Path,
+        transport: FakeTransport,
+        config: Path,
+        consented: bytes,
+    ) -> None:
+        out_dir = tmp_path / "out"
+        result = runner.invoke(
+            app, _args(out_dir / "x.png", "--max-cost", "0.10", reference=ref, accept=False)
+        )
+        assert result.exit_code == 2, result.output
+        assert transport.calls == []
+        assert not out_dir.exists()
+        assert _consent_file(config).read_bytes() == consented
+        text = _flat(result.output)
+        assert (
+            f"Error: estimated cost $0.1355 exceeds --max-cost $0.10 for {DEFAULT_MODEL} "
+            "(openrouter)"
+        ) in text
+        assert "output_image: 1120 tok x $0.00012 = $0.1344" in text
+        assert "input_image: 560 tok x $2e-06 = $0.00112" in text
+
+    def test_under_the_cap_bakes_and_prints_the_estimate(
+        self, runner: CliRunner, tmp_path: Path, ref: Path, transport: FakeTransport
+    ) -> None:
+        out = tmp_path / "x.png"
+        result = runner.invoke(app, _args(out, "--max-cost", "0.14", reference=ref))
+        sidecar = _assert_ok_bake(result, out, transport)
+        text = _plain(result.output)
+        assert ESTIMATE_LINE in text
+        assert text.index(ESTIMATE_LINE) < text.index("Cost: $0.13 (reported)")
+        assert "above --max-cost" not in text and "Note:" not in text
+        assert sidecar["cost_cap_usd"] == 0.14
+        assert sidecar["cost_estimate_usd"] == pytest.approx(0.13552, abs=1e-12)
+
+    def test_reported_cost_above_the_cap_warns_but_keeps_the_asset(
+        self, runner: CliRunner, tmp_path: Path, ref: Path, transport: FakeTransport
+    ) -> None:
+        raw = fixture_raw("ok_png")
+        raw["body"]["usage"]["cost"] = 0.2
+        transport.responses.append(to_response(raw))
+        out = tmp_path / "x.png"
+        result = runner.invoke(app, _args(out, "--max-cost", "0.14", reference=ref))
+        _assert_ok_bake(result, out, transport)
+        assert (
+            "Warning: the provider reported $0.2000, above --max-cost $0.14 "
+            "(the charge has already been made)."
+        ) in _flat(result.output)
+
+    def test_unreported_cost_cannot_be_checked(
+        self, runner: CliRunner, tmp_path: Path, ref: Path, transport: FakeTransport
+    ) -> None:
+        transport.responses.append(load_response("ok_jpeg"))
+        out = tmp_path / "x.png"
+        result = runner.invoke(app, _args(out, "--max-cost", "0.14", reference=ref))
+        _assert_ok_bake(result, out, transport)
+        assert (
+            "Note: the provider reported no cost; the charge could not be checked "
+            "against --max-cost."
+        ) in _flat(result.output)
+
+    @pytest.mark.parametrize("value", ["0", "-1", "nan", "inf", "-0.0"])
+    def test_invalid_cap_exits_2_with_zero_calls(
+        self,
+        runner: CliRunner,
+        tmp_path: Path,
+        ref: Path,
+        transport: FakeTransport,
+        config: Path,
+        value: str,
+    ) -> None:
+        out_dir = tmp_path / "out"
+        result = runner.invoke(app, _args(out_dir / "x.png", f"--max-cost={value}", reference=ref))
+        assert result.exit_code == 2, result.output
+        assert "--max-cost must be a positive number of US dollars" in _flat(result.output)
+        assert transport.calls == []
+        assert not out_dir.exists()
+        assert not _consent_file(config).exists()  # a usage error records nothing
+
+    @pytest.mark.usefixtures("config")
+    def test_a_model_without_a_bound_exits_2(
+        self, runner: CliRunner, tmp_path: Path, ref: Path, transport: FakeTransport
+    ) -> None:
+        result = runner.invoke(
+            app,
+            _args(tmp_path / "x.png", "--model", "openai/gpt-image-2", "--max-cost", "1",
+                  reference=ref),
+        )  # fmt: skip
+        assert result.exit_code == 2, result.output
+        assert transport.calls == []
+        assert (
+            "Error: no price on record for openai/gpt-image-2 (openrouter); --max-cost cannot "
+            "be checked. Omit --max-cost or pick a model with a recorded price."
+        ) in _flat(result.output)
+
+    @pytest.mark.usefixtures("config")
+    def test_rails_still_win_over_a_low_cap(
+        self, runner: CliRunner, tmp_path: Path, ref: Path, transport: FakeTransport
+    ) -> None:
+        result = runner.invoke(
+            app, _args(tmp_path / "x.png", "--max-cost", "0.01", reference=ref, occasion="sympathy")
+        )
+        assert result.exit_code == 5, result.output
+        assert transport.calls == []
 
 
 # --------------------------------------------------------------------------- refusals before any call

@@ -18,7 +18,7 @@ client.
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from types import MappingProxyType
@@ -99,6 +99,13 @@ class OpenRouterModel:
     pricing: tuple[OpenRouterPrice, ...]
     upstream_terms_url: str
     snapshot_date: str
+    # Human-maintained upper bounds for ``--max-cost`` (#151); the refresh
+    # script carries them over. Each is filled only from a cited, dated
+    # vendor source, recorded in ``bound_source`` ("YYYY-MM-DD https://…").
+    max_output_megapixels: float | None = None  # megapixel-priced output, no tier
+    output_image_tokens: Mapping[str, int] | None = None  # per tier, or "default"
+    input_image_tokens: int | None = None  # per token-priced reference image
+    bound_source: str | None = None
 
     def __post_init__(self) -> None:
         def bad(field: str, why: str) -> ValueError:
@@ -133,12 +140,42 @@ class OpenRouterModel:
             date.fromisoformat(self.snapshot_date)
         except ValueError as e:
             raise bad("snapshot_date", f"{self.snapshot_date!r} is not an ISO date") from e
+        self._check_bounds(bad)
         url = urlsplit(self.upstream_terms_url)
         host = (url.hostname or "").lower()
         if url.scheme != "https" or not host:
             raise bad("upstream_terms_url", f"{self.upstream_terms_url!r} is not an https URL")
         if host == "openrouter.ai" or host.endswith(".openrouter.ai"):
             raise bad("upstream_terms_url", "must be the model vendor's terms, not OpenRouter's")
+
+    def _check_bounds(self, bad: Callable[[str, str], ValueError]) -> None:
+        mp, tokens, ref_tokens = (
+            self.max_output_megapixels, self.output_image_tokens, self.input_image_tokens
+        )
+        if mp is not None and not (math.isfinite(mp) and mp > 0):
+            raise bad("max_output_megapixels", f"{mp!r} is not a finite number > 0")
+        if tokens is not None:
+            allowed = set(self.resolutions) or {"default"}
+            if not tokens or not set(tokens) <= allowed:
+                raise bad(
+                    "output_image_tokens",
+                    f"keys {sorted(tokens)} must be among {sorted(allowed)}",
+                )
+            if any(n <= 0 for n in tokens.values()):
+                raise bad("output_image_tokens", "every count must be > 0")
+        if ref_tokens is not None and ref_tokens <= 0:
+            raise bad("input_image_tokens", f"{ref_tokens!r} is not > 0")
+        has_bound = (mp, tokens, ref_tokens) != (None, None, None)
+        if has_bound != (self.bound_source is not None):
+            raise bad("bound_source", "needed exactly when an upper bound is recorded")
+        if self.bound_source is not None:
+            stamp, _, rest = self.bound_source.partition(" ")
+            try:
+                date.fromisoformat(stamp)
+            except ValueError as e:
+                raise bad("bound_source", "must start with an ISO date") from e
+            if "https://" not in rest:
+                raise bad("bound_source", "must cite an https:// source after the date")
 
 
 def _prices(*rows: tuple[Billable, PriceUnit, float]) -> tuple[OpenRouterPrice, ...]:
@@ -166,6 +203,11 @@ _ENTRIES = (
         pricing=_prices(("input_image", "token", 0.000002), ("output_image", "token", 0.00012)),
         upstream_terms_url="https://ai.google.dev/gemini-api/terms",
         snapshot_date=_SNAPSHOT,
+        # "1K … and up to 2048x2048px (2K) consume 1120 tokens", "4K … 2000
+        # tokens"; "Image input is set at 560 tokens".
+        output_image_tokens=MappingProxyType({"1K": 1120, "2K": 1120, "4K": 2000}),
+        input_image_tokens=560,
+        bound_source="2026-09-30 https://ai.google.dev/gemini-api/docs/pricing (Gemini 3 Pro Image)",
     ),
     OpenRouterModel(
         id="google/gemini-3.1-flash-image",
@@ -184,6 +226,10 @@ _ENTRIES = (
         pricing=_prices(("output_image", "token", 0.00006)),
         upstream_terms_url="https://ai.google.dev/gemini-api/terms",
         snapshot_date=_SNAPSHOT,
+        # "0.5K (512px) consume 747 tokens", 1K 1120, 2K 1680, 4K 2520. No
+        # input_image price row, so a reference needs no token bound.
+        output_image_tokens=MappingProxyType({"512": 747, "1K": 1120, "2K": 1680, "4K": 2520}),
+        bound_source="2026-09-30 https://ai.google.dev/gemini-api/docs/pricing (Gemini 3.1 Flash Image)",
     ),
     OpenRouterModel(
         id="black-forest-labs/flux.2-pro",
@@ -199,6 +245,12 @@ _ENTRIES = (
         pricing=_prices(("output_image", "megapixel", 0.03)),
         upstream_terms_url="https://bfl.ai/legal/developer-terms-of-service",
         snapshot_date=_SNAPSHOT,
+        # "FLUX.2 generates images up to 4MP (e.g., 2048x2048)": the example
+        # is 4.194304 MP, so the bound is 2048 x 2048, not a round 4.0.
+        max_output_megapixels=2048 * 2048 / 1e6,
+        bound_source=(
+            "2026-09-30 https://help.bfl.ai/articles/8531149640-what-are-the-resolution-limits"
+        ),
     ),
     OpenRouterModel(
         id="bytedance-seed/seedream-4.5",

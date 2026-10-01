@@ -106,6 +106,35 @@ def _generate_args(reference: Path | None, out: Path, *, subject: str, occasion:
 
 
 @pytest.mark.usefixtures("isolated_config")
+class TestMaxCost:
+    """No OpenAI model has a verified upper bound recorded (#151 scope 3)."""
+
+    def test_openai_without_a_recorded_price_exits_2_before_the_call(
+        self,
+        runner: CliRunner,
+        tmp_path: Path,
+        reference_png: Path,
+        fake_client: FakeImageClient,
+    ) -> None:
+        out_dir = tmp_path / "out"
+        result = runner.invoke(
+            app,
+            _generate_args(
+                reference_png, out_dir / "border.png", subject="watercolor balloons",
+                occasion="birthday",
+                extra=["--provider", "openai", "--max-cost", "1", "--accept-ai-terms"],
+            ),
+        )  # fmt: skip
+        assert result.exit_code == 2, result.output
+        assert fake_client.calls == []
+        assert not out_dir.exists()
+        assert (
+            "Error: no price on record for gpt-image-2 (openai); --max-cost cannot be checked. "
+            "Omit --max-cost or pick a model with a recorded price."
+        ) in " ".join(_plain(result.output).split())
+
+
+@pytest.mark.usefixtures("isolated_config")
 class TestHappyPath:
     def test_generates_asset_and_sidecar(
         self,

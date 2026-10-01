@@ -6,6 +6,42 @@ regenerated on purpose, and which tests guard it. Moved out of
 limit). New entries go at the top of this file; `CLAUDE.md` gets at
 most a one-line pointer. User-facing notes belong in `RELEASE_NOTES.md`.
 
+- **2026-09-30 — `ai-asset generate --max-cost USD` (issue #151, spec
+  §6.7)**: new stdlib-only `core/ai_cost.py`. `estimate_max_cost` sums one
+  upper bound per allowlist `pricing` row, offline: `image` rows cost
+  `× 1` (output) or `× n_refs` (input); a `megapixel` output costs
+  `× max_output_megapixels`, else the tier's `L × round(L × short/long)`
+  px, and a megapixel input `×` the probed reference's exact MP; a `token`
+  output costs `× output_image_tokens[tier or "default"]`, a token input
+  image `× n_refs × input_image_tokens`, and `input_text` `× (UTF-8 bytes
+  + 16)`, a bound, not a count. Any missing bound or unknown unit /
+  billable raises `NoPriceOnRecordError` (D4); OpenAI reads
+  `ModelSizePolicy.max_price_usd`, which stays `None` for every model (no
+  verified per-request upper bound), so `--max-cost` with OpenAI exits 2.
+  `TIER_LONG_EDGE_PX` *is* `RESOLUTION_LONG_EDGE_PX`. `OpenRouterModel`
+  gains `max_output_megapixels`, `output_image_tokens`,
+  `input_image_tokens` and a structured `bound_source` ("YYYY-MM-DD
+  https://…"), required exactly when a bound is set and checked at import,
+  as are token keys ⊆ the entry's tiers. Bounds (read 2026-09-30):
+  gemini-3-pro-image 1K/2K 1120, 4K 2000 output tokens, 560 per input
+  image; gemini-3.1-flash-image 512 747, 1K 1120, 2K 1680, 4K 2520
+  (ai.google.dev/gemini-api/docs/pricing); flux.2-pro 2048×2048 =
+  4.194304 MP (BFL: "up to 4MP (e.g., 2048x2048)", so **not** the issue's
+  round 4.0). Worked moo-a6 numbers (3:4 at 2K, one 8×8 reference):
+  seedream-4.5 $0.0400, flux.2-pro $0.1258, gemini-3-pro-image $0.1355,
+  gemini-3.1-flash-image $0.1008; openai/gpt-image-2 has no token bound.
+  `generate_ai_asset(max_cost_usd=…)` checks after consent and rails,
+  before the call (re-probing the reference only when a cap is set), and
+  records `cost_cap_usd` / `cost_estimate_usd` in the sidecar; the CLI
+  validates the cap (finite, > 0) before consent and maps both refusals to
+  exit 2, and after the call warns when the reported cost is above the cap
+  or unknown. The refresh script treats the bounds like
+  `upstream_terms_url` (`REVIEWED_FIELDS`: carried over, never drift;
+  token bounds for a tier the endpoint dropped are trimmed). Guarded by
+  `tests/unit/test_ai_cost.py` (worked examples, one test per formula row,
+  a Hypothesis monotonicity property, a drift guard over every entry ×
+  target × reference), `TestMaxCost` in `test_ai_assets.py` and both
+  `ai-asset` CLI test files. Collected tests 3857 → 3930.
 - **2026-09-30 — `ai-asset generate --provider openrouter` end to end
   (issue #150, OpenRouter program Phase 2)**: `AIProvider.OPENROUTER`
   and its `ProviderInfo` (key `OPENROUTER_API_KEY`, provisional default

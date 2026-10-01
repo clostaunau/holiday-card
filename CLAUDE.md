@@ -120,7 +120,9 @@ src/holiday_card/
                         #   decode_b64_image / open_generated_image: model bytes as untrusted input (#141)
     ai_openai.py        # L3 OpenAI image-client adapter (only module importing openai)
     ai_openrouter_models.py  # L3 curated OpenRouter image allowlist: pinned endpoint, capabilities,
-                        #   pricing, upstream terms (stdlib only, #148)
+                        #   pricing, upstream terms (stdlib only, #148); cited --max-cost bounds (#151)
+    ai_cost.py          # L3 offline upper-bound price for --max-cost (#151): estimate_max_cost from
+                        #   the allowlist rows + bounds; NoPriceOnRecordError / CostCapExceededError
     ai_openrouter.py    # L3 OpenRouter `/images` client over stdlib urllib (#149): the only
                         #   `urllib.request` importer; no redirects, capped read, split timeouts;
                         #   wired to the CLI as `--provider openrouter` (#150)
@@ -413,6 +415,9 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 - Tests that hand-place a panel must pass `CompileContext(impose=False)`;
   otherwise imposition moves a `front` panel to the bottom-right (#58).
+- `replace(entry, resolutions=…)` on a shipped OpenRouter entry must also
+  clear its tier-keyed `--max-cost` bounds (`_UNBOUNDED` in
+  `test_ai_assets.py`), or `OpenRouterModel.__post_init__` refuses it (#151).
 - Tests that exercise bleed must pass an explicit
   `PageGeometry.us_letter(bleed_in=0.125)`: the default `letter` page has
   no bleed (#59).
@@ -456,9 +461,9 @@ the "this will bite you" kind goes in Gotchas above. User-facing notes
 go in `RELEASE_NOTES.md`.
 
 In flight: the OpenRouter image-provider program (tracker #139); #141,
-#142, #143, #144, #145, #146, #147, #148, #149 and #150 have landed
+#142, #143, #144, #145, #146, #147, #148, #149, #150 and #151 have landed
 (OpenRouter is usable; its default model is provisional until #140). Next:
-#151 (`--max-cost`), #152 (`ai-asset models`), #153. **Legacy-read deadline (O7):** delete the
+#152 (`ai-asset models`), #153. **Legacy-read deadline (O7):** delete the
 `LicenseRecord` `openai_policy_url` reader (`# LEGACY(v1.3.0 sidecar…)`)
 in the first release after the one that ships #147.
 

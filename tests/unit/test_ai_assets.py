@@ -16,12 +16,14 @@ import struct
 import zlib
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from PIL import EpsImagePlugin, Image, ImageFile
 
+from holiday_card.core import ai_assets
 from holiday_card.core.ai_assets import (
     MAX_IMAGE_BYTES,
     MODEL_SIZE_POLICIES,
@@ -48,6 +50,7 @@ from holiday_card.core.ai_assets import (
     request_shape_record,
     size_is_allowed,
 )
+from holiday_card.core.ai_cost import CostCapExceededError, NoPriceOnRecordError
 from holiday_card.core.ai_openrouter_models import (
     OPENROUTER_IMAGE_MODELS,
     openrouter_model,
@@ -234,6 +237,12 @@ _GEOMETRY_TARGETS = sorted(name for name, t in REGISTRY.items() if t.geometry is
 _GEMINI_PRO = "google/gemini-3-pro-image"
 
 
+# Synthetic tier sets drop the recorded --max-cost bounds (keyed by tier, #151).
+_UNBOUNDED: dict[str, Any] = {
+    "output_image_tokens": None, "input_image_tokens": None, "bound_source": None,
+}  # fmt: skip
+
+
 class TestChooseAspectShape:
     """OpenRouter sizing: nearest aspect in log space, then a resolution tier (#148)."""
 
@@ -332,11 +341,11 @@ class TestChooseAspectShape:
                 assert choose_aspect_shape(flipped, *size) == choose_aspect_shape(entry, *size)
 
     def test_resolution_falls_back_to_the_largest_tier(self) -> None:
-        entry = replace(openrouter_model(_GEMINI_PRO), resolutions=("1K", "2K"))
+        entry = replace(openrouter_model(_GEMINI_PRO), resolutions=("1K", "2K"), **_UNBOUNDED)
         assert choose_aspect_shape(entry, 2550, 3300).resolution == "2K"
 
     def test_resolution_is_the_smallest_tier_that_covers_the_long_edge(self) -> None:
-        entry = replace(openrouter_model(_GEMINI_PRO), resolutions=("512", "1K", "2K"))
+        entry = replace(openrouter_model(_GEMINI_PRO), resolutions=("512", "1K", "2K"), **_UNBOUNDED)
         assert choose_aspect_shape(entry, 1000, 1000).resolution == "1K"
         assert choose_aspect_shape(entry, 1024, 500).resolution == "1K"
         assert choose_aspect_shape(entry, 1025, 500).resolution == "2K"
@@ -960,3 +969,87 @@ class TestBakeMarker:
         assert marker.timestamp == "2027-01-15T10:00:00Z"
         assert "/" not in payload
         assert str(tmp_path) not in payload
+
+
+# --- --max-cost (#151) -------------------------------------------------------
+
+
+@pytest.fixture
+def priced_gpt_image_2(monkeypatch: pytest.MonkeyPatch) -> float:
+    """Give gpt-image-2 a recorded upper bound so the cap has something to check."""
+    price = 0.13
+    policy = replace(MODEL_SIZE_POLICIES["gpt-image-2"], max_price_usd=price)
+    monkeypatch.setitem(MODEL_SIZE_POLICIES, "gpt-image-2", policy)
+    return price
+
+
+def _capped_run(
+    tmp_path: Path,
+    client: FakeImageClient,
+    cap: float | None,
+    *,
+    occasion: OccasionType = OccasionType.CHRISTMAS,
+) -> Path:
+    ref = tmp_path / "ref.png"
+    Image.new("RGB", (8, 8), (1, 2, 3)).save(ref, format="PNG")
+    out = tmp_path / "out" / "asset.png"
+    generate_ai_asset(
+        prompt="watercolor pine bough border",
+        occasion=occasion,
+        out_path=out,
+        request=replace(_small_request(), reference_path=str(ref)),
+        client=client,
+        timestamp="2027-01-15T10:00:00Z",
+        consent_path=_consented(tmp_path),
+        max_cost_usd=cap,
+    )
+    return out
+
+
+class TestMaxCost:
+    @pytest.mark.usefixtures("priced_gpt_image_2")
+    def test_over_the_cap_refuses_before_the_call(self, tmp_path: Path) -> None:
+        client = FakeImageClient()
+        with pytest.raises(CostCapExceededError) as err:
+            _capped_run(tmp_path, client, 0.10)
+        assert err.value.estimate.usd == 0.13
+        assert not client.calls
+        assert not (tmp_path / "out").exists()
+
+    def test_under_the_cap_calls_once_and_records_cap_and_estimate(
+        self, tmp_path: Path, priced_gpt_image_2: float
+    ) -> None:
+        client = FakeImageClient()
+        out = _capped_run(tmp_path, client, priced_gpt_image_2)  # equal is allowed
+        assert client.calls is not None and len(client.calls) == 1
+        record = read_sidecar(out)
+        assert record.cost_cap_usd == priced_gpt_image_2
+        assert record.cost_estimate_usd == priced_gpt_image_2
+
+    def test_no_price_on_record_refuses_before_the_call(self, tmp_path: Path) -> None:
+        client = FakeImageClient()
+        with pytest.raises(NoPriceOnRecordError, match=r"gpt-image-2 \(openai\)"):
+            _capped_run(tmp_path, client, 1.0)
+        assert not client.calls
+        assert not (tmp_path / "out").exists()
+
+    @pytest.mark.usefixtures("priced_gpt_image_2")
+    def test_rails_come_before_the_cost_check(self, tmp_path: Path) -> None:
+        client = FakeImageClient()
+        with pytest.raises(RailRefusedError):
+            _capped_run(tmp_path, client, 0.01, occasion=OccasionType.SYMPATHY)
+        assert not client.calls
+
+    def test_no_cap_never_estimates(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def spy(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("estimate_max_cost must not run without --max-cost")
+
+        monkeypatch.setattr(ai_assets, "estimate_max_cost", spy)
+        out = _capped_run(tmp_path, FakeImageClient(), None)
+        record = read_sidecar(out)
+        assert record.cost_cap_usd is None
+        assert record.cost_estimate_usd is None
+        dumped = out.with_suffix(".license.yaml").read_text()
+        assert "cost_cap_usd: null" in dumped
