@@ -500,7 +500,7 @@ def open_generated_image(
     image_bytes: bytes, media_type: ImageMediaType, *, keep_alpha: bool = False
 ) -> Image.Image:
     """Decode model output as untrusted input and return a loaded RGB copy
-    (RGBA with ``keep_alpha``).
+    (RGBA with ``keep_alpha`` when the image has alpha; RGB still when not).
 
     Only PNG, JPEG and WebP decoders are consulted (never EPS / Ghostscript),
     the bytes must be the declared ``media_type``, a single frame, and at
