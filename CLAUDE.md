@@ -466,10 +466,12 @@ here**: CLAUDE.md gets at most a one-line pointer, and a new rule of
 the "this will bite you" kind goes in Gotchas above. User-facing notes
 go in `RELEASE_NOTES.md`.
 
-In flight: the OpenRouter image-provider program (tracker #139); #141,
-#142, #143, #144, #145, #146, #147, #148, #149, #150, #151, #152, #153, #168, #172,
-#173 and #174 have landed (OpenRouter is usable; #140's live calls confirmed its
-default model, O11); panel `background_image` is #153 in the log. **Legacy-read deadline (O7):** delete the
+The OpenRouter image-provider program is complete (tracker #139, closed
+2026-10-01): #140-#153 and follow-ups #168, #172-#174 have landed, and #140's
+live calls confirmed its default model (O11). Panel `background_image` is #153
+in the log. Still open: #169 (transparent-background motifs), blocked until the
+owner picks a model that advertises `background: transparent` and a live call
+proves alpha (candidates in the issue). **Legacy-read deadline (O7):** delete the
 `LicenseRecord` `openai_policy_url` reader (`# LEGACY(v1.3.0 sidecar…)`)
 in the first release after the one that ships #147.
 
