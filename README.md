@@ -321,6 +321,47 @@ holiday-card ai-asset generate \
   --output assets/ai/pine-bough-border.png
 ```
 
+### OpenRouter (optional second provider)
+
+[OpenRouter](https://openrouter.ai) reaches a curated list of image
+models from other vendors. It needs no install extra, only a key:
+
+```bash
+export OPENROUTER_API_KEY=sk-or-v1-...
+
+holiday-card ai-asset generate --provider openrouter \
+  --model google/gemini-3-pro-image \
+  --subject "watercolor pine bough border, sage green and burgundy" \
+  --reference path/to/reference.png \
+  --occasion christmas --export-for moo-a6 \
+  --output assets/ai/pine-bough-border.png
+```
+
+Set `HOLIDAY_CARD_AI_PROVIDER=openrouter` to make it your default
+(`openai` stays the default otherwise). What is different:
+
+* **The upstream provider is pinned; there are no fallbacks.** Each
+  model goes to exactly one vendor endpoint (e.g. Google AI Studio), and
+  only reviewed models are allowed (an unknown `--model` exits 2 and
+  lists them).
+* **Sizing is an aspect ratio + resolution tier**, then cropped and
+  resampled to trim+bleed at 300 PPI. Many models come in below 300 PPI
+  at A6; the CLI warns and the sidecar records `native_ppi`.
+* **Retention and training are an OpenRouter *account* setting.** The
+  image endpoint has no per-request opt-out: review
+  <https://openrouter.ai/workspaces/default/settings> before you send a
+  private reference image.
+* **Output ownership follows the upstream vendor's terms**, not
+  OpenRouter's; the vendor's terms URL is recorded in each sidecar.
+* **Reference images are not screened** for trademarks or likenesses;
+  only the prompt goes through the rails. You are responsible for what
+  you upload.
+* `--seed` works only for models that take one (e.g.
+  `black-forest-labs/flux.2-pro`).
+
+The model list and the API behaviour it relies on are recorded in
+[`docs/industry-review/openrouter-image-api-snapshot.md`](docs/industry-review/openrouter-image-api-snapshot.md).
+
 Guardrails that ship on by default (see
 `docs/industry-review/consensus-ai-feature.md`):
 
@@ -332,17 +373,21 @@ Guardrails that ship on by default (see
   style anchor); `--unsafe-no-style-anchor` opts out (discouraged).
 * **POD-aware sizing** — the baked PNG is exactly the `--export-for`
   target's trim + 2×bleed at 300 PPI (1314×1824 px for `moo-a6`), tagged
-  sRGB IEC61966-2.1 with `dpi=300`. The API is asked for a size the
-  model accepts (`gpt-image-2` by default: the target rounded up to
-  16-px multiples; legacy fixed-size models get their closest aspect),
-  and the result is centre-cropped and resampled to the target. If the
-  model's output is below 300 PPI at print size the CLI warns and the
-  sidecar records `native_ppi`.
-* **Provider and model** — `--provider` (default `openai`, or
-  `$HOLIDAY_CARD_AI_PROVIDER`) and `--model` (default `gpt-image-2`)
-  pick what is called; an unknown model exits 2 and lists the known
-  ones. `--seed` is refused (exit 2) for models that take no seed, which
-  today is every OpenAI model.
+  sRGB IEC61966-2.1 with `dpi=300`. The request is what each provider
+  accepts: OpenAI is asked for pixels (`gpt-image-2` by default: the
+  target rounded up to 16-px multiples; legacy fixed-size models get
+  their closest aspect); OpenRouter is asked for the nearest aspect
+  ratio and the smallest resolution tier that covers the target (`3:4`
+  at `2K` for `moo-a6`). Either way the result is centre-cropped and
+  resampled to the target. If the model's output is below 300 PPI at
+  print size the CLI warns and the sidecar records `native_ppi`.
+* **Provider and model** — `--provider openai|openrouter` (default
+  `openai`, or `$HOLIDAY_CARD_AI_PROVIDER`; never inferred from the
+  model id) and `--model` (default `gpt-image-2` for OpenAI,
+  `google/gemini-3-pro-image` for OpenRouter) pick what is called; an
+  unknown model exits 2 and lists the known ones. `--seed` is refused
+  (exit 2) for models that take no seed, which includes every OpenAI
+  model.
 * **Hard category rails** — sympathy / condolence / miscarriage /
   pet_loss occasions, religious iconography, trademarked brands, and
   recognizable-likeness / photo-replacement prompts **refuse by
@@ -351,11 +396,11 @@ Guardrails that ship on by default (see
 * **Provenance sidecar** — every asset gets a sibling
   `<asset>.license.yaml` recording the prompt, model, seed, timestamp,
   the cost the provider reported (or `unknown` when it reports none;
-  nothing is estimated), and the provider's policy URLs in force at
-  generation time. It also names the `provider`, the `requested_model`
+  nothing is estimated), and the provider's and upstream vendor's
+  policy URLs in force at generation time. It also names the `provider`, the `requested_model`
   next to the `model` actually called, the `request_shape` sent, the
   `media_type` the model returned, and, for a routing provider, the
-  `provider_route` and `generation_id`. The PNG itself is marked as AI-generated, and a
+  provider route and `generation_id`. The PNG itself is marked as AI-generated, and a
   card that places it refuses to render (exit 2) once the sidecar is
   missing or belongs to another file.
 * **Never a photo** — `create` / `preview -i` refuse any AI asset (exit 2,
@@ -367,7 +412,8 @@ Guardrails that ship on by default (see
   JPEG, checked before anything is uploaded.
 * **Disclosed in every file** — a card that embeds AI imagery says so in
   its metadata, naming the model from the asset's sidecar: the PDF
-  `/Subject` (`Contains AI-generated imagery (gpt-image-2)`) and XMP
+  `/Subject` (`Contains AI-generated imagery (gpt-image-2)`; an
+  OpenRouter model reads `<model> via openrouter`) and XMP
   (`dc:description`, `hc:aiModels`, the IPTC `DigitalSourceType`), the
   SVG `<desc>` and RDF `<metadata>`, and the PNG preview's
   `Description`. In `--export-for` per-panel output only the panels that
@@ -417,7 +463,7 @@ critic breakdowns. Recent work targets the panel's "1-month" and
 * ✅ Bold Markdown for curated editorial serifs — `**bold**` and `***bold-italic***` on `Cormorant` / `PlayfairDisplay` resolve to bundled static Bold + BoldItalic TTFs (instanced from the variable masters at weight=700). Closes the bold-fallback documented limitation for the two editorial-serif families
 * ⏳ Multi-panel spill for long Markdown letters
 * ⏳ Father's Day templates (calendar-driven SKU expansion)
-* ✅ AI imagery (Leapfrog 3) — authoring-time `ai-asset generate` subcommand that bakes one image to disk with a provenance sidecar (never runs at render time). Image-reference-mode default, POD-aware sizing (exact trim+bleed at 300 PPI, model-supported request sizes), sRGB-tagged, first-use consent, trademark blocklist, and hard category rails (sympathy / religious iconography / likeness / photo replacement refuse by default). Opt-in via `pip install holiday-card[ai]` + `OPENAI_API_KEY`. See "AI imagery" below
+* ✅ AI imagery (Leapfrog 3) — authoring-time `ai-asset generate` subcommand that bakes one image to disk with a provenance sidecar (never runs at render time). Image-reference-mode default, POD-aware sizing (exact trim+bleed at 300 PPI, model-supported request sizes), sRGB-tagged, first-use consent, trademark blocklist, and hard category rails (sympathy / religious iconography / likeness / photo replacement refuse by default). Opt-in via `pip install holiday-card[ai]` + `OPENAI_API_KEY`, or via OpenRouter as a second provider (`--provider openrouter` + `OPENROUTER_API_KEY`, no extra; pinned upstream vendor, no fallbacks). See "AI imagery" below
 * ❌ Render-time AI fill, AI-generated copy, panel/photo replacement — deliberately out of scope per the AI-feature consensus doc
 
 ## Architecture

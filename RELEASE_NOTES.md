@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### OpenRouter as an optional second AI image provider
+
+`ai-asset generate --provider openrouter` reaches a curated list of image
+models through OpenRouter. It needs no install extra, only
+`OPENROUTER_API_KEY`; set `HOLIDAY_CARD_AI_PROVIDER=openrouter` to make
+it your default. OpenAI stays the default provider, so nothing changes
+unless you opt in. Each model is pinned to one upstream vendor with no
+fallbacks, and the request is an aspect ratio plus a resolution tier,
+cropped and resampled to trim+bleed at 300 PPI. OpenRouter needs its own
+one-time consent: it says your prompt and reference go to OpenRouter and
+to that vendor, that the vendor's terms govern the output, that
+retention and training are settings of your OpenRouter account, and that
+reference images are not screened. The sidecar records the route, the
+request shape, the generation id, the reported cost and the vendor's
+terms URL; the disclosure in PDF / SVG / PNG metadata names the model
+as `<model> via openrouter`. Exit codes 6 (provider refused) and 7
+(provider or network error, retryable) apply to both providers. The
+`--export-for` help no longer claims the stale "300 DPI, /16" sizing.
+
 ### Cards with AI imagery say so in their metadata
 
 A card that embeds an AI asset now discloses it in every output format,

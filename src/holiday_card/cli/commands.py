@@ -20,7 +20,7 @@ from typer.core import TyperGroup
 from holiday_card import __version__
 from holiday_card.cli.exit_codes import EXIT_CODES_HELP, ExitCode
 from holiday_card.core.ai_provenance import ai_disclosure_label
-from holiday_card.core.ai_providers import AIProvider, make_image_client
+from holiday_card.core.ai_providers import PROVIDERS, AIProvider, make_image_client
 from holiday_card.core.card_request import (
     BuildReport,
     CardRequest,
@@ -903,7 +903,9 @@ ai_asset_app = typer.Typer(
     help=(
         "Authoring-time AI imagery (personal use only). Bakes one image "
         "to disk with a provenance sidecar; never runs at render time. "
-        "Requires `pip install holiday-card\\[ai]` and OPENAI_API_KEY."
+        "Choose the provider with --provider or HOLIDAY_CARD_AI_PROVIDER: "
+        "openai (the default) needs `pip install holiday-card\\[ai]` and "
+        "OPENAI_API_KEY; openrouter needs only OPENROUTER_API_KEY."
     ),
     pretty_exceptions_show_locals=False,  # never print api keys / headers from frames
 )
@@ -962,21 +964,24 @@ def ai_asset_generate(
     export_for: str = typer.Option(
         "moo-a6",
         "--export-for",
-        help="Print target whose trim+bleed geometry sizes the image (300 DPI, /16).",
+        help="Print target whose geometry sizes the image (trim+bleed at 300 PPI).",
     ),
     provider: AIProvider = typer.Option(
         AIProvider.OPENAI,
         "--provider",
         envvar="HOLIDAY_CARD_AI_PROVIDER",
         help=(
-            "Image provider. Default: $HOLIDAY_CARD_AI_PROVIDER, else openai. "
-            "Never inferred from --model."
+            "Image provider: openai (key OPENAI_API_KEY, needs the \\[ai] extra) or "
+            "openrouter (key OPENROUTER_API_KEY). Default: $HOLIDAY_CARD_AI_PROVIDER, "
+            "else openai. Never inferred from --model."
         ),
     ),
     model: str | None = typer.Option(
         None,
         "--model",
-        help="Model id for --provider (default: the provider's default, gpt-image-2 for openai).",
+        help="Model id for --provider (default: "
+        + ", ".join(f"{info.default_model} for {p.value}" for p, info in PROVIDERS.items())
+        + ").",
     ),
     seed: int | None = typer.Option(
         None,
@@ -1005,6 +1010,12 @@ def ai_asset_generate(
           --subject "watercolor pine bough border, sage green and burgundy" \\
           --reference path/to/reference.png --style watercolor \\
           --occasion christmas --export-for moo-a6 -o assets/ai/border.png
+
+    Through OpenRouter (OPENROUTER_API_KEY; no install extra):
+
+        holiday-card ai-asset generate --provider openrouter \\
+          --subject "watercolor pine bough border, sage green and burgundy" \\
+          --reference path/to/reference.png --occasion christmas -o assets/ai/border.png
     """
     from holiday_card.core.ai_assets import (
         ConsentRequiredError,
@@ -1032,7 +1043,12 @@ def ai_asset_generate(
         raise typer.Exit(ExitCode.USAGE) from e
 
     # Usage errors come before consent, so they never record it as a side effect.
-    from holiday_card.core.ai_providers import UnknownModelError, resolve_model, supports_seed
+    from holiday_card.core.ai_providers import (
+        UnknownModelError,
+        reference_limits,
+        resolve_model,
+        supports_seed,
+    )
 
     try:
         resolved_model = resolve_model(provider, model)
@@ -1043,6 +1059,27 @@ def ai_asset_generate(
         typer.secho(
             f"Error: --seed is not supported by {provider.value} model {resolved_model!r} "
             "(it takes no seed, so the image could not be reproduced). Omit --seed.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(ExitCode.USAGE)
+
+    # S2 per model: a model that takes no reference can only run unanchored,
+    # and one that needs a reference cannot.
+    min_refs, max_refs = reference_limits(provider, resolved_model)
+    if max_refs == 0 and (reference is not None or not unsafe_no_style_anchor):
+        typer.secho(
+            f"Error: {provider.value} model {resolved_model!r} accepts no reference image, "
+            "so it cannot be style-anchored. Pass --unsafe-no-style-anchor without "
+            "--reference to use it, or choose another --model.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(ExitCode.USAGE)
+    if min_refs >= 1 and reference is None:
+        typer.secho(
+            f"Error: {provider.value} model {resolved_model!r} needs a --reference image; "
+            "--unsafe-no-style-anchor cannot be used with it.",
             fg=typer.colors.RED,
             err=True,
         )
@@ -1072,7 +1109,7 @@ def ai_asset_generate(
     # First-use consent gate.
     consent_path = default_consent_path()
     if not has_consented(consent_path, provider):
-        notice = consent_notice(provider, path=consent_path)
+        notice = consent_notice(provider, path=consent_path, model=resolved_model)
         if accept_ai_terms:
             record_consent(consent_path, provider)
             typer.echo(notice)
@@ -1121,6 +1158,9 @@ def ai_asset_generate(
     except AIDependencyError as e:
         typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(ExitCode.ENVIRONMENT) from e
+    except ProviderError as e:  # e.g. a key with whitespace inside it, refused before any call
+        typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(_PROVIDER_EXIT[e.kind]) from e
 
     # Size for the model the client actually calls (#87).
     request = build_ai_request(
@@ -1176,9 +1216,12 @@ def ai_asset_generate(
 
     typer.secho(f"AI asset written: {result.asset_path}", fg=typer.colors.GREEN)
     typer.echo(f"  Provenance: {result.sidecar_path.name}")
+    route = f" (route: {result.provider_route})" if result.provider_route else ""
+    typer.echo(f"  Provider: {client.provider.value}{route}")
+    typer.echo(f"  Model: {client.model}")
     typer.echo(
         f"  Size: {result.width_px}x{result.height_px}px @ {request.dpi} DPI (sRGB), "
-        f"{result.native_ppi:.1f} PPI native from {client.model}"
+        f"{result.native_ppi:.1f} PPI native"
     )
     if result.native_ppi < request.dpi:
         typer.secho(

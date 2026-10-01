@@ -32,7 +32,7 @@ import os
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, assert_never
 
 import yaml
 from PIL import Image
@@ -45,7 +45,7 @@ from pydantic import (
     model_validator,
 )
 
-from holiday_card.core.ai_providers import PROVIDERS, AIProvider
+from holiday_card.core.ai_providers import PROVIDERS, AIProvider, upstream_vendor
 
 # No cycle: core.images never imports this module.
 from holiday_card.core.images import ImageSourceError
@@ -91,14 +91,24 @@ This acknowledgement is recorded once to {path}.
 """
 
 
-def consent_notice(provider: AIProvider, *, path: Path) -> str:
+def consent_notice(provider: AIProvider, *, path: Path, model: str | None = None) -> str:
     """The first-use notice for ``provider``, naming the consent file ``path``.
 
-    The OpenAI notice is byte-identical to the v1.3.0 notice.
+    For a routed provider and a ``model``, it also names the upstream vendor
+    the request goes to and that vendor's terms (from the allowlist). The
+    OpenAI notice is byte-identical to the v1.3.0 notice.
     """
+    vendor_bullet = ""
+    if model is not None and (vendor := upstream_vendor(provider, model)) is not None:
+        name, terms_url, route = vendor
+        vendor_bullet = (
+            f"  * For {model} the upstream vendor is {name} (route {route});\n"
+            f"    its terms govern the output: {terms_url}\n"
+        )
     return (
         _HEADER
         + PROVIDERS[provider].consent_blurb
+        + vendor_bullet
         + _COMMON_BULLETS
         + _TRAILER.format(path=path)
     )
@@ -317,11 +327,16 @@ def photo_slot_refusal(path: Path) -> AIProvenanceError:
 def ai_disclosure_label(record: LicenseRecord) -> str:
     """The human-readable label a disclosure names for ``record``.
 
-    The ONLY place the label is built (#150 adds the provider for routed
-    models, e.g. ``<model> via openrouter``; a direct provider's label is
-    the model alone).
+    The ONLY place the label is built: a routed model is ``<model> via
+    openrouter``; a direct provider's label is the model alone.
     """
-    return record.model
+    match record.provider:
+        case AIProvider.OPENAI:
+            return record.model
+        case AIProvider.OPENROUTER:
+            return f"{record.model} via {record.provider.value}"
+        case _:
+            assert_never(record.provider)
 
 
 def default_consent_path() -> Path:

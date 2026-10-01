@@ -24,8 +24,10 @@ from holiday_card.core.ai_providers import (
     known_models,
     make_image_client,
     policy_urls_for,
+    reference_limits,
     resolve_model,
     supports_seed,
+    upstream_vendor,
 )
 
 
@@ -148,3 +150,112 @@ def test_import_loads_neither_openai_nor_pil() -> None:
         "assert not loaded, loaded\n"
     )
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+# --------------------------------------------------------------------------- OpenRouter (#150)
+
+OR_KEY = "sk-or-v1-" + "ab" * 32
+OR_PRIVACY_URL = "https://openrouter.ai/workspaces/default/settings"
+
+
+class TestOpenRouterRegistry:
+    def test_key_variable_and_default_model_is_curated(self) -> None:
+        from holiday_card.core.ai_openrouter_models import OPENROUTER_IMAGE_MODELS
+
+        info = PROVIDERS[AIProvider.OPENROUTER]
+        assert info.api_key_env == "OPENROUTER_API_KEY"
+        assert info.default_model == "google/gemini-3-pro-image"
+        assert info.default_model in OPENROUTER_IMAGE_MODELS
+
+    def test_policy_urls_are_the_terms_and_the_account_privacy_settings(self) -> None:
+        assert PROVIDERS[AIProvider.OPENROUTER].policy_urls == (
+            "https://openrouter.ai/terms",
+            OR_PRIVACY_URL,
+        )
+
+    def test_known_models_are_the_curated_allowlist(self) -> None:
+        from holiday_card.core.ai_openrouter_models import OPENROUTER_IMAGE_MODELS
+
+        assert known_models(AIProvider.OPENROUTER) == tuple(sorted(OPENROUTER_IMAGE_MODELS))
+
+    def test_unknown_model_lists_the_curated_ids(self) -> None:
+        with pytest.raises(UnknownModelError) as info:
+            resolve_model(AIProvider.OPENROUTER, "foo/bar")
+        assert "unknown openrouter image model 'foo/bar'" in str(info.value)
+        assert "google/gemini-3-pro-image" in str(info.value)
+
+    def test_the_provider_is_never_inferred_from_a_slash(self) -> None:
+        # O5 / §6.8: an OpenRouter id is not an OpenAI model.
+        with pytest.raises(UnknownModelError):
+            resolve_model(AIProvider.OPENAI, "google/gemini-3-pro-image")
+
+    @pytest.mark.parametrize(
+        ("model", "seed"),
+        [("google/gemini-3-pro-image", False), ("black-forest-labs/flux.2-pro", True)],
+    )
+    def test_seed_support_is_the_allowlist_flag(self, model: str, seed: bool) -> None:
+        assert supports_seed(AIProvider.OPENROUTER, model) is seed
+
+    def test_policy_urls_add_the_upstream_vendor_terms(self) -> None:
+        assert policy_urls_for(AIProvider.OPENROUTER, "black-forest-labs/flux.2-pro") == (
+            "https://openrouter.ai/terms",
+            OR_PRIVACY_URL,
+            "https://bfl.ai/legal/developer-terms-of-service",
+        )
+
+    def test_reference_limits(self) -> None:
+        assert reference_limits(AIProvider.OPENROUTER, "google/gemini-3-pro-image") == (0, 14)
+        assert reference_limits(AIProvider.OPENAI, "gpt-image-2") == (0, 1)
+
+    def test_upstream_vendor(self) -> None:
+        assert upstream_vendor(AIProvider.OPENROUTER, "google/gemini-3-pro-image") == (
+            "Google (AI Studio)",
+            "https://ai.google.dev/gemini-api/terms",
+            "google-ai-studio/global",
+        )
+        assert upstream_vendor(AIProvider.OPENAI, "gpt-image-2") is None
+
+
+class TestOpenRouterFactory:
+    @pytest.mark.parametrize("value", [None, "", "   "], ids=["unset", "empty", "blank"])
+    def test_missing_key_names_the_variable_and_no_extra(
+        self, monkeypatch: pytest.MonkeyPatch, value: str | None
+    ) -> None:
+        if value is not None:
+            monkeypatch.setenv("OPENROUTER_API_KEY", value)
+        with pytest.raises(AIDependencyError) as info:
+            make_image_client(AIProvider.OPENROUTER)
+        assert "OPENROUTER_API_KEY" in str(info.value)
+        assert "[ai]" not in str(info.value)
+        assert "pip install" not in str(info.value)
+
+    def test_an_openai_key_does_not_cross_providers(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        with pytest.raises(AIDependencyError, match="OPENROUTER_API_KEY"):
+            make_image_client(AIProvider.OPENROUTER)
+
+    def test_builds_an_openrouter_client(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from holiday_card.core.ai_openrouter import OpenRouterImageClient
+
+        monkeypatch.setenv("OPENROUTER_API_KEY", OR_KEY)
+        client = make_image_client(AIProvider.OPENROUTER)
+        assert isinstance(client, OpenRouterImageClient)
+        assert client.provider is AIProvider.OPENROUTER
+        assert client.model == "google/gemini-3-pro-image"
+        assert OR_KEY not in repr(client)
+
+    def test_reads_the_module_transport_at_call_time(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from holiday_card.core import ai_openrouter
+        from holiday_card.core.ai_assets import AspectSize
+        from openrouter_fixtures import FakeTransport
+
+        fake = FakeTransport()
+        monkeypatch.setattr(ai_openrouter, "urllib_transport", fake)
+        monkeypatch.setenv("OPENROUTER_API_KEY", OR_KEY)
+        client = make_image_client(AIProvider.OPENROUTER)
+        client.generate(
+            prompt="pine", reference_path=None, shape=AspectSize("3:4", "2K"), seed=None
+        )
+        assert len(fake.calls) == 1

@@ -456,3 +456,81 @@ def test_disclosure_label_is_the_model() -> None:
     from holiday_card.core.ai_provenance import ai_disclosure_label
 
     assert ai_disclosure_label(_record(model="gpt-image-2")) == "gpt-image-2"
+
+
+def test_disclosure_label_names_the_router_for_openrouter() -> None:
+    from holiday_card.core.ai_provenance import ai_disclosure_label
+
+    record = _record(
+        provider=AIProvider.OPENROUTER,
+        requested_model="google/gemini-3-pro-image",
+        model="google/gemini-3-pro-image",
+        provider_route="google-ai-studio/global",
+        request_shape={"aspect_ratio": "3:4", "resolution": "2K"},
+    )
+    assert ai_disclosure_label(record) == "google/gemini-3-pro-image via openrouter"
+
+
+# --- #150: the OpenRouter consent notice ------------------------------------------
+
+OPENROUTER_BLURB = """\
+  * Your prompt and reference image are sent to OpenRouter AND to the
+    upstream vendor of the model you chose (for example Google or Black
+    Forest Labs). holiday-card pins that one vendor and never falls back.
+  * You have read the OpenRouter Terms of Service:
+    https://openrouter.ai/terms
+    Ownership of the output, and what you may do with it, is set by the
+    upstream vendor's model terms; OpenRouter grants no licence of its own.
+    That vendor's terms URL is recorded in each asset's .license.yaml sidecar.
+  * OpenRouter's data-retention and training settings are ACCOUNT-LEVEL
+    settings of your OpenRouter account; this tool cannot opt out per
+    request. Review them before you send a private image:
+    https://openrouter.ai/workspaces/default/settings
+  * Reference images are NOT screened for trademarks or real people's
+    likenesses; only the text prompt is checked. You are responsible for
+    what you upload: do not send a reference you do not have the rights to.
+"""
+
+
+class TestOpenRouterConsentNotice:
+    def test_blurb_is_pinned(self) -> None:
+        assert PROVIDERS[AIProvider.OPENROUTER].consent_blurb == OPENROUTER_BLURB
+
+    @pytest.mark.parametrize(
+        "statement",
+        [
+            "sent to OpenRouter AND to the\n    upstream vendor",
+            "never falls back",
+            "https://openrouter.ai/terms",
+            "OpenRouter grants no licence of its own",
+            "ACCOUNT-LEVEL\n    settings of your OpenRouter account",
+            "cannot opt out per\n    request",
+            "https://openrouter.ai/workspaces/default/settings",
+            "Reference images are NOT screened for trademarks or real people's\n    likenesses",
+            "You are responsible for\n    what you upload",
+            # The common lines stay as they are.
+            "you are responsible for what you print and sell",
+            "intended for PERSONAL USE",
+        ],
+    )
+    def test_notice_states(self, statement: str) -> None:
+        notice = consent_notice(AIProvider.OPENROUTER, path=Path("/x/ai-consent.json"))
+        assert statement in notice
+
+    def test_notice_names_the_pinned_vendor_at_run_time(self) -> None:
+        notice = consent_notice(
+            AIProvider.OPENROUTER,
+            path=Path("/x/ai-consent.json"),
+            model="google/gemini-3-pro-image",
+        )
+        assert (
+            "  * For google/gemini-3-pro-image the upstream vendor is Google (AI Studio)"
+            " (route google-ai-studio/global);\n"
+            "    its terms govern the output: https://ai.google.dev/gemini-api/terms\n"
+        ) in notice
+
+    def test_openai_notice_ignores_the_model(self) -> None:
+        path = Path("/x/ai-consent.json")
+        assert consent_notice(AIProvider.OPENAI, path=path, model="gpt-image-2") == (
+            consent_notice(AIProvider.OPENAI, path=path)
+        )

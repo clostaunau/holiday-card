@@ -16,7 +16,7 @@ import io
 import json
 import time
 import traceback
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -46,6 +46,7 @@ from openrouter_fixtures import (
     FIXTURES_DIR,
     GOLDEN_REQUEST,
     REFERENCE_PNG,
+    FakeTransport,
     fixture_raw,
     load_response,
     to_response,
@@ -63,37 +64,6 @@ ENTRY = OPENROUTER_IMAGE_MODELS[GEMINI]
 
 def _identity(text: str) -> str:
     return text
-
-
-@dataclass
-class FakeTransport:
-    """Records every call and returns queued responses (or raises queued errors)."""
-
-    responses: list[HttpResponse | Exception] = field(default_factory=list)
-    calls: list[dict[str, Any]] = field(default_factory=list)
-
-    def __call__(
-        self,
-        url: str,
-        *,
-        headers: Any,
-        body: bytes,
-        timeout_s: float,
-        max_bytes: int,
-    ) -> HttpResponse:
-        self.calls.append(
-            {"url": url, "headers": dict(headers), "body": body,
-             "timeout_s": timeout_s, "max_bytes": max_bytes}
-        )  # fmt: skip
-        nxt = self.responses.pop(0) if self.responses else load_response("ok_png")
-        if isinstance(nxt, Exception):
-            raise nxt
-        return nxt
-
-    @property
-    def body(self) -> dict[str, Any]:
-        parsed: dict[str, Any] = json.loads(self.calls[-1]["body"])
-        return parsed
 
 
 def _client(

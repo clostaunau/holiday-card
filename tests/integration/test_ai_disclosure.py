@@ -131,6 +131,21 @@ def test_disclosed_model_comes_from_the_sidecar(
     _assert_disclosed_pdf(Path("card.pdf"), model="gpt-image-1")
 
 
+def test_openrouter_asset_is_disclosed_as_routed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #150: a routed model names the router too (ai_disclosure_label).
+    monkeypatch.chdir(tmp_path)
+    model = "google/gemini-3-pro-image"
+    template = _ai_template(tmp_path, model=model)
+    sidecar = tmp_path / "border.license.yaml"
+    record = yaml.safe_load(sidecar.read_text())
+    record.update(provider="openrouter", provider_route="google-ai-studio/global")
+    sidecar.write_text(yaml.safe_dump(record, sort_keys=False))
+    _invoke("create", str(template), "-o", "card.pdf")
+    _assert_disclosed_pdf(Path("card.pdf"), model=f"{model} via openrouter")
+
+
 def test_letter_pdf_without_ai_is_untouched(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

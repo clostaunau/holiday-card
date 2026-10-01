@@ -165,3 +165,18 @@ def test_import_loads_only_the_standard_library() -> None:
         "assert not bad, bad\n"
     )
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+class TestUpstreamVendor:
+    @pytest.mark.parametrize("entry", list(OPENROUTER_IMAGE_MODELS.values()), ids=lambda e: e.id)
+    def test_every_pinned_route_has_a_vendor_name(self, entry: OpenRouterModel) -> None:
+        from holiday_card.core.ai_openrouter_models import upstream_vendor_name
+
+        assert upstream_vendor_name(entry).strip()
+
+    def test_names(self) -> None:
+        from holiday_card.core.ai_openrouter_models import upstream_vendor_name
+
+        names = {e.id: upstream_vendor_name(e) for e in OPENROUTER_IMAGE_MODELS.values()}
+        assert names["google/gemini-3-pro-image"] == "Google (AI Studio)"
+        assert names["black-forest-labs/flux.2-pro"] == "Black Forest Labs"

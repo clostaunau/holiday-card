@@ -10,6 +10,7 @@ Each ``tests/fixtures/openrouter/*.json`` except the golden request is
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -41,3 +42,34 @@ def to_response(raw: dict[str, Any]) -> HttpResponse:
 
 def load_response(name: str) -> HttpResponse:
     return to_response(fixture_raw(name))
+
+
+@dataclass
+class FakeTransport:
+    """Records every call and returns queued responses (or raises queued errors)."""
+
+    responses: list[HttpResponse | Exception] = field(default_factory=list)
+    calls: list[dict[str, Any]] = field(default_factory=list)
+
+    def __call__(
+        self,
+        url: str,
+        *,
+        headers: Any,
+        body: bytes,
+        timeout_s: float,
+        max_bytes: int,
+    ) -> HttpResponse:
+        self.calls.append(
+            {"url": url, "headers": dict(headers), "body": body,
+             "timeout_s": timeout_s, "max_bytes": max_bytes}
+        )  # fmt: skip
+        nxt = self.responses.pop(0) if self.responses else load_response("ok_png")
+        if isinstance(nxt, Exception):
+            raise nxt
+        return nxt
+
+    @property
+    def body(self) -> dict[str, Any]:
+        parsed: dict[str, Any] = json.loads(self.calls[-1]["body"])
+        return parsed
