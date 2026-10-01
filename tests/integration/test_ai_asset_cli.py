@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import re
+import shutil
 import sys
 import traceback
 from collections.abc import Callable
@@ -28,7 +29,10 @@ from holiday_card.cli.commands import app
 from holiday_card.core.ai_assets import GeneratedImage, PixelSize, RequestShape
 from holiday_card.core.ai_errors import ProviderError
 from holiday_card.core.ai_openai import OpenAIImageClient
+from holiday_card.core.ai_provenance import consent_notice, default_consent_path, has_consented
 from holiday_card.core.ai_providers import AIDependencyError, AIProvider
+
+FIXTURES = Path(__file__).parent.parent / "fixtures" / "ai"
 
 
 @dataclass
@@ -61,6 +65,8 @@ class FakeImageClient:
             cost_usd=self.cost_usd,
             cost_source="reported" if self.cost_usd is not None else "unknown",
             model_version="2027-01",
+            generation_id=None,
+            provider_route=None,
         )
 
 
@@ -221,8 +227,51 @@ class TestConsentGate:
                 reference_png, tmp_path / "x.png", subject="balloons", occasion="birthday"
             ),
         )
-        assert result.exit_code != 0
-        assert "consent" in result.output.lower() or "accept-ai-terms" in result.output.lower()
+        assert result.exit_code == 3
+        assert "Error: AI imagery with --provider openai requires a one-time consent" in _plain(
+            result.output
+        )
+        consent_path = default_consent_path()
+        assert consent_notice(AIProvider.OPENAI, path=consent_path) in result.stderr
+        assert not consent_path.exists()
+
+    def test_v1_3_0_consent_file_still_counts_and_is_not_rewritten(
+        self, runner: CliRunner, tmp_path: Path, reference_png: Path, isolated_config: Path
+    ) -> None:
+        consent_path = isolated_config / "holiday-card" / "ai-consent.json"
+        consent_path.parent.mkdir(parents=True)
+        shutil.copy(FIXTURES / "v1.3.0-ai-consent.json", consent_path)
+        before = consent_path.read_bytes()
+        result = runner.invoke(
+            app,
+            _generate_args(
+                reference_png, tmp_path / "x.png", subject="balloons", occasion="birthday"
+            ),
+        )
+        assert result.exit_code == 0, result.output
+        assert "first-use acknowledgement" not in result.output
+        assert consent_path.read_bytes() == before
+
+    def test_accepting_records_openai_consent(
+        self, runner: CliRunner, tmp_path: Path, reference_png: Path
+    ) -> None:
+        result = runner.invoke(
+            app,
+            _generate_args(
+                reference_png, tmp_path / "x.png", subject="balloons", occasion="birthday",
+                extra=["--accept-ai-terms"],
+            ),
+        )
+        assert result.exit_code == 0, result.output
+        consent_path = default_consent_path()
+        assert has_consented(consent_path, AIProvider.OPENAI)
+        assert consent_notice(AIProvider.OPENAI, path=consent_path) in result.output
+
+
+def test_cli_hard_codes_no_openai_policy() -> None:
+    source = Path(commands.__file__).read_text()
+    assert "OpenAI policy:" not in source
+    assert "openai.com" not in source
 
 
 @pytest.mark.usefixtures("isolated_config")
@@ -471,6 +520,33 @@ class TestSecretSentinel:
         surfaces += [p.read_text(errors="replace") for p in isolated_config.rglob("*") if p.is_file()]
         for text in surfaces:
             assert _SENTINEL not in text
+
+
+    def test_sentinel_absent_from_a_successful_bake(
+        self,
+        runner: CliRunner,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        reference_png: Path,
+        isolated_config: Path,
+    ) -> None:
+        # #147: the sidecar and the consent file have no field that could hold the key.
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-SENTINEL-DO-NOT-LEAK-0123456789")
+        monkeypatch.setattr(commands, "make_image_client", lambda **_: FakeImageClient())
+        out = tmp_path / "x.png"
+        result = runner.invoke(
+            app,
+            _generate_args(
+                reference_png, out, subject="watercolor balloons", occasion="birthday",
+                extra=["--accept-ai-terms"],
+            ),
+        )
+        assert result.exit_code == 0, result.output
+        consent = isolated_config / "holiday-card" / "ai-consent.json"
+        surfaces = [result.stdout, result.stderr, out.with_suffix(".license.yaml").read_text(),
+                    consent.read_text()]
+        for text in surfaces:
+            assert "SENTINEL" not in text
 
 
 def _raiser(exc: BaseException) -> Callable[..., object]:

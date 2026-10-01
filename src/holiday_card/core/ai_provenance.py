@@ -5,8 +5,9 @@ A2 and A5):
 
 1. **Bake-to-disk with a provenance sidecar.** Every generated asset
    gets a sibling ``<asset>.license.yaml`` capturing the prompt, model,
-   seed, timestamp, the provider-reported cost (or ``unknown``), the OpenAI policy URL at generation time, and
-   a placeholder for the user's own commercial-use determination. The
+   seed, timestamp, the provider-reported cost (or ``unknown``), the
+   provider and request shape, the provider's policy URLs at generation
+   time, and a placeholder for the user's own commercial-use determination. The
    bake also marks the PNG with an ``iTXt`` chunk (:data:`AI_MARKER_KEY`)
    naming its sidecar. :func:`require_sidecar` is the one check, and it is
    enforced by ``compiler.embedded_ai_assets`` (every compile, so
@@ -17,29 +18,40 @@ A2 and A5):
    it, so a sibling sidecar alone also marks a file as an AI asset (the
    legacy rule, which v1.3.0 assets rely on).
 
-2. **First-use consent.** A one-time, logged acknowledgement that the
-   user has read the OpenAI usage policy, the IP-responsibility caveat,
-   and the POD-disclosure obligation. Stored as JSON under the user's
-   config dir; default refusal until acknowledged.
+2. **First-use consent, per provider.** A one-time, logged
+   acknowledgement that the user has read that provider's policies, the
+   IP-responsibility caveat, and the POD-disclosure obligation. Stored as
+   JSON under the user's config dir; default refusal until acknowledged.
+   A v1.3.0 consent file (one flat flag) still counts for OpenAI only.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final, Literal
+from typing import Any, Final, Literal
 
 import yaml
 from PIL import Image
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
+
+from holiday_card.core.ai_providers import PROVIDERS, AIProvider
 
 # No cycle: core.images never imports this module.
 from holiday_card.core.images import ImageSourceError
 
 __all__ = [
-    "OPENAI_USAGE_POLICY_URL",
-    "CONSENT_NOTICE",
+    "consent_notice",
     "LicenseRecord",
     "sidecar_path_for",
     "write_sidecar",
@@ -58,25 +70,38 @@ __all__ = [
     "ai_disclosure_label",
 ]
 
-# Captured into every sidecar so a later OpenAI ToS change can be diffed
-# against the policy in force when the asset was baked (risk #2).
-OPENAI_USAGE_POLICY_URL = "https://openai.com/policies/usage-policies"
-
-CONSENT_NOTICE = """\
+_HEADER = """\
 holiday-card AI imagery — first-use acknowledgement
 ---------------------------------------------------
 AI image generation is intended for PERSONAL USE. We do not recommend AI
 imagery for cards you intend to sell.
 
 By proceeding you acknowledge:
-  * You have read the OpenAI usage policy: {policy}
+"""
+
+_COMMON_BULLETS = """\
   * AI-generated assets may inadvertently contain protected material;
     you are responsible for what you print and sell.
   * US copyright law currently denies protection to purely AI-generated
     output, and many print-on-demand services require AI disclosure.
+"""
 
+_TRAILER = """
 This acknowledgement is recorded once to {path}.
-""".format(policy=OPENAI_USAGE_POLICY_URL, path="{path}")
+"""
+
+
+def consent_notice(provider: AIProvider, *, path: Path) -> str:
+    """The first-use notice for ``provider``, naming the consent file ``path``.
+
+    The OpenAI notice is byte-identical to the v1.3.0 notice.
+    """
+    return (
+        _HEADER
+        + PROVIDERS[provider].consent_blurb
+        + _COMMON_BULLETS
+        + _TRAILER.format(path=path)
+    )
 
 
 class LicenseRecord(BaseModel):
@@ -84,20 +109,31 @@ class LicenseRecord(BaseModel):
 
     Serialized to ``<asset>.license.yaml`` next to the PNG. Frozen-ish in
     spirit (we never mutate after writing) but kept a plain model so it
-    round-trips cleanly through YAML.
+    round-trips cleanly through YAML. Unknown keys fail loud (D4). The
+    API key never appears here: no field can hold it.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     prompt: str
     style: str | None = None
     reference: str | None = None
-    model: str
+    provider: AIProvider
+    requested_model: str  # the id asked for (--model, or the provider default)
+    model: str  # the id actually called
     model_version: str | None = None
+    provider_route: str | None = None  # the pinned OpenRouter provider_tag; None for openai
+    # {"size": "WxH"} | {"aspect_ratio": …, "resolution": …} | {"aspect_ratio": …};
+    # None only for a legacy v1.3.0 sidecar.
+    request_shape: dict[str, str] | None = None
+    generation_id: str | None = None  # X-Generation-Id when the provider returns one
     seed: int | None = None
     timestamp: str
     cost_usd: float | None = None
     # "unknown" when the provider reported no cost; also what a v1.3.0
     # sidecar (no such key) reads as, since its 0.04 may be an invented figure.
     cost_source: Literal["reported", "unknown"] = "unknown"
+    media_type: str | None = None  # what the model returned; None only for legacy
     # The baked file's size; ``generated_*`` is what the model returned,
     # and ``native_ppi`` the resolution that carries into the bake.
     width_px: int | None = None
@@ -106,10 +142,35 @@ class LicenseRecord(BaseModel):
     generated_height_px: int | None = None
     native_ppi: float | None = None
     color_profile: str = "sRGB IEC61966-2.1"
-    openai_policy_url: str = OPENAI_USAGE_POLICY_URL
+    # Captured so a later ToS change can be diffed against the policies in
+    # force when the asset was baked (risk #2).
+    policy_urls: list[str]
     # The user fills this in themselves; we never decide it for them.
     commercial_use_determination: str = "UNREVIEWED"
     override_reasons: list[str] = Field(default_factory=list)
+
+    # LEGACY(v1.3.0 sidecar, O7): delete in the first release after the one that ships this.
+    @model_validator(mode="before")
+    @classmethod
+    def _read_v1_3_0(cls, data: Any) -> Any:
+        if not isinstance(data, dict) or "openai_policy_url" not in data:
+            return data
+        if "provider" in data or "policy_urls" in data:
+            raise ValueError(
+                "sidecar mixes the legacy openai_policy_url with provider-neutral fields"
+            )
+        legacy = dict(data)
+        policy_url = legacy.pop("openai_policy_url")
+        return {
+            **legacy,
+            "provider": AIProvider.OPENAI.value,
+            "requested_model": legacy.get("model"),
+            "policy_urls": [policy_url],
+            "request_shape": None,
+            "generation_id": None,
+            "provider_route": None,
+            "media_type": None,
+        }
 
 
 def sidecar_path_for(asset_path: Path) -> Path:
@@ -121,7 +182,9 @@ def write_sidecar(asset_path: Path, record: LicenseRecord) -> Path:
     """Write ``record`` as the sidecar next to ``asset_path``; return its path."""
     sidecar = sidecar_path_for(asset_path)
     sidecar.write_text(
-        yaml.safe_dump(record.model_dump(), sort_keys=False, default_flow_style=False)
+        yaml.safe_dump(
+            record.model_dump(mode="json"), sort_keys=False, default_flow_style=False
+        )
     )
     return sidecar
 
@@ -254,7 +317,9 @@ def photo_slot_refusal(path: Path) -> AIProvenanceError:
 def ai_disclosure_label(record: LicenseRecord) -> str:
     """The human-readable label a disclosure names for ``record``.
 
-    The ONLY place the label is built (#147 extends it with the provider).
+    The ONLY place the label is built (#150 adds the provider for routed
+    models, e.g. ``<model> via openrouter``; a direct provider's label is
+    the model alone).
     """
     return record.model
 
@@ -264,30 +329,69 @@ def default_consent_path() -> Path:
 
     Honors ``XDG_CONFIG_HOME``; falls back to ``~/.config``.
     """
-    import os
-
     base = os.environ.get("XDG_CONFIG_HOME")
     root = Path(base) if base else Path.home() / ".config"
     return root / "holiday-card" / "ai-consent.json"
 
 
-def has_consented(path: Path) -> bool:
-    """Return ``True`` if a consent record exists and is acknowledged."""
-    if not path.exists():
-        return False
+def _read_consent(path: Path) -> dict[str, dict[str, object]]:
+    """The per-provider consent entries in ``path``; ``{}`` when unreadable (fail closed).
+
+    A v1.3.0 flat file (top-level ``acknowledged``) reads as OpenAI's entry
+    only. Keys that are not :class:`AIProvider` values are kept, so a newer
+    version's provider survives a downgrade's write.
+    """
     try:
         data = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
-        return False
-    return bool(data.get("acknowledged"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    if "providers" in data:
+        providers = data["providers"]
+        return dict(providers) if isinstance(providers, dict) else {}
+    if data.get("acknowledged") is True:
+        policy_url = data.get("policy_url")
+        return {
+            AIProvider.OPENAI.value: {
+                "acknowledged": True,
+                "timestamp": data.get("timestamp"),
+                "policy_urls": [policy_url] if policy_url is not None else [],
+            }
+        }
+    return {}
 
 
-def record_consent(path: Path) -> None:
-    """Persist a consent acknowledgement to ``path`` (creating parents)."""
+def _acknowledged(entry: object) -> bool:
+    return isinstance(entry, dict) and entry.get("acknowledged") is True
+
+
+def has_consented(path: Path, provider: AIProvider) -> bool:
+    """Return ``True`` if ``path`` records ``provider``'s acknowledgement (strictly ``true``)."""
+    return _acknowledged(_read_consent(path).get(provider.value))
+
+
+def record_consent(path: Path, provider: AIProvider) -> None:
+    """Record ``provider``'s acknowledgement in ``path`` (creating parents).
+
+    Other providers' entries are kept, an existing acknowledgement of
+    ``provider`` keeps its timestamp, and a v1.3.0 file is migrated; the
+    write is atomic (a temp file in the same directory, then ``os.replace``).
+    """
+    providers = _read_consent(path)
+    # An existing acknowledgement keeps its date: that is when the user consented.
+    if not _acknowledged(providers.get(provider.value)):
+        providers[provider.value] = {
+            "acknowledged": True,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "policy_urls": list(PROVIDERS[provider].policy_urls),
+        }
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "acknowledged": True,
-        "timestamp": datetime.now(UTC).isoformat(),
-        "policy_url": OPENAI_USAGE_POLICY_URL,
-    }
-    path.write_text(json.dumps(payload, indent=2))
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(json.dumps({"providers": providers}, indent=2))
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise

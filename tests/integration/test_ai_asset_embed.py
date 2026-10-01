@@ -95,7 +95,10 @@ def legacy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.chdir(tmp_path)
     path = tmp_path / "old.png"
     Image.new("RGB", (64, 96), "green").save(path)
-    write_sidecar(path, LicenseRecord(prompt="p", model="gpt-image-1", timestamp="t"))
+    write_sidecar(path, LicenseRecord(
+        prompt="p", provider="openai", requested_model="gpt-image-1", model="gpt-image-1",
+        timestamp="t", policy_urls=["https://openai.com/policies/usage-policies"],
+    ))
     return path
 
 

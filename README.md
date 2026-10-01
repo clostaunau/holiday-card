@@ -324,8 +324,10 @@ holiday-card ai-asset generate \
 Guardrails that ship on by default (see
 `docs/industry-review/consensus-ai-feature.md`):
 
-* **First-use consent** — a one-time acknowledgement recorded under your
-  config dir; pass `--accept-ai-terms` to record it non-interactively.
+* **First-use consent** — a one-time acknowledgement **per provider**,
+  recorded under your config dir; pass `--accept-ai-terms` to record it
+  non-interactively. A consent recorded by v1.3.0 still counts for
+  OpenAI.
 * **Image-reference mode default** — `--reference` is required (the
   style anchor); `--unsafe-no-style-anchor` opts out (discouraged).
 * **POD-aware sizing** — the baked PNG is exactly the `--export-for`
@@ -349,8 +351,11 @@ Guardrails that ship on by default (see
 * **Provenance sidecar** — every asset gets a sibling
   `<asset>.license.yaml` recording the prompt, model, seed, timestamp,
   the cost the provider reported (or `unknown` when it reports none;
-  nothing is estimated), and the OpenAI policy URL in force at
-  generation time. The PNG itself is marked as AI-generated, and a
+  nothing is estimated), and the provider's policy URLs in force at
+  generation time. It also names the `provider`, the `requested_model`
+  next to the `model` actually called, the `request_shape` sent, the
+  `media_type` the model returned, and, for a routing provider, the
+  `provider_route` and `generation_id`. The PNG itself is marked as AI-generated, and a
   card that places it refuses to render (exit 2) once the sidecar is
   missing or belongs to another file.
 * **Never a photo** — `create` / `preview -i` refuse any AI asset (exit 2,

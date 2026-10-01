@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Provenance and consent are provider-neutral
+
+Every new `.license.yaml` sidecar names the `provider`, the
+`requested_model` next to the `model` actually called, the
+`request_shape` sent (`size`, or `aspect_ratio` + `resolution`), the
+`media_type` the model returned, `provider_route` / `generation_id`
+(set by routing providers), and the `policy_urls` in force at generation
+time. A sidecar with an unknown key now fails to load, so a typo is
+caught instead of ignored. The first-use consent is recorded **per
+provider**, and `ai-asset generate` prints one `Policy:` line per URL
+instead of the fixed `OpenAI policy:` line. The OpenAI consent notice is
+unchanged.
+
+v1.3.0 sidecars and consent files still load: a v1.3.0 consent counts
+for OpenAI with no re-prompt, and a v1.3.0 sidecar's `openai_policy_url`
+is read as OpenAI's policy URL. That key is read for this release only
+and is never written; the next release drops it, so re-write (or
+re-bake) older sidecars before then. The consent file is migrated to the
+new shape the next time a consent is recorded.
+
 ### AI assets are marked, need their sidecar, and are never a photo
 
 `ai-asset generate` now marks every PNG it writes as AI-generated (an

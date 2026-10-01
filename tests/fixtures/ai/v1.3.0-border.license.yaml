@@ -1,0 +1,17 @@
+prompt: watercolor pine bough border, sage green
+style: watercolor
+reference: ref.png
+model: gpt-image-2
+model_version: gpt-image-2
+seed: null
+timestamp: '2026-09-01T10:00:00'
+cost_usd: 0.04
+width_px: 1314
+height_px: 1824
+generated_width_px: 1328
+generated_height_px: 1824
+native_ppi: 300.0
+color_profile: sRGB IEC61966-2.1
+openai_policy_url: https://openai.com/policies/usage-policies
+commercial_use_determination: UNREVIEWED
+override_reasons: []
