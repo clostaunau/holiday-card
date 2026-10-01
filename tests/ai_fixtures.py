@@ -49,7 +49,7 @@ class SolidImageClient:
         Image.new("RGB", (shape.width_px, shape.height_px), self.color).save(buf, "PNG")
         return GeneratedImage(
             image_bytes=buf.getvalue(), media_type="image/png",
-            cost_usd=None, cost_source="unknown",
+            cost_usd=None, cost_source="unknown", generation_id=None, provider_route=None,
         )
 
 
@@ -64,7 +64,7 @@ def bake_fake_ai_asset(
 ) -> Path:
     """Bake ``dir / name`` (+ its sidecar) through the real bake; return the asset path."""
     consent = dir / ".ai-consent.json"
-    record_consent(consent)
+    record_consent(consent, AIProvider.OPENAI)
     client = SolidImageClient(model=model, color=color)
     out = dir / name
     generate_ai_asset(

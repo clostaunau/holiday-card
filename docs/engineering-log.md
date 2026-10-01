@@ -6,6 +6,35 @@ regenerated on purpose, and which tests guard it. Moved out of
 limit). New entries go at the top of this file; `CLAUDE.md` gets at
 most a one-line pointer. User-facing notes belong in `RELEASE_NOTES.md`.
 
+- **2026-09-30 — Provider-neutral provenance sidecar and per-provider
+  consent (issue #147, OpenRouter program)**: `ProviderInfo` gains
+  `policy_urls` and `consent_blurb` (the spec §6.1 final shape) and
+  `ai_providers.policy_urls_for(provider, model)` is the one source of a
+  bake's policy URLs (#150 makes OpenRouter's per-model). The OpenAI URL
+  now lives only in `PROVIDERS`; `OPENAI_USAGE_POLICY_URL` and
+  `CONSENT_NOTICE` are deleted (D17). `consent_notice(provider, path=)`
+  is `_HEADER + blurb + _COMMON_BULLETS + _TRAILER`, and the OpenAI notice
+  is byte-identical to v1.3.0 (a literal-text test pins it). The consent
+  file is `{"providers": {"<id>": {acknowledged, timestamp,
+  policy_urls}}}`, read once by `_read_consent` (fail closed; strict
+  `acknowledged is True`; unknown provider keys kept on write; a v1.3.0
+  flat file reads as OpenAI only). `record_consent(path, provider)` writes
+  atomically (temp file + `os.replace`) and keeps an existing
+  acknowledgement's timestamp, so migrating a v1.3.0 file keeps the date
+  the user actually consented. `LicenseRecord` is `extra="forbid"`
+  and requires `provider` / `requested_model` / `policy_urls`; it adds
+  `provider_route`, `request_shape` (`ai_assets.request_shape_record`),
+  `generation_id` and `media_type`. A `# LEGACY(v1.3.0 sidecar, O7)`
+  before-validator reads `openai_policy_url` (and refuses it mixed with
+  new keys); **delete it in the first release after the one that ships
+  this**. `write_sidecar` dumps `mode="json"` (a `StrEnum` breaks
+  `yaml.safe_dump`). `GeneratedImage.generation_id` / `provider_route`
+  are now required keyword-only fields, and `GenerationResult` carries
+  `policy_urls`, which the CLI prints as `Policy:` lines. Fixtures:
+  `tests/fixtures/ai/v1.3.0-border.license.yaml`, `v1.3.0-ai-consent.json`.
+  `ai_disclosure_label` is unchanged: the provider joins the label in
+  #150, where `<model> via openrouter` first means something.
+
 
 - **2026-09-30 — AI assets are marked, need an intact sidecar, and never
   fill a photo slot (issue #144, OpenRouter program)**: the sidecar was

@@ -23,6 +23,7 @@ from holiday_card.core.ai_providers import (
     UnknownModelError,
     known_models,
     make_image_client,
+    policy_urls_for,
     resolve_model,
     supports_seed,
 )
@@ -54,6 +55,28 @@ class TestRegistry:
 
     def test_openai_known_models_are_the_size_policies(self) -> None:
         assert known_models(AIProvider.OPENAI) == tuple(sorted(MODEL_SIZE_POLICIES))
+
+
+class TestPolicies:
+    @pytest.mark.parametrize("provider", list(AIProvider))
+    def test_every_provider_has_https_policies_and_a_blurb(self, provider: AIProvider) -> None:
+        info = PROVIDERS[provider]
+        assert len(info.policy_urls) >= 1
+        assert all(url.startswith("https://") for url in info.policy_urls)
+        assert info.consent_blurb.strip()
+        assert info.consent_blurb.endswith("\n")
+
+    def test_openai_policy_and_blurb(self) -> None:
+        info = PROVIDERS[AIProvider.OPENAI]
+        assert info.policy_urls == ("https://openai.com/policies/usage-policies",)
+        assert info.consent_blurb == (
+            "  * You have read the OpenAI usage policy: "
+            "https://openai.com/policies/usage-policies\n"
+        )
+
+    @pytest.mark.parametrize("model", sorted(MODEL_SIZE_POLICIES))
+    def test_openai_policy_urls_are_the_registry_entry(self, model: str) -> None:
+        assert policy_urls_for(AIProvider.OPENAI, model) == PROVIDERS[AIProvider.OPENAI].policy_urls
 
 
 class TestResolveModel:

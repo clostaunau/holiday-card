@@ -109,8 +109,8 @@ src/holiday_card/
     data_paths.py       # data_path(kind): the ONE resolver for bundled data (+ env overrides)
     ai_errors.py        # ProviderError (refused/environment/usage/transient) + redact / sanitize (stdlib only, #142)
     ai_rails.py         # L3 hard category rails (occasion + prompt blocklists)
-    ai_provenance.py    # L3 LicenseRecord sidecar + first-use consent gate; the AI PNG marker
-                        #   and require_sidecar: the one provenance check (#144)
+    ai_provenance.py    # L3 provider-neutral LicenseRecord + per-provider consent (#147); the AI
+                        #   PNG marker and require_sidecar: the one provenance check (#144)
     ai_providers.py     # AIProvider registry (key var + default model), resolve_model / supports_seed,
                         #   make_image_client: the ONE client factory (#146; stdlib-only imports)
     ai_assets.py        # L3 POD-aware sizing, MODEL_SIZE_POLICIES (#87), PixelSize / AspectSize request shapes
@@ -449,9 +449,11 @@ the "this will bite you" kind goes in Gotchas above. User-facing notes
 go in `RELEASE_NOTES.md`.
 
 In flight: the OpenRouter image-provider program (tracker #139); #141,
-#142, #143, #144, #146, #148 and #149 have landed. Next: #147, then
-#150 (wire `AIProvider.OPENROUTER` into the CLI); #145 and #153 are
-unblocked too.
+#142, #143, #144, #146, #147, #148 and #149 have landed. Next: #150
+(wire `AIProvider.OPENROUTER` into the CLI); #145 and #153 are
+unblocked too. **Legacy-read deadline (O7):** delete the
+`LicenseRecord` `openai_policy_url` reader (`# LEGACY(v1.3.0 sidecar…)`)
+in the first release after the one that ships #147.
 
 ## Strategic context — read before adding major features
 

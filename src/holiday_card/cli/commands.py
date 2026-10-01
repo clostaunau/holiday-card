@@ -1010,7 +1010,7 @@ def ai_asset_generate(
     )
     from holiday_card.core.ai_errors import ProviderError
     from holiday_card.core.ai_provenance import (
-        CONSENT_NOTICE,
+        consent_notice,
         default_consent_path,
         has_consented,
         record_consent,
@@ -1066,19 +1066,20 @@ def ai_asset_generate(
 
     # First-use consent gate.
     consent_path = default_consent_path()
-    if not has_consented(consent_path):
+    if not has_consented(consent_path, provider):
+        notice = consent_notice(provider, path=consent_path)
         if accept_ai_terms:
-            record_consent(consent_path)
-            typer.echo(CONSENT_NOTICE.format(path=consent_path))
+            record_consent(consent_path, provider)
+            typer.echo(notice)
         else:
             typer.secho(
-                "Error: AI imagery requires a one-time consent "
-                "acknowledgement. Re-run with --accept-ai-terms after "
+                f"Error: AI imagery with --provider {provider.value} requires a one-time "
+                "consent acknowledgement. Re-run with --accept-ai-terms after "
                 "reading the notice below.",
                 fg=typer.colors.RED,
                 err=True,
             )
-            typer.echo(CONSENT_NOTICE.format(path=consent_path), err=True)
+            typer.echo(notice, err=True)
             raise typer.Exit(ExitCode.CONSENT_REQUIRED)
 
     # Resolve print geometry → pixel dims.
@@ -1184,7 +1185,8 @@ def ai_asset_generate(
         typer.echo(f"  Cost: ${result.cost_usd:.2f} (reported)")
     else:
         typer.echo("  Cost: unknown (the provider did not report one)")
-    typer.echo("  OpenAI policy: https://openai.com/policies/usage-policies")
+    for url in result.policy_urls:
+        typer.echo(f"  Policy: {url}")
     typer.echo(
         "  Personal use only — AI imagery is not recommended for cards you sell."
     )

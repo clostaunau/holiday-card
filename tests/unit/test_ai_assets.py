@@ -45,6 +45,7 @@ from holiday_card.core.ai_assets import (
     generate_ai_asset,
     open_generated_image,
     probe_generated_image,
+    request_shape_record,
     size_is_allowed,
 )
 from holiday_card.core.ai_openrouter_models import (
@@ -102,12 +103,14 @@ class FakeImageClient:
             cost_usd=self.cost_usd,
             cost_source="reported" if self.cost_usd is not None else "unknown",
             model_version="2027-01",
+            generation_id=None,
+            provider_route=None,
         )
 
 
 def _consented(tmp_path: Path) -> Path:
     path = tmp_path / "ai-consent.json"
-    record_consent(path)
+    record_consent(path, AIProvider.OPENAI)
     return path
 
 
@@ -539,6 +542,69 @@ class TestConsentEnforced:
                 consent_path=tmp_path / "absent.json",
             )
 
+    def test_another_providers_consent_does_not_count(self, tmp_path: Path) -> None:
+        consent = tmp_path / "ai-consent.json"
+        consent.write_text('{"providers": {"openrouter": {"acknowledged": true}}}')
+        client = FakeImageClient()
+        with pytest.raises(ConsentRequiredError, match="openai"):
+            generate_ai_asset(
+                prompt="balloons",
+                occasion=OccasionType.BIRTHDAY,
+                out_path=tmp_path / "b.png",
+                request=_small_request(),
+                client=client,
+                timestamp="2027-01-15T10:00:00Z",
+                consent_path=consent,
+            )
+        assert client.calls is None
+
+
+class TestRequestShapeRecord:
+    @pytest.mark.parametrize(
+        ("shape", "expected"),
+        [
+            (PixelSize(1328, 1824), {"size": "1328x1824"}),
+            (AspectSize("3:4", "2K"), {"aspect_ratio": "3:4", "resolution": "2K"}),
+            (AspectSize("3:4", None), {"aspect_ratio": "3:4"}),
+        ],
+    )
+    def test_shapes(self, shape: RequestShape, expected: dict[str, str]) -> None:
+        assert request_shape_record(shape) == expected
+
+
+class TestProviderNeutralSidecar:
+    def test_moo_a6_bake_records_provider_route_and_policies(self, tmp_path: Path) -> None:
+        target = REGISTRY["moo-a6"].geometry
+        assert target is not None
+        request = build_ai_request(
+            prompt="watercolor pine bough border",
+            trim_width_in=target.trim_width_in,
+            trim_height_in=target.trim_height_in,
+            bleed_in=target.bleed_in,
+            reference_path=None,
+            provider=AIProvider.OPENAI,
+            model="gpt-image-2",
+        )
+        out = tmp_path / "border.png"
+        result = generate_ai_asset(
+            prompt="watercolor pine bough border",
+            occasion=OccasionType.CHRISTMAS,
+            out_path=out,
+            request=request,
+            client=FakeImageClient(),
+            timestamp="2027-01-15T10:00:00Z",
+            consent_path=_consented(tmp_path),
+        )
+        record = read_sidecar(out)
+        assert record.provider is AIProvider.OPENAI
+        assert record.requested_model == record.model == "gpt-image-2"
+        assert record.request_shape == {"size": "1328x1824"}
+        assert record.media_type == "image/png"
+        assert record.generation_id is None
+        assert record.provider_route is None
+        assert record.policy_urls == ["https://openai.com/policies/usage-policies"]
+        assert result.policy_urls == ("https://openai.com/policies/usage-policies",)
+
 
 class TestRailsEnforced:
     def test_refuses_sympathy_occasion_by_default(self, tmp_path: Path) -> None:
@@ -636,16 +702,25 @@ def no_load(monkeypatch: pytest.MonkeyPatch) -> None:
 class TestGeneratedImage:
     def test_reported_cost_requires_a_value(self) -> None:
         with pytest.raises(ValueError, match="cost_source"):
-            GeneratedImage(image_bytes=b"", media_type="image/png", cost_usd=None, cost_source="reported")
+            GeneratedImage(
+                image_bytes=b"", media_type="image/png", cost_usd=None, cost_source="reported",
+                generation_id=None, provider_route=None,
+            )
 
     def test_unknown_cost_must_have_no_value(self) -> None:
         with pytest.raises(ValueError, match="cost_source"):
-            GeneratedImage(image_bytes=b"", media_type="image/png", cost_usd=0.1, cost_source="unknown")
+            GeneratedImage(
+                image_bytes=b"", media_type="image/png", cost_usd=0.1, cost_source="unknown",
+                generation_id=None, provider_route=None,
+            )
 
 
-    def test_route_fields_default_to_none(self) -> None:
-        img = GeneratedImage(image_bytes=b"", media_type="image/png", cost_usd=None, cost_source="unknown")
-        assert (img.generation_id, img.provider_route) == (None, None)
+    def test_route_fields_are_required(self) -> None:
+        # Spec §6.1: a client states them, even as None; no silent default.
+        with pytest.raises(TypeError, match="generation_id"):
+            GeneratedImage(  # type: ignore[call-arg]
+                image_bytes=b"", media_type="image/png", cost_usd=None, cost_source="unknown",
+            )
 
     def test_route_fields_are_kept(self) -> None:
         img = GeneratedImage(

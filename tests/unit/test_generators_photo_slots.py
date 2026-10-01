@@ -171,7 +171,10 @@ class TestAIAssetRefused:
 
         legacy = tmp_path / "legacy.png"
         Image.new("RGB", (40, 40), "green").save(legacy)
-        write_sidecar(legacy, LicenseRecord(prompt="p", model="gpt-image-1", timestamp="t"))
+        write_sidecar(legacy, LicenseRecord(
+        prompt="p", provider="openai", requested_model="gpt-image-1", model="gpt-image-1",
+        timestamp="t", policy_urls=["https://openai.com/policies/usage-policies"],
+    ))
         card = self._card()
         before = card.model_copy(deep=True)
         with pytest.raises(AIProvenanceError, match="rail 8"):

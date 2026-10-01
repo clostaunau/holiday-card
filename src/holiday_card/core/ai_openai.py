@@ -145,6 +145,8 @@ class OpenAIImageClient:
             cost_usd=None,
             cost_source="unknown",
             model_version=getattr(response, "model", None) or self._model,
+            generation_id=None,
+            provider_route=None,
         )
 
 

@@ -29,6 +29,7 @@ __all__ = [
     "AIDependencyError",
     "UnknownModelError",
     "known_models",
+    "policy_urls_for",
     "resolve_model",
     "supports_seed",
     "make_image_client",
@@ -49,6 +50,8 @@ class ProviderInfo:
     name: AIProvider
     api_key_env: str
     default_model: str
+    policy_urls: tuple[str, ...]  # recorded in the consent file and every sidecar
+    consent_blurb: str  # this provider's bullet(s) in the consent notice
 
 
 PROVIDERS: Mapping[AIProvider, ProviderInfo] = MappingProxyType(
@@ -57,6 +60,11 @@ PROVIDERS: Mapping[AIProvider, ProviderInfo] = MappingProxyType(
             name=AIProvider.OPENAI,
             api_key_env="OPENAI_API_KEY",
             default_model="gpt-image-2",
+            policy_urls=("https://openai.com/policies/usage-policies",),
+            consent_blurb=(
+                "  * You have read the OpenAI usage policy: "
+                "https://openai.com/policies/usage-policies\n"
+            ),
         ),
     }
 )
@@ -77,6 +85,15 @@ def known_models(provider: AIProvider) -> tuple[str, ...]:
             from holiday_card.core.ai_assets import MODEL_SIZE_POLICIES
 
             return tuple(sorted(MODEL_SIZE_POLICIES))
+        case _:
+            assert_never(provider)
+
+
+def policy_urls_for(provider: AIProvider, model: str) -> tuple[str, ...]:  # noqa: ARG001 - per-model for OpenRouter (#150)
+    """The policy URLs a bake with ``provider`` / ``model`` is made under."""
+    match provider:
+        case AIProvider.OPENAI:
+            return PROVIDERS[provider].policy_urls
         case _:
             assert_never(provider)
 

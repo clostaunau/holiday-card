@@ -52,7 +52,7 @@ from holiday_card.core.ai_provenance import (
     sidecar_path_for,
     write_sidecar,
 )
-from holiday_card.core.ai_providers import AIProvider
+from holiday_card.core.ai_providers import AIProvider, policy_urls_for
 from holiday_card.core.ai_rails import RailViolation, evaluate_rails
 from holiday_card.core.images import MAX_IMAGE_PIXELS
 from holiday_card.core.models import OccasionType
@@ -70,6 +70,7 @@ __all__ = [
     "RequestShape",
     "GeneratedImage",
     "GenerationResult",
+    "request_shape_record",
     "ImageClient",
     "ImageMediaType",
     "CostSource",
@@ -333,7 +334,8 @@ class GeneratedImage:
     ``cost_usd`` is what the provider reported (``cost_source="reported"``)
     or ``None`` (``"unknown"``); a cost is never estimated.
     ``generation_id`` / ``provider_route`` are what a routing provider
-    (OpenRouter) reports; direct providers leave them ``None``.
+    (OpenRouter) reports; direct providers pass ``None`` (no default: a
+    client states them).
     """
 
     image_bytes: bytes
@@ -341,8 +343,8 @@ class GeneratedImage:
     cost_usd: float | None
     cost_source: CostSource
     model_version: str | None = None
-    generation_id: str | None = None
-    provider_route: str | None = None
+    generation_id: str | None = field(kw_only=True)
+    provider_route: str | None = field(kw_only=True)
 
     def __post_init__(self) -> None:
         if (self.cost_source == "reported") != (self.cost_usd is not None):
@@ -363,6 +365,7 @@ class GenerationResult:
     width_px: int
     height_px: int
     native_ppi: float
+    policy_urls: tuple[str, ...]
     overridden: list[RailViolation] = field(default_factory=list)
 
 
@@ -483,6 +486,19 @@ def open_generated_image(image_bytes: bytes, media_type: ImageMediaType) -> Imag
         return img.convert("RGB")
 
 
+def request_shape_record(shape: RequestShape) -> dict[str, str]:
+    """The sidecar's ``request_shape`` for ``shape``: what was actually sent."""
+    match shape:
+        case PixelSize(width_px=w, height_px=h):
+            return {"size": f"{w}x{h}"}
+        case AspectSize(aspect_ratio=ratio, resolution=str(tier)):
+            return {"aspect_ratio": ratio, "resolution": tier}
+        case AspectSize(aspect_ratio=ratio):
+            return {"aspect_ratio": ratio}
+        case _:
+            assert_never(shape)
+
+
 def choose_request_shape(
     provider: AIProvider, model: str, target_w: int, target_h: int
 ) -> RequestShape:
@@ -581,9 +597,10 @@ def generate_ai_asset(
         ValueError: If ``request`` was sized for another provider or model
             than ``client`` calls (checked before anything is spent).
     """
-    if not has_consented(consent_path):
+    if not has_consented(consent_path, client.provider):
         raise ConsentRequiredError(
-            "AI imagery requires a one-time consent acknowledgement first."
+            f"AI imagery with {client.provider.value} requires a one-time consent "
+            "acknowledgement first."
         )
 
     violations = evaluate_rails(occasion, prompt)
@@ -625,22 +642,30 @@ def generate_ai_asset(
     )
     native_ppi = min(generated_w / target[0], generated_h / target[1]) * request.dpi
 
+    policy_urls = policy_urls_for(client.provider, client.model)
     record = LicenseRecord(
         prompt=prompt,
         style=style,
         reference=request.reference_path,
+        provider=client.provider,
+        requested_model=request.model,
         model=client.model,
         model_version=generated.model_version,
+        provider_route=generated.provider_route,
+        request_shape=request_shape_record(request.shape),
+        generation_id=generated.generation_id,
         seed=seed,
         timestamp=timestamp,
         cost_usd=generated.cost_usd,
         cost_source=generated.cost_source,
+        media_type=generated.media_type,
         width_px=target[0],
         height_px=target[1],
         generated_width_px=generated_w,
         generated_height_px=generated_h,
         native_ppi=native_ppi,
         color_profile=SRGB_PROFILE_NAME,
+        policy_urls=list(policy_urls),
         override_reasons=[f"[{v.category}] {v.reason}" for v in violations],
     )
     sidecar = write_sidecar(out_path, record)
@@ -653,5 +678,6 @@ def generate_ai_asset(
         width_px=target[0],
         height_px=target[1],
         native_ppi=native_ppi,
+        policy_urls=policy_urls,
         overridden=violations if override else [],
     )
