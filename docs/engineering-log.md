@@ -6,6 +6,34 @@ regenerated on purpose, and which tests guard it. Moved out of
 limit). New entries go at the top of this file; `CLAUDE.md` gets at
 most a one-line pointer. User-facing notes belong in `RELEASE_NOTES.md`.
 
+- **2026-09-30 — panel `background_image` (issue #153, spec §8 Phase
+  4)**: the compiler's refusal is deleted (D17). `_compile_panel` emits
+  `_emit_panel_background_image` right after the background colour, through
+  the flattener hook as `"background_image"`: one `DrawImage` cover-fit
+  (`_cover_rect`, `preserve_aspect=True`, opacity 1) over the new
+  `_panel_background_rect`, which `_emit_panel_background` now shares
+  (bleed-extended, or `_fitted_bleed_rect` under `panel_fit`), wrapped in
+  `BeginClip(rect)` when the cover overflows. No new IR combination, no
+  backend change, no conformance row. A relative path raises
+  `ImageSourceError` naming `<template>/<panel>/background_image` (no cwd
+  fallback); probe failures are re-raised with the same prefix. The loader
+  (`templates._resolve_image_paths`) resolves it like `source_path`, problem
+  path `panels[i].background_image`. `embedded_ai_assets` walks it first per
+  panel (`where` ends `/background_image`), with no rail-8 slot check.
+  Open questions took the defaults: (1a) panel-anchored, so a moo-a6 bake
+  (1314×1824) warns at 276 PPI on moo-a6 and is 309 PPI on letter; (2) any
+  probed PNG/JPEG is accepted, AI ones need their sidecar. The flattener
+  needed no change: opaque draws short-circuit before the backdrop search,
+  and an RGBA background finds the equal `background_color` rect. Issue
+  anchors had drifted after #144/#145 (refusal was at `compiler.py:338`).
+  Guarded by `tests/unit/test_compiler_background_image.py`,
+  `tests/integration/test_background_image.py` (letter PNG+PDF pixels incl.
+  180° inside panel, cover-crop axis, bleed band on per-panel-pdf/moo-a6,
+  PDF/X preflight/flatten/refusal, PPI, provenance, SVG), the loader cases
+  in `test_templates_images.py`, and the guide example in
+  `test_template_authoring_doc.py`. Schema regenerated (description only);
+  no snapshot or visual baseline changed.
+
 - **2026-09-30 — `ai-asset models` (issue #152, spec §5.2 M1 / §8 Phase
   3)**: `core/ai_providers.py` gains `PixelSizeRule`, `ModelListing`,
   `list_models(provider=None)` (sorted by `(provider, id)`, built from

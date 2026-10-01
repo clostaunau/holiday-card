@@ -277,6 +277,13 @@ def _resolve_image_paths(template: Template, path: Path) -> None:
     # D5: image paths are relative to the template file, never to cwd.
     errors: list[tuple[str, str]] = []
     for p, panel in enumerate(template.panels):
+        if panel.background_image is not None:
+            try:
+                panel.background_image = str(
+                    resolve_template_image_path(panel.background_image, path.parent)
+                )
+            except ImageSourceError as e:
+                errors.append((f"panels[{p}].background_image", str(e)))
         for i, image in enumerate(panel.image_elements):
             try:
                 image.source_path = str(

@@ -162,3 +162,54 @@ def test_preview_with_non_image_template_photo_exits_two(tmp_path: Path) -> None
     assert result.exit_code == 2, result.output
     assert "photo.jpg" in result.stderr
     assert "Traceback" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# Panel background_image (#153): resolved and contained exactly like images.
+# ---------------------------------------------------------------------------
+
+
+def _write_background(directory: Path, background_image: str) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    data = _template("unused.jpg")
+    data["panels"][0]["image_elements"] = []
+    data["panels"][0]["background_image"] = background_image
+    path = directory / "t.yaml"
+    path.write_text(yaml.safe_dump(data))
+    return path
+
+
+def test_background_image_resolves_against_template_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tdir = tmp_path / "tpl"
+    path = _write_background(tdir, "art/bg.jpg")
+    (tdir / "art").mkdir()
+    shutil.copy(FIXTURE_IMAGE, tdir / "art" / "bg.jpg")
+    monkeypatch.chdir(tmp_path)
+    background = load_template_from_file(path).panels[0].background_image
+    assert background == str((tdir / "art" / "bg.jpg").resolve())
+
+
+@pytest.mark.parametrize(
+    ("background_image", "match"),
+    [("../bg.png", r"\.\."), ("/abs/bg.png", "absolute")],
+)
+def test_background_image_escape_is_load_error(
+    tmp_path: Path, background_image: str, match: str
+) -> None:
+    path = _write_background(tmp_path / "tpl", background_image)
+    with pytest.raises(TemplateLoadError, match=match) as exc_info:
+        load_template_from_file(path)
+    assert "panels[0].background_image" in str(exc_info.value)
+
+
+def test_background_image_symlink_escape_is_load_error(tmp_path: Path) -> None:
+    outside = tmp_path / "bg.png"
+    shutil.copy(FIXTURE_IMAGE, outside)
+    tdir = tmp_path / "tpl"
+    path = _write_background(tdir, "bg.png")
+    (tdir / "bg.png").symlink_to(outside)
+    with pytest.raises(TemplateLoadError, match="outside") as exc_info:
+        load_template_from_file(path)
+    assert "panels[0].background_image" in str(exc_info.value)

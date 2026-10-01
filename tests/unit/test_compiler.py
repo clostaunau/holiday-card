@@ -35,6 +35,7 @@ from holiday_card.core.compiler import (
     compile_card,
 )
 from holiday_card.core.generators import CardGenerator
+from holiday_card.core.images import ImageSourceError
 from holiday_card.core.models import (
     Card,
     Color,
@@ -518,14 +519,13 @@ class TestFailLoud:
         with pytest.raises(UnsupportedFeatureError, match="font_file is not supported"):
             compile_card(_text_card(text))
 
-    def test_panel_background_image_raises_unsupported(self) -> None:
+    def test_relative_panel_background_image_raises_image_source_error(self) -> None:
         text = _text(id="t", content="Hi")
         card = _text_card(text, background_image="x.png")
-        with pytest.raises(
-            UnsupportedFeatureError,
-            match=r"panel background_image is not supported \(panel front\)",
-        ):
+        with pytest.raises(ImageSourceError) as exc:
             compile_card(card)
+        assert "background_image" in str(exc.value)
+        assert "front" in str(exc.value)
 
     def test_known_fonts_compile(self) -> None:
         for font in ("Helvetica", "Times-Roman", "Caveat", "Lato-Bold"):

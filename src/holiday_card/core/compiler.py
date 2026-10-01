@@ -237,25 +237,33 @@ class AIAssetUse:
     """One AI asset a card embeds, with its checked provenance."""
 
     path: Path  # absolute, as probed
-    where: str  # "<template>/<panel>/image_elements[i] (id 'x')"
+    where: str  # "<template>/<panel>/image_elements[i] (id 'x')" or ".../background_image"
     record: LicenseRecord
 
 
 def embedded_ai_assets(card: Card) -> list[AIAssetUse]:
-    """Every AI asset ``card`` embeds, in panel then element order.
+    """Every AI asset ``card`` embeds, per panel: background image, then elements.
 
     An AI asset (marked, or legacy with a sibling sidecar) must have intact
     provenance (``require_sidecar``) and may not sit in a photo slot, even
-    as a template's placeholder (rail 8). Relative paths are skipped:
-    ``_compile_image`` refuses them.
+    as a template's placeholder (rail 8); a panel ``background_image`` is
+    not a slot. Relative paths are skipped: the panel compile refuses them.
 
     Raises:
         AIProvenanceError: naming the element, for either failure.
         ImageSourceError: a path that is not a readable PNG/JPEG.
     """
     uses: list[AIAssetUse] = []
-    # #153 extends this walk to panel.background_image.
     for panel in card.panels:
+        if panel.background_image and Path(panel.background_image).is_absolute():
+            # A background is not a photo slot: provenance only, no rail 8.
+            path = probe_image(Path(panel.background_image)).path
+            where = f"{card.template_id}/{panel.position.value}/background_image"
+            try:
+                if is_ai_asset(path):
+                    uses.append(AIAssetUse(path=path, where=where, record=require_sidecar(path)))
+            except AIProvenanceError as e:
+                raise AIProvenanceError(f"{where}: {e}") from e
         for i, element in enumerate(panel.image_elements):
             path = Path(element.source_path)
             if not path.is_absolute():
@@ -335,10 +343,6 @@ def _compile_panel(
     measurer: TextMeasurer,
     fit: Transform | None = None,
 ) -> list[RenderCommand]:
-    if panel.background_image:
-        raise UnsupportedFeatureError(
-            f"panel background_image is not supported (panel {panel.position.value})"
-        )
     for text in panel.text_elements:
         _check_text_fonts(
             text, f"{card.template_id}/{panel.position.value}/{text.id}", measurer
@@ -362,6 +366,9 @@ def _compile_panel(
     out.append(BeginGroup(transform=transform))
 
     out.extend(emit(_emit_panel_background(panel, card, ctx.geometry, fit), "background"))
+    out.extend(emit(
+        _emit_panel_background_image(panel, card, ctx.geometry, fit), "background_image",
+    ))
     out.extend(emit(_emit_panel_border(panel), "border"))
 
     for kind, element in _flatten_and_sort(panel):
@@ -447,16 +454,60 @@ def _emit_panel_background(
     """
     if panel.background_color is None:
         return []
-    if fit is not None:
-        rect = _fitted_bleed_rect(panel, card, geometry, fit)
-    else:
-        rect = _bleed_extended_panel_rect(panel, card, geometry)
     return [
         DrawShape(
-            geometry=rect,
+            geometry=_panel_background_rect(panel, card, geometry, fit),
             fill=SolidPaint(color=_color_to_rgba(panel.background_color)),
         ),
     ]
+
+
+def _emit_panel_background_image(
+    panel: Panel, card: Card, geometry: PageGeometry, fit: Transform | None = None
+) -> list[RenderCommand]:
+    """Emit ``panel.background_image`` cover-fit over the background rect (#153).
+
+    The rect is the solid background's (bleed included); a cover overflow
+    is cropped by a ``BeginClip`` of that rect, as for a cover photo (#98).
+    """
+    if not panel.background_image:
+        return []
+    where = f"{card.template_id}/{panel.position.value}/background_image"
+    source = Path(panel.background_image)
+    if not source.is_absolute():
+        raise ImageSourceError(
+            f"{where}: {panel.background_image!r} is relative; template images "
+            f"are resolved against the template file at load time"
+        )
+    try:
+        probed = probe_image(source)
+    except ImageSourceError as e:
+        raise ImageSourceError(f"{where}: {e}") from e
+    bg_rect = _panel_background_rect(panel, card, geometry, fit)
+    draw_rect = _cover_rect(bg_rect, probed.width_px, probed.height_px)
+    draw = DrawImage(
+        image=ImageRef(
+            source=str(probed.path),
+            rect=draw_rect,
+            format=probed.format,
+            width_px=probed.width_px,
+            height_px=probed.height_px,
+            preserve_aspect=True,
+        ),
+        opacity=1.0,
+    )
+    if draw_rect == bg_rect:
+        return [draw]
+    return [BeginClip(geometry=bg_rect), draw, EndClip()]
+
+
+def _panel_background_rect(
+    panel: Panel, card: Card, geometry: PageGeometry, fit: Transform | None
+) -> RectGeom:
+    # The one background rect: colour and image bleed exactly alike.
+    if fit is not None:
+        return _fitted_bleed_rect(panel, card, geometry, fit)
+    return _bleed_extended_panel_rect(panel, card, geometry)
 
 
 def _bleed_extended_panel_rect(

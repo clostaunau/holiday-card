@@ -316,7 +316,9 @@ rich text (paragraphs + **bold** + *italic* + ***bold-italic***)
 text **rotation**, **photo images** (PNG/JPEG
 only, content-probed; template `source_path` is relative to the YAML
 file — absolute, `..` and symlink escapes are load errors, D5) with
-circle / rectangle / ellipse / star clip masks, fold lines, identity
+circle / rectangle / ellipse / star clip masks, a panel
+**`background_image`** (cover-fit over the background rect, bleed
+included, under every element, #153), fold lines, identity
 or rotation-only group transforms, and **bleed extension** on edges
 that touch the page trim (`card.bleed` / `panel.bleed` default to
 0.125", capped at the page geometry's bleed: the default `letter`
@@ -340,7 +342,7 @@ miscarriage-spare         pet-loss-spare
 Remaining gaps (out-of-scope features, each raises
 `UnsupportedFeatureError` rather than silently dropping content):
 SVG path **arc** commands (`A`/`a` — no shipped template uses arcs),
-photo `effects` / `frame_style`, panel `background_image`, text
+photo `effects` / `frame_style`, text
 `font_file`; an unknown `font_family` raises `UnknownFontError` (a
 subclass). **Fail loud, not silent** is the convention.
 
@@ -463,9 +465,9 @@ the "this will bite you" kind goes in Gotchas above. User-facing notes
 go in `RELEASE_NOTES.md`.
 
 In flight: the OpenRouter image-provider program (tracker #139); #141,
-#142, #143, #144, #145, #146, #147, #148, #149, #150, #151 and #152 have
-landed (OpenRouter is usable; its default model is provisional until #140).
-Next: #153. **Legacy-read deadline (O7):** delete the
+#142, #143, #144, #145, #146, #147, #148, #149, #150, #151, #152 and #153
+have landed (OpenRouter is usable; its default model is provisional until
+#140); panel `background_image` is #153 in the log. **Legacy-read deadline (O7):** delete the
 `LicenseRecord` `openai_policy_url` reader (`# LEGACY(v1.3.0 sidecar…)`)
 in the first release after the one that ships #147.
 

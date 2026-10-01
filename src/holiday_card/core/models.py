@@ -915,7 +915,13 @@ class Panel(BaseModel):
         ),
     )
     background_color: Color | None = Field(default=None, description="Panel background color")
-    background_image: str | None = Field(default=None, description="Path to background image")
+    background_image: str | None = Field(
+        default=None,
+        description=(
+            "PNG/JPEG drawn cover-fit under all panel content, over `background_color`, "
+            "extended into the bleed like the background. Path relative to the template file."
+        ),
+    )
     border: Border | None = Field(default=None, description="Panel border styling")
     text_elements: list[TextElement] = Field(default_factory=list, description="Text on panel")
     image_elements: list[ImageElement] = Field(default_factory=list, description="Images on panel")

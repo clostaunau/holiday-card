@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Panel background images
+
+A template panel can now set `background_image`: a PNG or JPEG, relative
+to the template file, drawn cover-fit over `background_color` and under
+every shape, image and text element, extended into the bleed like the
+background. Baked AI art (with its sidecar) works there too, and is
+disclosed in the card's metadata; text stays vector. On `moo-a6` an
+element with opacity below 1 over the art is refused (PDF/X needs a solid
+backdrop). Previously the compiler refused the field.
+
 ### `ai-asset models`
 
 `holiday-card ai-asset models [--provider openai|openrouter] [--format table|json|yaml]`

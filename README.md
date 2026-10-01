@@ -174,6 +174,11 @@ the template YAML file**, never the current directory. The rules:
 - A bad path fails `holiday-card validate`; a bad image fails `create` /
   `preview` with `Error: …` and exit 2.
 
+A panel's `background_image` follows the same rules. It is drawn cover-fit
+under everything else on the panel, into the bleed, so baked art can sit
+behind vector text (see the
+[template authoring guide](docs/template-authoring.md#panel-background-image)).
+
 ### Your own photos: `-i/--image`
 
 The photo templates (`christmas-photo-ornament`, `christmas-family-photo`,
@@ -322,6 +327,9 @@ holiday-card ai-asset generate \
 
 holiday-card ai-asset models   # the curated image models this version supports (no network)
 ```
+
+A baked image can go in a template's `image_elements`, or be a panel's
+`background_image`: cover-fit art under vector text, which stays vector.
 
 ### OpenRouter (optional second provider)
 
