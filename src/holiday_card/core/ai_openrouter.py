@@ -314,6 +314,8 @@ class ORErrorMetadata(_Wire):
     limit_source: str | None = None
     reasons: list[str] | None = None
     remedy_hint: str | None = None
+    block_reason: str | None = None  # Gemini moderation block on a 400 (#172)
+    finish_reason: str | None = None
 
 
 class ORError(_Wire):
@@ -332,6 +334,7 @@ _M = TypeVar("_M", bound=BaseModel)
 
 _USAGE_STATUSES = frozenset({400, 404, 413, 422})
 _REFUSAL_TYPES = frozenset({"content_policy_violation", "refusal"})
+_SAFETY_BLOCK_REASONS = frozenset({"PROHIBITED_CONTENT", "SAFETY", "BLOCKLIST", "IMAGE_SAFETY"})
 _IN_FLIGHT = "openrouter_in_flight_budget"
 _GENERATION_ID = re.compile(r"[A-Za-z0-9_-]{1,128}")
 _MEDIA_TYPES: dict[str, ImageMediaType] = {
@@ -364,7 +367,18 @@ def _retry_after(value: str | None) -> float | None:
     return max(0.0, (when - datetime.now(UTC)).total_seconds())
 
 
+def _safety_block(meta: ORErrorMetadata | None) -> str | None:
+    """The upstream safety-block reason a 400 carries (Gemini, #172), else ``None``."""
+    if meta is None:
+        return None
+    return next(
+        (r for r in (meta.block_reason, meta.finish_reason) if r in _SAFETY_BLOCK_REASONS), None
+    )
+
+
 def _status_kind(status: int, meta: ORErrorMetadata | None) -> ProviderErrorKind:
+    if status == 400 and _safety_block(meta):
+        return "refused"
     if status in _USAGE_STATUSES:
         return "usage"
     if status == 401:
@@ -392,6 +406,8 @@ def _raise_status(
     details = []
     if meta and meta.provider_code is not None:
         details.append(f"provider code {meta.provider_code}")
+    if block := _safety_block(meta):
+        details.append(f"block reason {block}")
     if meta and meta.reasons:
         details.append("reasons: " + "; ".join(meta.reasons))
     if meta and meta.remedy_hint:

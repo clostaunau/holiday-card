@@ -321,7 +321,7 @@ This is the trademark prompt that the local rails already refuse
    "metadata":{"provider_name":"Google AI Studio","finish_reason":"PROHIBITED_CONTENT","candidate_count":1,"block_reason":"PROHIBITED_CONTENT"}}}
   ```
 - So upstream does refuse, but as a 400 with no `error_type`. The shipped
-  client treats it as `usage` (exit 2), not `refused` (exit 6). → #172
+  client treated it as `usage` (exit 2), not `refused` (exit 6). → #172 (fixed: now exit 6)
 
 #### Free follow-ups
 
