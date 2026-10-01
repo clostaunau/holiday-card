@@ -261,15 +261,15 @@ def embedded_ai_assets(card: Card) -> list[AIAssetUse]:
             if not path.is_absolute():
                 continue
             path = probe_image(path).path
-            if not is_ai_asset(path):
-                continue
             where = (
                 f"{card.template_id}/{panel.position.value}/image_elements[{i}] "
                 f"(id {element.id!r})"
             )
-            if element.slot is not None:
-                raise AIProvenanceError(f"{where}: {photo_slot_refusal(path)}")
             try:
+                if not is_ai_asset(path):
+                    continue
+                if element.slot is not None:
+                    raise photo_slot_refusal(path)
                 record = require_sidecar(path)
             except AIProvenanceError as e:
                 raise AIProvenanceError(f"{where}: {e}") from e

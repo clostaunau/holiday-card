@@ -142,3 +142,16 @@ def test_card_without_ai_assets_gets_no_ai_metadata(tmp_path: Path) -> None:
 def test_shipped_templates_embed_no_ai_imagery(template_id: str) -> None:
     card = CardGenerator().create_card(template_id)
     assert _ai_metadata(compile_card(card)) == []
+
+
+def test_tampered_marker_is_refused_naming_the_element(tmp_path: Path) -> None:
+    from PIL import PngImagePlugin
+
+    from holiday_card.core.ai_provenance import AI_MARKER_KEY
+
+    info = PngImagePlugin.PngInfo()
+    info.add_itxt(AI_MARKER_KEY, "not json")
+    tampered = tmp_path / "tampered.png"
+    Image.new("RGB", (8, 8)).save(tampered, "PNG", pnginfo=info)
+    with pytest.raises(AIProvenanceError, match=r"t/front/image_elements\[0\] \(id 'art'\)"):
+        compile_card(_card((PanelPosition.FRONT, [_element(tampered)])), _NO_IMPOSE)

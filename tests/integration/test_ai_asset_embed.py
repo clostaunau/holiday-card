@@ -120,3 +120,15 @@ def test_preview_refuses_an_ai_asset_as_a_photo(
     )
     _assert_refused(result, "rail 8")
     assert not Path("p.png").exists()
+
+
+@pytest.mark.parametrize("target", ["per-panel-pdf", "moo-a6"])
+def test_per_panel_export_enforces_the_sidecar(ai_template: Path, target: str) -> None:
+    ok = _invoke("create", str(ai_template), "--export-for", target, "-o", "ok/")
+    assert ok.exit_code == 0, _plain(ok.output)
+    assert (Path("ok") / "front.pdf").exists()
+
+    sidecar_path_for(ai_template.parent / "border.png").unlink()
+    result = _invoke("create", str(ai_template), "--export-for", target, "-o", "out/")
+    _assert_refused(result, "ai-border/front/image_elements[0]", "border.license.yaml")
+    assert not Path("out").exists()

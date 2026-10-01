@@ -53,11 +53,13 @@ most a one-line pointer. User-facing notes belong in `RELEASE_NOTES.md`.
   `TestAIMarker` / `TestIsAIAsset` / `TestRequireSidecar` in
   `test_ai_provenance.py`, `TestBakeMarker` in `test_ai_assets.py`, the new
   `tests/unit/test_compiler_ai_assets.py` (placement, sorted / deduplicated
-  labels, refusals, order, and no `ai_imagery` for all 21 templates),
+  labels, refusals (a tampered marker names its element), order, and no
+  `ai_imagery` for all 21 templates),
   `TestAIAssetRefused` in `test_generators_photo_slots.py` and
   `tests/integration/test_ai_asset_embed.py` (`create` / `validate` with and
-  without the sidecar, `create` / `preview -i` with a marked and a legacy
-  asset: exit 2, no file, no traceback). Tests 3804 → 3867 (collected).
+  without the sidecar, per-panel-pdf and moo-a6 export, `create` / `preview
+  -i` with a marked and a legacy asset: exit 2, no file, no traceback).
+  Tests 3804 → 3870 (collected).
 
 - **2026-09-30 — OpenRouter `/images` client over a hardened stdlib
   transport (issue #149, OpenRouter program)**: new `core/ai_openrouter.py`
