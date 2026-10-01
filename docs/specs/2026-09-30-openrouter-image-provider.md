@@ -129,6 +129,13 @@ issue "verify". Five points:
 4. What does an image content-policy 403 body look like?
 5. Is `size: "WxH"` honoured for `openai/gpt-image-2`?
 
+**Answered 2026-10-01** — see `docs/industry-review/openrouter-image-api-snapshot.md`
+§ Live verification (#140): 1 yes, `x-generation-id` on every 200; 2 `3:4` `2K` →
+1792×2400 (394.7 PPI on moo-a6), `4K` → 3584×4800; 3 silently dropped (200, billed);
+4 Gemini blocks with a **400** carrying `block_reason: PROHIBITED_CONTENT` and no
+`error_type`, not a 403 (#172); 5 yes, exactly 1328×1824 (the §5.3 rule stands). Also:
+the unadvertised `output_format: "png"` is ignored by Gemini, which returns JPEG.
+
 ## 4. Current state of the shipped L3 feature (`047ee2c`)
 
 | Concern | Where | Note |
@@ -389,6 +396,9 @@ a traceback**. The OpenAI adapter maps its SDK errors onto the same `ProviderErr
   **Confirm with the Phase-0 live call before it becomes the default.**
   `openai/gpt-image-2` via OpenRouter has no resolution knob and will likely warn below
   300 PPI.
+  **Confirmed 2026-10-01** (#140, O11): `3:4` / `2K` on `google-ai-studio/global` returned
+  1792×2400, 394.7 PPI on moo-a6, for $0.136. `openai/gpt-image-2` at `3:4` returned
+  1152×1536 (252.6 PPI), so it does warn.
 - A model whose `input_references` max is 0 is refused unless
   `--unsafe-no-style-anchor` is given (S2).
 
@@ -508,6 +518,7 @@ Each entry is dated and is never silently changed. Amend with a new dated line.
 | O8 | AI copy **stays out** (S4). | Default adopted (it is a standing decision) |
 | O9 | Reference images are **not screened** for trademarks or likeness in this program; the gap is stated in the consent notice. | Default adopted; owner may override |
 | O10 | The curated house-style reference library **waits for the L2 illustrator**. | Default adopted; owner may override |
+| O11 | **2026-10-01:** Default OpenRouter model = `google/gemini-3-pro-image` pinned to `google-ai-studio/global` (live call: `3:4` / `2K` → 1792×2400, 394.7 PPI on moo-a6, $0.136; #140). | Owner confirmed after the #140 live calls |
 
 ### Amendment 2026-09-30: decisions made while splitting into issues
 
