@@ -1319,6 +1319,7 @@ class TestShortFlags:
             (("ai-asset", "generate"), "--output", "-o"),
             (("ai-asset", "generate"), "--provider", None),
             (("ai-asset", "generate"), "--model", None),
+            (("ai-asset", "generate"), "--max-cost", None),
         ],
     )
     def test_short_flag_table(

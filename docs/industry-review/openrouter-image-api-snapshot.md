@@ -70,6 +70,24 @@ For the two export targets with geometry, every curated model picks `3:4`:
 letter (2550×3300) gets `4K` and moo-a6 (1314×1824) gets `2K`, or no tier
 for flux.2-pro and gpt-image-2.
 
+### Pricing bounds for `--max-cost` (2026-09-30, #151)
+
+`--max-cost` multiplies each endpoint price row by an upper bound. The
+bounds are human-maintained fields on each entry, cited in its
+`bound_source`; the refresh script carries them over and never reports
+them as drift.
+
+| model | bound | source (read 2026-09-30) |
+|---|---|---|
+| `google/gemini-3-pro-image` | output tokens 1K 1120, 2K 1120, 4K 2000; 560 tokens per input image | <https://ai.google.dev/gemini-api/docs/pricing> |
+| `google/gemini-3.1-flash-image` | output tokens 512 747, 1K 1120, 2K 1680, 4K 2520 (no input-image price row) | <https://ai.google.dev/gemini-api/docs/pricing> |
+| `black-forest-labs/flux.2-pro` | 4.194304 MP output (2048×2048: "up to 4MP (e.g., 2048x2048)") | <https://help.bfl.ai/articles/8531149640-what-are-the-resolution-limits> |
+| `bytedance-seed/seedream-4.5` | none needed (priced per image) | — |
+| `openai/gpt-image-2` | **none recorded**: no token count per output size, so `--max-cost` exits 2 | — |
+
+#140's live call reports `usage.completion_tokens`; it must stay at or
+below the recorded tier bound (the `ok_png` fixture's 1120 at 2K does).
+
 ### Refreshing
 
 `scripts/refresh_openrouter_models.py` is dev-only and is never run in CI.

@@ -139,6 +139,18 @@ class TestPostInitRefusals:
             ({"upstream_terms_url": "https://openrouter.ai/terms"}, "upstream_terms_url"),
             ({"upstream_terms_url": "https://www.openrouter.ai/terms"}, "upstream_terms_url"),
             ({"provider_tag": ""}, "provider_tag"),
+            # --max-cost upper bounds (#151); the base entry records tokens.
+            ({"max_output_megapixels": 0.0}, "max_output_megapixels"),
+            ({"max_output_megapixels": float("nan")}, "max_output_megapixels"),
+            ({"output_image_tokens": {"512": 747}}, "output_image_tokens"),
+            ({"output_image_tokens": {"default": 1120}}, "output_image_tokens"),
+            ({"output_image_tokens": {}}, "output_image_tokens"),
+            ({"output_image_tokens": {"1K": 0}}, "output_image_tokens"),
+            ({"input_image_tokens": 0}, "input_image_tokens"),
+            ({"bound_source": None}, "bound_source"),
+            ({"bound_source": "https://ai.google.dev/pricing"}, "bound_source"),
+            ({"bound_source": "2026-09-30 Google said so"}, "bound_source"),
+            ({"output_image_tokens": None, "input_image_tokens": None}, "bound_source"),
         ],
     )
     def test_bad_entry_is_refused_naming_id_and_field(

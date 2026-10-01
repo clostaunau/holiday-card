@@ -46,7 +46,8 @@ def test_openrouter_default_model_bakes_a_moo_a6_asset(
             "ai-asset", "generate", "--provider", "openrouter",
             "--subject", "watercolor pine bough border, sage green and burgundy",
             "--reference", str(REFERENCE), "--occasion", "christmas",
-            "--export-for", "moo-a6", "--accept-ai-terms", "-o", str(out),
+            "--export-for", "moo-a6", "--accept-ai-terms", "--max-cost", "0.25",
+            "-o", str(out),
         ],
     )  # fmt: skip
     assert result.exit_code == 0, result.output

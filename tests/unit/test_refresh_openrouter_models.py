@@ -72,9 +72,14 @@ class TestEntryFromCatalogue:
         assert live.snapshot_date == "2026-10-14"
         # The terms review replaced each catalogue URL with the page that
         # governs output ownership (see the snapshot doc).
-        assert replace(
-            live, snapshot_date=current.snapshot_date, upstream_terms_url=current.upstream_terms_url
-        ) == current
+        # The terms URL and the --max-cost bounds (#151) are human-maintained.
+        assert set(script.REVIEWED_FIELDS) == {
+            "upstream_terms_url", "max_output_megapixels", "output_image_tokens",
+            "input_image_tokens", "bound_source",
+        }  # fmt: skip
+        assert live.bound_source is None
+        reviewed = {f: getattr(current, f) for f in script.REVIEWED_FIELDS}
+        assert replace(live, snapshot_date=current.snapshot_date, **reviewed) == current
 
     def test_terms_url_comes_from_the_tags_base_slug(self, script: ModuleType) -> None:
         live = script.entry_from_catalogue(
@@ -95,6 +100,25 @@ class TestDiffEntry:
         entry = OPENROUTER_IMAGE_MODELS["openai/gpt-image-2"]
         live = replace(entry, upstream_terms_url="https://openai.com/policies/row-terms-of-use/")
         assert script.diff_entry(entry, live) == []
+
+    def test_cost_bounds_are_reviewed_values_not_drift(self, script: ModuleType) -> None:
+        entry = OPENROUTER_IMAGE_MODELS["google/gemini-3-pro-image"]
+        live = replace(
+            entry, output_image_tokens=None, input_image_tokens=None, bound_source=None
+        )
+        assert script.diff_entry(entry, live) == []
+
+    def test_a_dropped_tier_drops_its_token_bound(self, script: ModuleType) -> None:
+        entry = OPENROUTER_IMAGE_MODELS["google/gemini-3-pro-image"]
+        kept = script.carry_reviewed(entry, ("1K", "2K"))
+        assert dict(kept["output_image_tokens"]) == {"1K": 1120, "2K": 1120}
+        assert kept["bound_source"] == entry.bound_source
+
+    def test_no_bound_left_drops_the_source(self, script: ModuleType) -> None:
+        entry = OPENROUTER_IMAGE_MODELS["google/gemini-3.1-flash-image"]
+        kept = script.carry_reviewed(entry, ("8K",))
+        assert kept["output_image_tokens"] is None
+        assert kept["bound_source"] is None
 
     def test_gone(self, script: ModuleType) -> None:
         entry = OPENROUTER_IMAGE_MODELS["openai/gpt-image-2"]

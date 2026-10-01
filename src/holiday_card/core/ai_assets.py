@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Literal, Protocol, assert_never
 
 from PIL import Image, ImageCms, PngImagePlugin
 
+from holiday_card.core.ai_cost import CostEstimate, check_cost_cap, estimate_max_cost
 from holiday_card.core.ai_openrouter_models import (
     RESOLUTION_LONG_EDGE_PX,
     aspect_ratio_value,
@@ -55,7 +56,7 @@ from holiday_card.core.ai_provenance import (
 )
 from holiday_card.core.ai_providers import AIProvider, policy_urls_for
 from holiday_card.core.ai_rails import RailViolation, evaluate_rails
-from holiday_card.core.images import MAX_IMAGE_PIXELS
+from holiday_card.core.images import MAX_IMAGE_PIXELS, probe_image
 from holiday_card.core.models import OccasionType
 from holiday_card.utils.measurements import DEFAULT_BLEED
 
@@ -110,6 +111,11 @@ class ModelSizePolicy:
     max_aspect: float | None = None
     min_pixels: int | None = None
     max_pixels: int | None = None
+    # Upper bound (USD) for one request at the largest size this policy can
+    # emit, at quality "auto"; set only from a dated, cited OpenAI price in
+    # docs/industry-review/openai-image-api-snapshot.md. None: --max-cost
+    # cannot be checked for this model (#151, D4).
+    max_price_usd: float | None = None
 
 
 _LEGACY_SIZES = ((1024, 1024), (1536, 1024), (1024, 1536))
@@ -369,6 +375,7 @@ class GenerationResult:
     policy_urls: tuple[str, ...]
     provider_route: str | None  # the pinned OpenRouter endpoint; None for a direct provider
     overridden: list[RailViolation] = field(default_factory=list)
+    cost_estimate: CostEstimate | None = None  # the --max-cost upper bound; None without a cap
 
 
 class ImageClient(Protocol):
@@ -588,6 +595,7 @@ def generate_ai_asset(
     style: str | None = None,
     seed: int | None = None,
     override: bool = False,
+    max_cost_usd: float | None = None,
 ) -> GenerationResult:
     """Bake one AI asset to disk with a provenance sidecar.
 
@@ -598,9 +606,17 @@ def generate_ai_asset(
     and a ``<asset>.license.yaml`` sidecar. The sidecar's ``model`` is
     ``client.model``, the model actually called.
 
+    With ``max_cost_usd``, the offline upper-bound estimate
+    (:func:`~holiday_card.core.ai_cost.estimate_max_cost`) runs after the
+    rails and before the call; without it, no estimate is computed.
+
     Raises:
         ValueError: If ``request`` was sized for another provider or model
             than ``client`` calls (checked before anything is spent).
+        NoPriceOnRecordError: A cap was given but the model has no recorded
+            price or bound (nothing is spent).
+        CostCapExceededError: The estimate is above ``max_cost_usd``
+            (nothing is spent).
     """
     if not has_consented(consent_path, client.provider):
         raise ConsentRequiredError(
@@ -617,6 +633,16 @@ def generate_ai_asset(
             f"the request was sized for {request.provider.value} model {request.model!r}, "
             f"but the client calls {client.provider.value} model {client.model!r}"
         )
+
+    estimate: CostEstimate | None = None
+    if max_cost_usd is not None:
+        reference = (
+            probe_image(Path(request.reference_path)) if request.reference_path else None
+        )
+        estimate = estimate_max_cost(
+            client.provider, client.model, request.shape, prompt=prompt, reference=reference
+        )
+        check_cost_cap(estimate, max_cost_usd)
 
     generated = client.generate(
         prompt=prompt,
@@ -672,6 +698,8 @@ def generate_ai_asset(
         color_profile=SRGB_PROFILE_NAME,
         policy_urls=list(policy_urls),
         override_reasons=[f"[{v.category}] {v.reason}" for v in violations],
+        cost_cap_usd=max_cost_usd,
+        cost_estimate_usd=None if estimate is None else estimate.usd,
     )
     sidecar = write_sidecar(out_path, record)
 
@@ -686,4 +714,5 @@ def generate_ai_asset(
         policy_urls=policy_urls,
         provider_route=generated.provider_route,
         overridden=violations if override else [],
+        cost_estimate=estimate,
     )

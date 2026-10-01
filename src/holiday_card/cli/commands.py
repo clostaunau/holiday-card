@@ -5,6 +5,7 @@ All commands support both human-readable and JSON output formats.
 """
 
 import json
+import math
 import os
 import sys
 import warnings
@@ -1001,6 +1002,15 @@ def ai_asset_generate(
         "--accept-ai-terms",
         help="Non-interactively record the one-time AI consent acknowledgement.",
     ),
+    max_cost: float | None = typer.Option(
+        None,
+        "--max-cost",
+        metavar="USD",
+        help=(
+            "Refuse (exit 2, before any call) if the offline upper-bound estimate "
+            "from the curated price list is above USD. Opt-in; never prompts."
+        ),
+    ),
 ) -> None:
     """Generate one AI image asset to disk with a provenance sidecar.
 
@@ -1024,6 +1034,11 @@ def ai_asset_generate(
         build_ai_request,
         generate_ai_asset,
     )
+    from holiday_card.core.ai_cost import (
+        CostCapExceededError,
+        NoPriceOnRecordError,
+        format_usd_cap,
+    )
     from holiday_card.core.ai_errors import ProviderError
     from holiday_card.core.ai_provenance import (
         consent_notice,
@@ -1041,6 +1056,8 @@ def ai_asset_generate(
             f"Error: unknown occasion {occasion!r}.", fg=typer.colors.RED, err=True
         )
         raise typer.Exit(ExitCode.USAGE) from e
+    if max_cost is not None and not (math.isfinite(max_cost) and max_cost > 0):
+        _fail("--max-cost must be a positive number of US dollars")
 
     # Usage errors come before consent, so they never record it as a side effect.
     from holiday_card.core.ai_providers import (
@@ -1185,6 +1202,7 @@ def ai_asset_generate(
             style=style,
             seed=seed,
             override=i_know_what_im_doing,
+            max_cost_usd=max_cost,
         )
     except ConsentRequiredError as e:
         typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
@@ -1199,6 +1217,24 @@ def ai_asset_generate(
             err=True,
         )
         raise typer.Exit(ExitCode.RAIL_REFUSED) from e
+    except CostCapExceededError as e:  # spec §6.5: a refused cap is a usage error
+        typer.secho(
+            f"Error: {e} for {client.model} ({client.provider.value})",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        for line in e.estimate.lines:
+            typer.echo(f"  {line}", err=True)
+        raise typer.Exit(ExitCode.USAGE) from e
+    except NoPriceOnRecordError as e:
+        typer.secho(
+            f"Error: no price on record for {e.model} ({e.provider.value}); --max-cost "
+            "cannot be checked. Omit --max-cost or pick a model with a recorded price.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        typer.echo(f"  ({e.reason})", err=True)
+        raise typer.Exit(ExitCode.USAGE) from e
     except ProviderError as e:  # never re-raised, even under --debug: the exit code is the contract
         what = _PROVIDER_WHAT[e.kind]
         status = f" (HTTP {e.status})" if e.status is not None else ""
@@ -1229,10 +1265,24 @@ def ai_asset_generate(
             f"print size, below {request.dpi}; it was upscaled and may print soft.",
             fg=typer.colors.YELLOW,
         )
+    if result.cost_estimate is not None:
+        typer.echo(f"  Estimated cost (upper bound): ${result.cost_estimate.usd:.4f}")
     if result.cost_usd is not None:
         typer.echo(f"  Cost: ${result.cost_usd:.2f} (reported)")
     else:
         typer.echo("  Cost: unknown (the provider did not report one)")
+    if max_cost is not None and result.cost_usd is not None and result.cost_usd > max_cost:
+        typer.secho(
+            f"  Warning: the provider reported ${result.cost_usd:.4f}, above --max-cost "
+            f"{format_usd_cap(max_cost)} (the charge has already been made).",
+            fg=typer.colors.YELLOW,
+        )
+    elif max_cost is not None and result.cost_source == "unknown":
+        typer.secho(
+            "  Note: the provider reported no cost; the charge could not be checked "
+            "against --max-cost.",
+            fg=typer.colors.YELLOW,
+        )
     for url in result.policy_urls:
         typer.echo(f"  Policy: {url}")
     typer.echo(

@@ -358,6 +358,21 @@ Set `HOLIDAY_CARD_AI_PROVIDER=openrouter` to make it your default
   you upload.
 * `--seed` works only for models that take one (e.g.
   `black-forest-labs/flux.2-pro`).
+* **Cost cap** — `--max-cost USD` (opt-in) estimates an *upper bound*
+  for the call **offline**, from the curated price list and its cited
+  vendor bounds, and refuses with exit 2 before any call when the
+  estimate is above the cap (equal passes). If the provider then reports
+  a higher charge, the CLI warns (the money is already spent) and keeps
+  the asset. There is no prompt and no default cap. A model with no
+  recorded price or bound (every OpenAI model today, and
+  `openai/gpt-image-2` via OpenRouter) exits 2 with `--max-cost`. The
+  default model on `moo-a6` with a reference bounds at $0.1355:
+
+  ```bash
+  holiday-card ai-asset generate --provider openrouter --max-cost 0.15 \
+    --subject "watercolor pine bough border, sage green and burgundy" \
+    --reference path/to/reference.png --occasion christmas -o assets/ai/border.png
+  ```
 
 The model list and the API behaviour it relies on are recorded in
 [`docs/industry-review/openrouter-image-api-snapshot.md`](docs/industry-review/openrouter-image-api-snapshot.md).
@@ -396,7 +411,9 @@ Guardrails that ship on by default (see
 * **Provenance sidecar** — every asset gets a sibling
   `<asset>.license.yaml` recording the prompt, model, seed, timestamp,
   the cost the provider reported (or `unknown` when it reports none;
-  nothing is estimated), and the provider's and upstream vendor's
+  the reported cost is never estimated; with `--max-cost` the sidecar
+  also records `cost_cap_usd` and the `cost_estimate_usd` it was checked
+  against), and the provider's and upstream vendor's
   policy URLs in force at generation time. It also names the `provider`, the `requested_model`
   next to the `model` actually called, the `request_shape` sent, the
   `media_type` the model returned, and, for a routing provider, the

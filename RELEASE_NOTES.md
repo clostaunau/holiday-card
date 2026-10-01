@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### `ai-asset generate --max-cost USD`
+
+An opt-in cost cap. The CLI estimates an upper bound for the call
+offline, from the curated price list and its cited vendor bounds, and
+refuses with exit 2 **before** any call when the estimate is above the
+cap (a cap equal to the estimate passes). On success it prints
+`Estimated cost (upper bound): $…`; if the provider then reports a
+higher charge it warns that the money is already spent, and keeps the
+asset. With no `--max-cost` nothing changes: no estimate, no prompt. A
+model with no recorded price or bound (every OpenAI model, and
+`openai/gpt-image-2` via OpenRouter) exits 2 when `--max-cost` is given.
+The sidecar records `cost_cap_usd` and `cost_estimate_usd`.
+
 ### OpenRouter as an optional second AI image provider
 
 `ai-asset generate --provider openrouter` reaches a curated list of image
