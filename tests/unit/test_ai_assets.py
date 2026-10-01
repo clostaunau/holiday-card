@@ -1053,3 +1053,66 @@ class TestMaxCost:
         assert record.cost_estimate_usd is None
         dumped = out.with_suffix(".license.yaml").read_text()
         assert "cost_cap_usd: null" in dumped
+
+
+# --- Panel background sizing (#168) -----------------------------------------
+
+
+def _panel_background_request(target: str, **kwargs: Any) -> AIRequest:
+    from holiday_card.core.ai_assets import build_panel_background_request
+
+    return build_panel_background_request(
+        prompt="x", target=REGISTRY[target], panel_width_in=4.25, panel_height_in=5.5,
+        provider=AIProvider.OPENAI, model="gpt-image-2", **kwargs,
+    )
+
+
+class TestPanelBackgroundRequest:
+    def test_moo_a6_fill_covers_the_fitted_bleed_rect_at_300_ppi(self) -> None:
+        # 4.25 × 5.83/5.5 + 0.25 = 4.755 in → 1426.5 px, rounded up: 1427 is
+        # the compiler's own "need ≥" count; round() would give 1426.
+        req = _panel_background_request("moo-a6")
+        assert (req.width_px, req.height_px) == (1427, 1824)
+        assert req.shape == choose_request_shape(AIProvider.OPENAI, "gpt-image-2", 1427, 1824)
+
+    def test_letter_is_the_panel_with_no_bleed(self) -> None:
+        req = _panel_background_request("letter")
+        assert (req.width_px, req.height_px) == (1275, 1650)
+
+    def test_per_panel_native_is_the_panel_plus_bleed(self) -> None:
+        req = _panel_background_request("per-panel-pdf")
+        assert (req.width_px, req.height_px) == (1350, 1725)
+
+    def test_records_purpose_and_target(self) -> None:
+        req = _panel_background_request("moo-a6")
+        assert (req.purpose, req.export_target) == ("panel_background", "moo-a6")
+
+    def test_page_request_is_unchanged_and_says_so(self) -> None:
+        req = build_ai_request(
+            prompt="x", trim_width_in=4.13, trim_height_in=5.83, bleed_in=0.125,
+            provider=AIProvider.OPENAI, model="gpt-image-2", export_target="moo-a6",
+        )
+        assert (req.width_px, req.height_px) == (1314, 1824)
+        assert (req.purpose, req.export_target) == ("page", "moo-a6")
+
+    def test_sidecar_records_purpose_and_target(self, tmp_path: Path) -> None:
+        out = tmp_path / "bg.png"
+        generate_ai_asset(
+            prompt="watercolor pine bough border", occasion=OccasionType.CHRISTMAS,
+            out_path=out, request=_panel_background_request("moo-a6"),
+            client=FakeImageClient(), timestamp="2027-01-15T10:00:00Z",
+            consent_path=_consented(tmp_path),
+        )
+        record = read_sidecar(out)
+        assert (record.purpose, record.export_target) == ("panel_background", "moo-a6")
+        assert (record.width_px, record.height_px) == (1427, 1824)
+
+    def test_sidecar_without_purpose_still_reads(self, tmp_path: Path) -> None:
+        out = tmp_path / "old.png"
+        generate_ai_asset(
+            prompt="watercolor pine bough border", occasion=OccasionType.CHRISTMAS,
+            out_path=out, request=_small_request(), client=FakeImageClient(),
+            timestamp="2027-01-15T10:00:00Z", consent_path=_consented(tmp_path),
+        )
+        record = read_sidecar(out)
+        assert (record.purpose, record.export_target) == ("page", None)

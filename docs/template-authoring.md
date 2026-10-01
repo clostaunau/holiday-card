@@ -337,7 +337,11 @@ vector. The rules:
   `ai-asset generate --export-for moo-a6` (1314 × 1824 px) prints at
   309 PPI on `letter`, but at 276 PPI on `moo-a6`, which scales the panel
   by 1.06 to fill the A6 trim; that warns. For 300 PPI on `moo-a6` give
-  at least 1427 × 1824 px. Below 150 PPI, `create` refuses.
+  at least 1427 × 1824 px: `ai-asset generate --export-for moo-a6
+  --for-panel-background` bakes exactly that (the panel as the target
+  places it, fit scale and bleed included; `--panel-size WxH` for a panel
+  other than 4.25 × 5.5 in), and it prints at 300 PPI or more on `letter`
+  too. Below 150 PPI, `create` refuses.
 - **PDF/X.** On `moo-a6` an image is not a solid backdrop, so a translucent
   element (opacity below 1) over the art is refused. Use opaque colours
   there; on `letter`, SVG and PNG, transparency over the art is fine. An

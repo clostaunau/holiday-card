@@ -228,3 +228,31 @@ class TestProvenance:
         assert not any(
             isinstance(c, SetMetadata) and c.key == "ai_imagery" for c in commands
         )
+
+
+class TestSharedFitHelper:
+    """The bake sizes against the compiler's own rect, so the two can't drift (#168)."""
+
+    @pytest.mark.parametrize("fit", ["fill", "letterbox"])
+    def test_helper_is_the_fitted_bleed_rect_times_scale(
+        self, tmp_path: Path, fit: str
+    ) -> None:
+        from holiday_card.utils.measurements import fitted_panel_background_in
+
+        image = _png(tmp_path / "bg.png", (1000, 1000))
+        panel = _panel(str(image), background_color=_RED, x=0.0)
+        geometry = PageGeometry.moo_a6()
+        ctx = CompileContext(
+            geometry=geometry, impose=False, emit_fold_lines=False,
+            panel_fit=fit,  # type: ignore[arg-type]
+        )
+        commands = compile_card(_card(panel), ctx)
+        group = next(c for c in commands if isinstance(c, BeginGroup))
+        rect = _image_clip_rect(commands)
+        placed = (
+            rect.width * group.transform.scale_x / 72,
+            rect.height * group.transform.scale_y / 72,
+        )
+        assert fitted_panel_background_in(
+            _PANEL_W, _PANEL_H, geometry, fit, geometry.bleed_in,  # type: ignore[arg-type]
+        ) == pytest.approx(placed)

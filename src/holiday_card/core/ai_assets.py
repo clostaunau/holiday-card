@@ -56,9 +56,10 @@ from holiday_card.core.ai_provenance import (
 )
 from holiday_card.core.ai_providers import AIProvider, policy_urls_for
 from holiday_card.core.ai_rails import RailViolation, evaluate_rails
+from holiday_card.core.export_targets import ExportTarget
 from holiday_card.core.images import MAX_IMAGE_PIXELS, probe_image
 from holiday_card.core.models import OccasionType
-from holiday_card.utils.measurements import DEFAULT_BLEED
+from holiday_card.utils.measurements import DEFAULT_BLEED, fitted_panel_background_in
 
 if TYPE_CHECKING:
     from holiday_card.core.ai_openrouter_models import OpenRouterModel
@@ -68,6 +69,7 @@ __all__ = [
     "MODEL_SIZE_POLICIES_VERIFIED",
     "ModelSizePolicy",
     "AIRequest",
+    "AssetPurpose",
     "PixelSize",
     "AspectSize",
     "RequestShape",
@@ -91,6 +93,7 @@ __all__ = [
     "choose_request_size",
     "size_is_allowed",
     "build_ai_request",
+    "build_panel_background_request",
     "generate_ai_asset",
 ]
 
@@ -297,14 +300,20 @@ class AspectSize:
 
 RequestShape = PixelSize | AspectSize
 
+# What a bake is sized for: the whole page (trim + 2×bleed) or a panel's
+# ``background_image`` on a fitting target (#168).
+AssetPurpose = Literal["page", "panel_background"]
+
 
 @dataclass(frozen=True)
 class AIRequest:
     """A resolved, POD-aware generation request (no model call yet).
 
     ``width_px`` × ``height_px`` is the exact baked size (trim + 2×bleed at
-    ``dpi``); ``shape`` is what is sent to ``provider`` / ``model``, whose
-    output the bake resamples to the target.
+    ``dpi`` for a ``page``, the placed background rect for a
+    ``panel_background``); ``shape`` is what is sent to ``provider`` /
+    ``model``, whose output the bake resamples to the target.
+    ``purpose`` and ``export_target`` are recorded in the sidecar.
     """
 
     prompt: str
@@ -315,6 +324,8 @@ class AIRequest:
     model: str
     dpi: int = 300
     reference_path: str | None = None
+    purpose: AssetPurpose = "page"
+    export_target: str | None = None
 
 
 ImageMediaType = Literal["image/png", "image/jpeg", "image/webp"]
@@ -541,6 +552,7 @@ def build_ai_request(
     reference_path: str | None = None,
     provider: AIProvider,
     model: str,
+    export_target: str | None = None,
 ) -> AIRequest:
     """Resolve print geometry to a request for ``provider`` / ``model``.
 
@@ -560,6 +572,47 @@ def build_ai_request(
         model=model,
         dpi=dpi,
         reference_path=reference_path,
+        export_target=export_target,
+    )
+
+
+def build_panel_background_request(
+    *,
+    prompt: str,
+    target: ExportTarget,
+    panel_width_in: float,
+    panel_height_in: float,
+    dpi: int = 300,
+    reference_path: str | None = None,
+    provider: AIProvider,
+    model: str,
+) -> AIRequest:
+    """A request sized for a panel ``background_image`` on ``target`` (#168).
+
+    The bake covers the panel's background rect as placed on the page:
+    :func:`~holiday_card.utils.measurements.fitted_panel_background_in`
+    for the target's fit and bleed (an imposition target places the panel
+    natively). Pixels round **up** (as ``images._pixels_at`` does), so the
+    placed image never prints below ``dpi``.
+    """
+    fit = target.panel_fit if target.layout == "per-panel" else "native"
+    bleed_in = target.geometry.bleed_in if target.geometry is not None else target.bleed_in
+    width_in, height_in = fitted_panel_background_in(
+        panel_width_in, panel_height_in, target.geometry, fit, bleed_in
+    )
+    width_px = math.ceil(round(width_in * dpi, 6))
+    height_px = math.ceil(round(height_in * dpi, 6))
+    return AIRequest(
+        prompt=prompt,
+        width_px=width_px,
+        height_px=height_px,
+        shape=choose_request_shape(provider, model, width_px, height_px),
+        provider=provider,
+        model=model,
+        dpi=dpi,
+        reference_path=reference_path,
+        purpose="panel_background",
+        export_target=target.name,
     )
 
 
@@ -703,6 +756,8 @@ def generate_ai_asset(
         override_reasons=[f"[{v.category}] {v.reason}" for v in violations],
         cost_cap_usd=max_cost_usd,
         cost_estimate_usd=None if estimate is None else estimate.usd,
+        purpose=request.purpose,
+        export_target=request.export_target,
     )
     sidecar = write_sidecar(out_path, record)
 

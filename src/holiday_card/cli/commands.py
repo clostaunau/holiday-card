@@ -70,6 +70,7 @@ from holiday_card.core.templates import (
 from holiday_card.core.themes import discover_themes, get_themes_dir
 from holiday_card.renderers.reportlab_backend import IRReportLabRenderer
 from holiday_card.renderers.svg_backend import SVGRenderer
+from holiday_card.utils.measurements import QUARTER_FOLD_HEIGHT, QUARTER_FOLD_WIDTH
 
 
 def _exit_quietly_on_broken_pipe() -> NoReturn:
@@ -159,6 +160,17 @@ def _unexpected_error(prefix: str, e: Exception) -> NoReturn:
         err=True,
     )
     raise typer.Exit(ExitCode.ERROR) from e
+
+
+def _parse_panel_size(value: str) -> tuple[float, float]:
+    # "WxH" in inches, both finite and positive, or a usage error.
+    try:
+        w, h = (float(part) for part in value.lower().split("x"))
+    except ValueError:
+        _fail(f"--panel-size must be WxH in inches (e.g. 4.25x5.5), got {value!r}")
+    if not all(math.isfinite(v) and v > 0 for v in (w, h)):
+        _fail(f"--panel-size must be two positive sizes in inches, got {value!r}")
+    return w, h
 
 
 def _fail(message: str) -> NoReturn:
@@ -976,6 +988,24 @@ def ai_asset_generate(
         "--export-for",
         help="Print target whose geometry sizes the image (trim+bleed at 300 PPI).",
     ),
+    for_panel_background: bool = typer.Option(
+        False,
+        "--for-panel-background",
+        help=(
+            "Size the image for a panel background_image on --export-for: the "
+            "panel as the target places it (fit scale + bleed) at 300 PPI, "
+            "instead of the whole page."
+        ),
+    ),
+    panel_size: str | None = typer.Option(
+        None,
+        "--panel-size",
+        metavar="WxH",
+        help=(
+            "Panel size in inches for --for-panel-background "
+            f"(default {QUARTER_FOLD_WIDTH:g}x{QUARTER_FOLD_HEIGHT:g}, the quarter-fold panel)."
+        ),
+    ),
     provider: AIProvider = typer.Option(
         AIProvider.OPENAI,
         "--provider",
@@ -1041,6 +1071,7 @@ def ai_asset_generate(
         ImagePayloadError,
         RailRefusedError,
         build_ai_request,
+        build_panel_background_request,
         generate_ai_asset,
     )
     from holiday_card.core.ai_cost import (
@@ -1067,6 +1098,13 @@ def ai_asset_generate(
         raise typer.Exit(ExitCode.USAGE) from e
     if max_cost is not None and not (math.isfinite(max_cost) and max_cost > 0):
         _fail("--max-cost must be a positive number of US dollars")
+    if panel_size is not None and not for_panel_background:
+        _fail("--panel-size only applies with --for-panel-background")
+    panel_w_in, panel_h_in = (
+        _parse_panel_size(panel_size)
+        if panel_size is not None
+        else (QUARTER_FOLD_WIDTH, QUARTER_FOLD_HEIGHT)
+    )
 
     # Usage errors come before consent, so they never record it as a side effect.
     from holiday_card.core.ai_providers import (
@@ -1189,15 +1227,27 @@ def ai_asset_generate(
         raise typer.Exit(_PROVIDER_EXIT[e.kind]) from e
 
     # Size for the model the client actually calls (#87).
-    request = build_ai_request(
-        prompt=subject,
-        trim_width_in=geom.trim_width_in,
-        trim_height_in=geom.trim_height_in,
-        bleed_in=geom.bleed_in,
-        reference_path=reference_path,
-        provider=client.provider,
-        model=client.model,
-    )
+    if for_panel_background:
+        request = build_panel_background_request(
+            prompt=subject,
+            target=target,
+            panel_width_in=panel_w_in,
+            panel_height_in=panel_h_in,
+            reference_path=reference_path,
+            provider=client.provider,
+            model=client.model,
+        )
+    else:
+        request = build_ai_request(
+            prompt=subject,
+            trim_width_in=geom.trim_width_in,
+            trim_height_in=geom.trim_height_in,
+            bleed_in=geom.bleed_in,
+            reference_path=reference_path,
+            provider=client.provider,
+            model=client.model,
+            export_target=target.name,
+        )
 
     try:
         result = generate_ai_asset(

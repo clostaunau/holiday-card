@@ -21,6 +21,7 @@ from holiday_card.utils.measurements import (
     DEFAULT_BLEED,
     SAFE_MARGIN,
     PageGeometry,
+    PanelFit,
 )
 
 __all__ = [
@@ -30,11 +31,6 @@ __all__ = [
     "get_target",
     "ExportTargetNotFoundError",
 ]
-
-# How a per-panel target maps a panel onto its fixed trim (D8). ``native``
-# keeps the panel's own size; ``fill`` scales by ``max`` and crops the
-# overflow; ``letterbox`` scales by ``min`` and leaves paper bands.
-PanelFit = Literal["native", "fill", "letterbox"]
 
 
 class ExportTargetNotFoundError(KeyError):
