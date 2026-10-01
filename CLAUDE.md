@@ -415,6 +415,9 @@ template editing; a JSON "render plan" backend for downstream tooling.
 
 - Tests that hand-place a panel must pass `CompileContext(impose=False)`;
   otherwise imposition moves a `front` panel to the bottom-right (#58).
+- `replace(entry, resolutions=…)` on a shipped OpenRouter entry must also
+  clear its tier-keyed `--max-cost` bounds (`_UNBOUNDED` in
+  `test_ai_assets.py`), or `OpenRouterModel.__post_init__` refuses it (#151).
 - Tests that exercise bleed must pass an explicit
   `PageGeometry.us_letter(bleed_in=0.125)`: the default `letter` page has
   no bleed (#59).
