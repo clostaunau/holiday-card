@@ -162,6 +162,10 @@ class LicenseRecord(BaseModel):
     # upper-bound estimate it was checked against.
     cost_cap_usd: float | None = None
     cost_estimate_usd: float | None = None
+    # What the bake was sized for and against which --export-for (#168);
+    # None for a sidecar written before #168.
+    purpose: Literal["page", "panel_background"] | None = None
+    export_target: str | None = None
 
     # LEGACY(v1.3.0 sidecar, O7): delete in the first release after the one that ships this.
     @model_validator(mode="before")

@@ -6,6 +6,31 @@ regenerated on purpose, and which tests guard it. Moved out of
 limit). New entries go at the top of this file; `CLAUDE.md` gets at
 most a one-line pointer. User-facing notes belong in `RELEASE_NOTES.md`.
 
+- **2026-09-30 — panel-background bake sizing (issue #168, #153 Open
+  question 1(c))**: `ai-asset generate --for-panel-background [--panel-size
+  WxH]` sizes the bake for a panel `background_image` on `--export-for`.
+  The shared geometry lives in `utils/measurements.py`: `panel_fit_scale`
+  (now what `compiler._panel_fit_transform` calls) and
+  `fitted_panel_background_in` (`(w·s + 2b) × (h·s + 2b)`, bleed only on an
+  axis whose scaled length reaches the trim, as `_fitted_bleed_rect`
+  decides); `PanelFit` (re-exported by `export_targets`) and
+  `EDGE_TOUCH_EPSILON` (was `compiler._EDGE_TOUCH_EPSILON`) moved there
+  too. `ai_assets.build_panel_background_request` turns that into
+  pixels with `ceil(round(x, 6))`, the idiom of `images._pixels_at`: on
+  moo-a6 4.755 in × 300 = 1426.5, which `round()` would make 1426 (299.9
+  PPI); the bake is 1427×1824. An imposition target places the panel
+  natively (letter: 1275×1650, no bleed); `per-panel-pdf` adds its bleed
+  (1350×1725). `AIRequest` and `LicenseRecord` gain `purpose`
+  (`page` | `panel_background`) and `export_target`; the sidecar fields
+  default to `None`, so pre-#168 sidecars still read. The default page
+  bake (1314×1824 on moo-a6) is unchanged. Guarded by
+  `test_measurements.py::TestPanelFit`,
+  `test_compiler_background_image.py::TestSharedFitHelper` (helper ==
+  `_fitted_bleed_rect` × s for moo-a6 fill and letterbox),
+  `test_ai_assets.py::TestPanelBackgroundRequest`,
+  `test_ai_asset_cli.py::TestPanelBackground`, and
+  `test_background_image.py::test_panel_background_bake_prints_clean_on_both_targets`.
+
 - **2026-09-30 — panel `background_image` (issue #153, spec §8 Phase
   4)**: the compiler's refusal is deleted (D17). `_compile_panel` emits
   `_emit_panel_background_image` right after the background colour, through

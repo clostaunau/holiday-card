@@ -13,6 +13,7 @@ tuples; the compiler converts inches → points exactly once via
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 # Page dimensions (US Letter)
 PAGE_WIDTH: float = 8.5  # inches
@@ -45,6 +46,17 @@ QUARTER_FOLD_HEIGHT: float = PAGE_HEIGHT / 2  # 5.5 inches
 
 TRI_FOLD_PANEL_WIDTH: float = PAGE_WIDTH / 3  # ~2.83 inches per panel
 TRI_FOLD_HEIGHT: float = PAGE_HEIGHT  # 11 inches
+
+
+# How a per-panel target maps a panel onto its fixed trim (D8). ``native``
+# keeps the panel's own size; ``fill`` scales by ``max`` and crops the
+# overflow; ``letterbox`` scales by ``min`` and leaves paper bands.
+PanelFit = Literal["native", "fill", "letterbox"]
+
+# Tolerance for "panel edge touches page trim edge" comparisons. Inches
+# come from YAML and may have small float drift after arithmetic; 0.001"
+# is well below print precision (a typical inkjet dot is ~0.005").
+EDGE_TOUCH_EPSILON: float = 1e-3
 
 
 def inches_to_points(inches: float) -> float:
@@ -241,3 +253,55 @@ class PageGeometry:
         b = self.bleed_pts
         m = self.safe_margin_pts
         return (b + m, b + m, self.trim_width_pts - 2 * m, self.trim_height_pts - 2 * m)
+
+
+def panel_fit_scale(
+    panel_width_in: float,
+    panel_height_in: float,
+    geometry: PageGeometry | None,
+    fit: PanelFit,
+) -> float:
+    """The uniform scale that fits a panel onto ``geometry``'s trim (D8 / D14).
+
+    ``max`` of the two axis ratios under ``fill``, ``min`` under
+    ``letterbox``, and 1 under ``native``.
+
+    Raises:
+        ValueError: ``fill`` / ``letterbox`` with no ``geometry`` to fit into.
+    """
+    if fit == "native":
+        return 1.0
+    if geometry is None:
+        raise ValueError(f"panel_fit={fit!r} needs a geometry to fit into")
+    ratios = (
+        geometry.trim_width_in / panel_width_in,
+        geometry.trim_height_in / panel_height_in,
+    )
+    return max(ratios) if fit == "fill" else min(ratios)
+
+
+def fitted_panel_background_in(
+    panel_width_in: float,
+    panel_height_in: float,
+    geometry: PageGeometry | None,
+    fit: PanelFit,
+    bleed_in: float,
+) -> tuple[float, float]:
+    """Placed size, in inches, of a panel's background rect on the page (#168).
+
+    The panel scaled by :func:`panel_fit_scale`, plus ``bleed_in`` on both
+    sides of each axis whose scaled length reaches the trim (every axis
+    under ``fill`` and ``native``; only the fitted one under ``letterbox``).
+    This is the compiler's fitted bleed rect after the fit scale, so an
+    image baked at this size × 300 PPI prints at 300 PPI.
+    """
+    s = panel_fit_scale(panel_width_in, panel_height_in, geometry, fit)
+    w, h = panel_width_in * s, panel_height_in * s
+    if geometry is None or fit == "native":
+        return w + 2 * bleed_in, h + 2 * bleed_in
+    reaches_x = w >= geometry.trim_width_in - EDGE_TOUCH_EPSILON
+    reaches_y = h >= geometry.trim_height_in - EDGE_TOUCH_EPSILON
+    return (
+        w + (2 * bleed_in if reaches_x else 0.0),
+        h + (2 * bleed_in if reaches_y else 0.0),
+    )

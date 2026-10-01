@@ -419,3 +419,28 @@ def test_svg_embeds_the_art_once_inside_a_clip(workdir: Path) -> None:
         node = parents[node]
         clipped = clipped or node.get("clip-path") is not None
     assert clipped
+
+
+@pytest.mark.parametrize("target", ["moo-a6", "letter"])
+def test_panel_background_bake_prints_clean_on_both_targets(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch, target: str
+) -> None:
+    # #168: `ai-asset generate --for-panel-background` for moo-a6 makes a
+    # background that prints at ≥ 300 PPI on moo-a6 and on letter alike.
+    import holiday_card.cli.commands as commands
+    from ai_fixtures import SolidImageClient
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(workdir / "config"))
+    client = SolidImageClient(model="gpt-image-2", color=GREY)
+    monkeypatch.setattr(commands, "make_image_client", lambda **_: client)
+    _invoke(
+        "ai-asset", "generate", "--subject", "watercolor pine boughs",
+        "--occasion", "christmas", "--unsafe-no-style-anchor", "--accept-ai-terms",
+        "--export-for", "moo-a6", "--for-panel-background", "-o", "art.png",
+    )
+    with Image.open("art.png") as img:
+        assert img.size == (1427, 1824)
+    template = _template(workdir, front={"background_image": "art.png"})
+    args = ["--export-for", "moo-a6", "-o", "out"] if target == "moo-a6" else ["-o", "card.pdf"]
+    result = _invoke("create", str(template), *args)
+    assert "PPI" not in result.stderr

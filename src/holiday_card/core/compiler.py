@@ -26,7 +26,6 @@ from __future__ import annotations
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
 
 from holiday_card.core.ai_provenance import (
     AIProvenanceError,
@@ -100,8 +99,11 @@ from holiday_card.core.render_ir import (
 from holiday_card.core.text_fitting import fit_text_element
 from holiday_card.core.text_measure import TextMeasurer, default_text_measurer
 from holiday_card.utils.measurements import (
+    EDGE_TOUCH_EPSILON,
     PageGeometry,
+    PanelFit,
     inches_to_points,
+    panel_fit_scale,
 )
 
 __all__ = [
@@ -118,12 +120,6 @@ __all__ = [
 
 # Default fold-line styling — matches the legacy renderer.
 _FOLD_LINE_GREY = RGBA(r=0.7, g=0.7, b=0.7)
-
-# Tolerance for "panel edge touches page trim edge" comparisons. Inches
-# come from YAML and may have small float drift after arithmetic; 0.001"
-# is well below print precision (a typical inkjet dot is ~0.005").
-_EDGE_TOUCH_EPSILON: float = 1e-3
-
 
 class UnknownFontError(UnsupportedFeatureError):
     """Raised when a text element names a font no backend can render."""
@@ -158,7 +154,7 @@ class CompileContext:
     # Per-panel fixed-trim targets (D8, #73): fit the one native panel onto
     # the trim with a single scale group. "fill" scales by max (crops the
     # overflow) and warns when text crosses the safe zone; "letterbox" by min.
-    panel_fit: Literal["native", "fill", "letterbox"] = "native"
+    panel_fit: PanelFit = "native"
     # Text metrics (#75). None: ``default_text_measurer()`` (ReportLab unless
     # the composition root registered another); tests inject fakes.
     measurer: TextMeasurer | None = None
@@ -323,11 +319,7 @@ def _panel_fit_transform(panels: list[Panel], ctx: CompileContext) -> Transform:
             f"{panel.position.value!r} is at ({panel.x}, {panel.y}) rotated {panel.rotation}"
         )
     geometry = ctx.geometry
-    ratios = (
-        geometry.trim_width_in / panel.width,
-        geometry.trim_height_in / panel.height,
-    )
-    s = max(ratios) if ctx.panel_fit == "fill" else min(ratios)
+    s = panel_fit_scale(panel.width, panel.height, geometry, ctx.panel_fit)
     return Transform(
         scale_x=s,
         scale_y=s,
@@ -530,7 +522,7 @@ def _bleed_extended_panel_rect(
         )
 
     # Page-coord trim-edge touches.
-    eps = _EDGE_TOUCH_EPSILON
+    eps = EDGE_TOUCH_EPSILON
     touches_left = abs(panel.x) <= eps
     touches_right = abs((panel.x + panel.width) - geometry.trim_width_in) <= eps
     touches_bottom = abs(panel.y) <= eps
@@ -587,7 +579,7 @@ def _fitted_bleed_rect(
     bleed_pt = inches_to_points(min(requested_bleed_in, geometry.bleed_in))
     w_pt = inches_to_points(panel.width)
     h_pt = inches_to_points(panel.height)
-    eps = inches_to_points(_EDGE_TOUCH_EPSILON)
+    eps = inches_to_points(EDGE_TOUCH_EPSILON)
     reaches_x = fit.offset_x <= eps  # centred, so both sides alike
     reaches_y = fit.offset_y <= eps
     ext_x = bleed_pt / fit.scale_x if reaches_x else 0.0

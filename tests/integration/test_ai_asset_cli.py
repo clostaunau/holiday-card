@@ -824,3 +824,83 @@ class TestSeedRefused:
         assert calls == []
         assert not out.exists()
         assert not any(isolated_config.rglob("*")), "consent was recorded"
+
+
+@pytest.mark.usefixtures("isolated_config", "fake_client")
+class TestPanelBackground:
+    """``--for-panel-background`` sizes the bake for a panel on the fit target (#168)."""
+
+    def _run(
+        self, runner: CliRunner, reference: Path, out: Path, extra: list[str]
+    ) -> Result:
+        return runner.invoke(
+            app,
+            _generate_args(
+                reference, out, subject="watercolor pine boughs", occasion="christmas",
+                extra=["--accept-ai-terms", *extra],
+            ),
+        )  # fmt: skip
+
+    def test_moo_a6_bake_covers_the_fitted_panel(
+        self, runner: CliRunner, tmp_path: Path, reference_png: Path
+    ) -> None:
+        from holiday_card.core.ai_provenance import read_sidecar
+
+        out = tmp_path / "bg.png"
+        result = self._run(
+            runner, reference_png, out, ["--export-for", "moo-a6", "--for-panel-background"]
+        )
+        assert result.exit_code == 0, result.output
+        assert "1427x1824px" in result.output
+        with Image.open(out) as img:
+            assert img.size == (1427, 1824)
+        record = read_sidecar(out)
+        assert (record.purpose, record.export_target) == ("panel_background", "moo-a6")
+
+    def test_page_bake_records_its_purpose(
+        self, runner: CliRunner, tmp_path: Path, reference_png: Path
+    ) -> None:
+        from holiday_card.core.ai_provenance import read_sidecar
+
+        out = tmp_path / "page.png"
+        result = self._run(runner, reference_png, out, ["--export-for", "moo-a6"])
+        assert result.exit_code == 0, result.output
+        with Image.open(out) as img:
+            assert img.size == (1314, 1824)
+        record = read_sidecar(out)
+        assert (record.purpose, record.export_target) == ("page", "moo-a6")
+
+    def test_panel_size_overrides_the_quarter_fold_panel(
+        self, runner: CliRunner, tmp_path: Path, reference_png: Path
+    ) -> None:
+        out = tmp_path / "bg.png"
+        result = self._run(
+            runner, reference_png, out,
+            ["--export-for", "moo-a6", "--for-panel-background", "--panel-size", "5x7"],
+        )
+        assert result.exit_code == 0, result.output
+        with Image.open(out) as img:
+            # s = 5.83/7; 5·s + 0.25 = 4.414 in → 1325 px; 7·s + 0.25 = 6.08 in.
+            assert img.size == (1325, 1824)
+
+    def test_panel_size_needs_for_panel_background(
+        self, runner: CliRunner, tmp_path: Path, reference_png: Path,
+        fake_client: FakeImageClient,
+    ) -> None:
+        result = self._run(runner, reference_png, tmp_path / "bg.png", ["--panel-size", "5x7"])
+        assert result.exit_code == 2, result.output
+        assert "--for-panel-background" in _plain(result.output)
+        assert fake_client.calls == []
+
+    @pytest.mark.parametrize("value", ["5", "5x", "axb", "0x7", "-1x7", "infx7"])
+    def test_bad_panel_size_is_a_usage_error(
+        self, runner: CliRunner, tmp_path: Path, reference_png: Path,
+        fake_client: FakeImageClient, value: str,
+    ) -> None:
+        result = self._run(
+            runner, reference_png, tmp_path / "bg.png",
+            ["--for-panel-background", "--panel-size", value],
+        )
+        assert result.exit_code == 2, result.output
+        assert "--panel-size" in _plain(result.output)
+        assert fake_client.calls == []

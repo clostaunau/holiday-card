@@ -147,3 +147,51 @@ class TestPageGeometryMOO:
         # A6 is roughly 4.13 x 5.83 inches
         assert geom.trim_width_in == 4.13
         assert geom.trim_height_in == 5.83
+
+
+class TestPanelFit:
+    """The fit scale and placed background size a panel gets on a target (#168)."""
+
+    def test_fill_scale_is_the_larger_ratio(self):
+        from holiday_card.utils.measurements import panel_fit_scale
+
+        s = panel_fit_scale(4.25, 5.5, PageGeometry.moo_a6(), "fill")
+        assert s == pytest.approx(5.83 / 5.5)
+
+    def test_letterbox_scale_is_the_smaller_ratio(self):
+        from holiday_card.utils.measurements import panel_fit_scale
+
+        s = panel_fit_scale(4.25, 5.5, PageGeometry.moo_a6(), "letterbox")
+        assert s == pytest.approx(4.13 / 4.25)
+
+    def test_native_scale_is_one(self):
+        from holiday_card.utils.measurements import panel_fit_scale
+
+        assert panel_fit_scale(4.25, 5.5, None, "native") == 1.0
+
+    def test_fill_without_geometry_is_refused(self):
+        from holiday_card.utils.measurements import panel_fit_scale
+
+        with pytest.raises(ValueError, match="geometry"):
+            panel_fit_scale(4.25, 5.5, None, "fill")
+
+    def test_moo_a6_fill_background_extends_every_edge(self):
+        from holiday_card.utils.measurements import fitted_panel_background_in
+
+        w, h = fitted_panel_background_in(4.25, 5.5, PageGeometry.moo_a6(), "fill", 0.125)
+        assert w == pytest.approx(4.25 * 5.83 / 5.5 + 0.25)  # ≈ 4.755: overflows the trim
+        assert h == pytest.approx(6.08)
+
+    def test_moo_a6_letterbox_extends_the_fitted_axis_only(self):
+        from holiday_card.utils.measurements import fitted_panel_background_in
+
+        w, h = fitted_panel_background_in(4.25, 5.5, PageGeometry.moo_a6(), "letterbox", 0.125)
+        assert w == pytest.approx(4.38)
+        assert h == pytest.approx(5.5 * 4.13 / 4.25)  # paper band: no bleed
+
+    def test_native_background_is_panel_plus_bleed(self):
+        from holiday_card.utils.measurements import fitted_panel_background_in
+
+        assert fitted_panel_background_in(4.25, 5.5, None, "native", 0.125) == pytest.approx(
+            (4.5, 5.75)
+        )

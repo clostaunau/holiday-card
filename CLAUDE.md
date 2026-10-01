@@ -465,7 +465,7 @@ the "this will bite you" kind goes in Gotchas above. User-facing notes
 go in `RELEASE_NOTES.md`.
 
 In flight: the OpenRouter image-provider program (tracker #139); #141,
-#142, #143, #144, #145, #146, #147, #148, #149, #150, #151, #152 and #153
+#142, #143, #144, #145, #146, #147, #148, #149, #150, #151, #152, #153 and #168
 have landed (OpenRouter is usable; its default model is provisional until
 #140); panel `background_image` is #153 in the log. **Legacy-read deadline (O7):** delete the
 `LicenseRecord` `openai_policy_url` reader (`# LEGACY(v1.3.0 sidecar…)`)

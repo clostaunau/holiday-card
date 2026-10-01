@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### `ai-asset generate --for-panel-background`
+
+Bakes an image sized for a panel `background_image` rather than the whole
+page: the panel as `--export-for` places it (on `moo-a6`, scaled 1.06 to
+fill the A6 trim, plus bleed) at 300 PPI. On `moo-a6` that is 1427 × 1824
+px, which prints without a resolution warning on `moo-a6` and on `letter`.
+`--panel-size WxH` (inches) sizes a panel other than the 4.25 × 5.5
+quarter-fold one. Without the flag the bake is unchanged (1314 × 1824 on
+`moo-a6`). The sidecar now records `purpose` (`page` or
+`panel_background`) and `export_target`.
+
 ### Panel background images
 
 A template panel can now set `background_image`: a PNG or JPEG, relative
