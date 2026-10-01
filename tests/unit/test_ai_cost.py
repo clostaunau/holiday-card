@@ -48,6 +48,7 @@ REF_8 = ProbedImage(path=Path("ref.png"), format="png", width_px=8, height_px=8)
 MOO_SHAPE_TIERED = AspectSize("3:4", "2K")
 MOO_SHAPE_UNTIERED = AspectSize("3:4", None)
 SOURCE = "2026-09-30 https://example.com/vendor-pricing"
+OBSERVED = "2026-09-30 docs/industry-review/openrouter-image-api-snapshot.md (call A)"
 
 
 def _entry(*prices: OpenRouterPrice, **changes: object) -> OpenRouterModel:
@@ -121,6 +122,16 @@ class TestWorkedExamples:
             entry, AspectSize("4:3", "2K"), prompt=PROMPT, reference=None
         )
         assert flipped.usd == pytest.approx(est.usd, abs=1e-12)
+
+    def test_per_megapixel_tier_uses_the_observed_long_edge(self) -> None:
+        # #174: an observed 2400 px long edge at 3:4 is 2400 x 1800, not 2048 x 1536.
+        entry = _entry(
+            OpenRouterPrice("output_image", "megapixel", 0.03),
+            observed_long_edge_px=MappingProxyType({"2K": 2400}),
+            observed_source=OBSERVED,
+        )
+        est = estimate_openrouter_cost(entry, MOO_SHAPE_TIERED, prompt=PROMPT, reference=None)
+        assert est.usd == pytest.approx(0.03 * 4.32, abs=1e-9)
 
     def test_per_token_gemini_3_pro(self) -> None:
         est = _or("google/gemini-3-pro-image", MOO_SHAPE_TIERED)

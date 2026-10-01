@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### OpenRouter: Gemini 3 Pro tier sizes are measured, not assumed
+
+`ai-asset generate --provider openrouter` picks the smallest resolution
+tier that covers the bake. For `google/gemini-3-pro-image` it now uses the
+measured sizes (`2K` is 1792 × 2400 and `4K` is 3584 × 4800 at 3:4) instead
+of a nominal 2048 / 4096 long edge. A bake 2049–2400 px on its long edge
+now requests `2K` rather than `4K`, at about half the cost. `moo-a6` and
+`letter` bakes are unchanged.
+
 ### `--max-cost` no longer under-estimates Gemini
 
 Gemini image models on OpenRouter also bill a few text/thinking output

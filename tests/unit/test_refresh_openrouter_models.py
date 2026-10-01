@@ -76,7 +76,7 @@ class TestEntryFromCatalogue:
         assert set(script.REVIEWED_FIELDS) == {
             "upstream_terms_url", "max_output_megapixels", "output_image_tokens",
             "input_image_tokens", "output_text_tokens", "output_text_usd_per_token",
-            "bound_source",
+            "bound_source", "observed_long_edge_px", "observed_source",
         }  # fmt: skip
         assert live.bound_source is None
         reviewed = {f: getattr(current, f) for f in script.REVIEWED_FIELDS}
@@ -132,6 +132,20 @@ class TestDiffEntry:
         assert kept["output_image_tokens"] is None
         assert kept["output_text_tokens"] == entry.output_text_tokens
         assert kept["output_text_usd_per_token"] == entry.output_text_usd_per_token
+
+    def test_observed_long_edges_are_reviewed_values_not_drift(self, script: ModuleType) -> None:
+        entry = OPENROUTER_IMAGE_MODELS["google/gemini-3-pro-image"]
+        live = replace(entry, observed_long_edge_px=None, observed_source=None)
+        assert script.diff_entry(entry, live) == []
+
+    def test_a_dropped_tier_drops_its_observed_long_edge(self, script: ModuleType) -> None:
+        entry = OPENROUTER_IMAGE_MODELS["google/gemini-3-pro-image"]
+        kept = script.carry_reviewed(entry, ("1K", "2K"))
+        assert dict(kept["observed_long_edge_px"]) == {"2K": 2400}
+        assert kept["observed_source"] == entry.observed_source
+        gone = script.carry_reviewed(entry, ("1K",))
+        assert gone["observed_long_edge_px"] is None
+        assert gone["observed_source"] is None
 
     def test_gone(self, script: ModuleType) -> None:
         entry = OPENROUTER_IMAGE_MODELS["openai/gpt-image-2"]

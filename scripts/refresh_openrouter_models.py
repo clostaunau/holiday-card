@@ -63,6 +63,8 @@ REVIEWED_FIELDS = (
     "output_text_tokens",
     "output_text_usd_per_token",
     "bound_source",
+    "observed_long_edge_px",
+    "observed_source",
 )
 _NOT_COMPARED = {"snapshot_date", *REVIEWED_FIELDS}
 
@@ -189,7 +191,7 @@ def carry_reviewed(current: OpenRouterModel, live_resolutions: tuple[str, ...]) 
 
     A token bound for a tier the endpoint no longer offers is dropped (the
     ``resolutions`` row reports that drift); with no bound left, so is the
-    source.
+    source. An observed long edge (#174) is trimmed the same way.
     """
     kept = {f: getattr(current, f) for f in REVIEWED_FIELDS}
     tokens = current.output_image_tokens
@@ -202,6 +204,12 @@ def carry_reviewed(current: OpenRouterModel, live_resolutions: tuple[str, ...]) 
     )
     if all(kept[b] is None for b in bounds):
         kept["bound_source"] = None
+    observed = current.observed_long_edge_px
+    if observed is not None:
+        trimmed = {k: v for k, v in observed.items() if k in live_resolutions}
+        kept["observed_long_edge_px"] = MappingProxyType(trimmed) if trimmed else None
+        if not trimmed:
+            kept["observed_source"] = None
     return kept
 
 

@@ -241,6 +241,7 @@ _GEMINI_PRO = "google/gemini-3-pro-image"
 _UNBOUNDED: dict[str, Any] = {
     "output_image_tokens": None, "input_image_tokens": None, "bound_source": None,
     "output_text_tokens": None, "output_text_usd_per_token": None,
+    "observed_long_edge_px": None, "observed_source": None,
 }  # fmt: skip
 
 
@@ -300,6 +301,17 @@ class TestChooseAspectShape:
 
     def test_gemini_pro_letter(self) -> None:
         assert choose_aspect_shape(openrouter_model(_GEMINI_PRO), 2550, 3300) == AspectSize("3:4", "4K")
+
+    def test_gemini_pro_2200_long_edge_gets_2k_from_the_observation(self) -> None:
+        # #174: Gemini 3 Pro's 2K is 1792x2400 at 3:4, so a 2200 px bake fits it.
+        entry = openrouter_model(_GEMINI_PRO)
+        assert choose_aspect_shape(entry, 1650, 2200) == AspectSize("3:4", "2K")
+        assert choose_aspect_shape(entry, 1800, 2400) == AspectSize("3:4", "2K")
+        assert choose_aspect_shape(entry, 1801, 2401) == AspectSize("3:4", "4K")
+
+    def test_unobserved_entry_keeps_the_nominal_tier(self) -> None:
+        entry = openrouter_model("bytedance-seed/seedream-4.5")
+        assert choose_aspect_shape(entry, 1650, 2200) == AspectSize("3:4", "4K")
 
     def test_flux_has_no_resolution(self) -> None:
         entry = openrouter_model("black-forest-labs/flux.2-pro")

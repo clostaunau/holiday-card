@@ -421,8 +421,9 @@ template editing; a JSON "render plan" backend for downstream tooling.
 - Tests that hand-place a panel must pass `CompileContext(impose=False)`;
   otherwise imposition moves a `front` panel to the bottom-right (#58).
 - `replace(entry, resolutions=…)` on a shipped OpenRouter entry must also
-  clear its tier-keyed `--max-cost` bounds (`_UNBOUNDED` in
-  `test_ai_assets.py`), or `OpenRouterModel.__post_init__` refuses it (#151).
+  clear its tier-keyed `--max-cost` bounds and `observed_long_edge_px`
+  (`_UNBOUNDED` in `test_ai_assets.py`), or `OpenRouterModel.__post_init__`
+  refuses it (#151, #174).
 - Tests that exercise bleed must pass an explicit
   `PageGeometry.us_letter(bleed_in=0.125)`: the default `letter` page has
   no bleed (#59).
@@ -466,9 +467,9 @@ the "this will bite you" kind goes in Gotchas above. User-facing notes
 go in `RELEASE_NOTES.md`.
 
 In flight: the OpenRouter image-provider program (tracker #139); #141,
-#142, #143, #144, #145, #146, #147, #148, #149, #150, #151, #152, #153, #168 and #173
-have landed (OpenRouter is usable; #140's live calls confirmed its default model,
-O11; follow-ups #172-#174); panel `background_image` is #153 in the log. **Legacy-read deadline (O7):** delete the
+#142, #143, #144, #145, #146, #147, #148, #149, #150, #151, #152, #153, #168, #172,
+#173 and #174 have landed (OpenRouter is usable; #140's live calls confirmed its
+default model, O11); panel `background_image` is #153 in the log. **Legacy-read deadline (O7):** delete the
 `LicenseRecord` `openai_policy_url` reader (`# LEGACY(v1.3.0 sidecar…)`)
 in the first release after the one that ships #147.
 

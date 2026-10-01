@@ -258,9 +258,9 @@ def choose_aspect_shape(entry: OpenRouterModel, target_w: int, target_h: int) ->
     aspect = min(entry.aspect_ratios, key=key)
     if not entry.resolutions:
         return AspectSize(aspect, None)
-    tiers = sorted(entry.resolutions, key=RESOLUTION_LONG_EDGE_PX.__getitem__)
+    tiers = sorted(entry.resolutions, key=entry.tier_long_edge_px)
     long_edge = max(target_w, target_h)
-    covering = [r for r in tiers if RESOLUTION_LONG_EDGE_PX[r] >= long_edge]
+    covering = [r for r in tiers if entry.tier_long_edge_px(r) >= long_edge]
     return AspectSize(aspect, covering[0] if covering else tiers[-1])
 
 

@@ -6,6 +6,23 @@ regenerated on purpose, and which tests guard it. Moved out of
 limit). New entries go at the top of this file; `CLAUDE.md` gets at
 most a one-line pointer. User-facing notes belong in `RELEASE_NOTES.md`.
 
+- **2026-09-30 — Observed tier long edges for Gemini 3 Pro (issue #174,
+  found by #140 T1)**: calls A / B decoded 1792×2400 at `3:4` / `2K` and
+  3584×4800 at `4K`, not the nominal 2048 / 4096 long edge. Per-model,
+  not a global rewrite (one model, one aspect observed): `OpenRouterModel`
+  gains `observed_long_edge_px` (tier → px; keys ⊆ `resolutions`, values
+  > 0) + `observed_source` ("YYYY-MM-DD <where>", required exactly when the
+  mapping is set) and `tier_long_edge_px(tier)` (observed, else
+  `RESOLUTION_LONG_EDGE_PX`). `choose_aspect_shape` and
+  `ai_cost._tier_megapixels` (now taking the entry) use it. Only the
+  Gemini 3 Pro entry records `{"2K": 2400, "4K": 4800}`; `1K` stays nominal
+  (call E was refused). The refresh script carries both as reviewed fields
+  and trims a dropped tier. moo-a6 / letter choices are unchanged; a
+  2200 px bake now gets `2K` (was `4K`, ~1.8× the cost). Guarded by
+  `test_ai_assets.py::TestChooseAspectShape::test_gemini_pro_2200_*`,
+  `test_ai_openrouter_models.py::TestObservedLongEdge` and
+  `test_ai_cost.py::…test_per_megapixel_tier_uses_the_observed_long_edge`.
+
 - **2026-09-30 — `--max-cost` covers Gemini's non-image output tokens
   (issue #173, found by #140 T2)**: billed calls A / B on
   `google/gemini-3-pro-image` returned `completion_tokens` 1207 / 2101
