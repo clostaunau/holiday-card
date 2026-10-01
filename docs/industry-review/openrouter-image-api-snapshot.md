@@ -105,3 +105,169 @@ A candidate whose provider has no terms URL is printed with
 refuses. So an unreviewed entry cannot be pasted in by accident. Review the
 terms, update the entries, this table and `snapshot_date`, and re-record the
 fixture with `--save-dir`, trimmed as above.
+
+## Live verification (#140)
+
+Sources: `POST https://openrouter.ai/api/v1/images` (billed calls, owner-run)
+and the three catalogue endpoints above, re-read without a key.
+(Catalogue re-fetched **2026-10-01 04:21 UTC**. Billed calls run
+**TODO(owner): YYYY-MM-DD HH:MM UTC**.) This section answers the spec's §3
+"Live verification still owed" list
+(`docs/specs/2026-09-30-openrouter-image-provider.md`), which was written
+without a key.
+
+No credential, image or raw response body is recorded here. Each `b64_json`
+is replaced by its length and a sha256 prefix. Response headers are copied
+without `set-cookie`, and request headers are limited to `Content-Type` and
+the attribution headers.
+
+### Answers
+
+| # | Question | Answer | Evidence |
+|---|---|---|---|
+| Q1 | Does `/images` return `X-Generation-Id`? | TODO(owner) | Call A headers |
+| Q2 | Default model W×H at `3:4` / `2K` (and `4K` if call B ran); native PPI at moo-a6 | TODO(owner) | Call A (B) decode line |
+| Q3 | Unadvertised `seed` on `openai/gpt-image-2`: 400 or ignored? | TODO(owner) | Call C |
+| Q4 | Shape of an image content-policy refusal | TODO(owner) | Call E |
+| Q5 | Is `size: "1328x1824"` honoured on `openai/gpt-image-2`? | TODO(owner) | Call D decode line |
+| Q6 | Unadvertised `output_format` on the Gemini AI Studio endpoint: accepted, ignored or 400? | TODO(owner) | Call A `media_type` / status |
+| T1 | Is `2K` a 2048 px **long edge**, as `RESOLUTION_LONG_EDGE_PX` assumes (§ Resolution tiers)? | TODO(owner) | Call A (B) decode line |
+| T2 | Are Gemini `2K` `usage.completion_tokens` ≤ the 1120 bound (§ Pricing bounds)? | TODO(owner) | Call A `usage` |
+
+Whatever Q5 shows, production never sends `size` (spec §5.3).
+
+**Spend:** TODO(owner): billed calls N (≤ 5); total `usage.cost` $X (≤ $1.00).
+`/key` after the run: `limit` TODO, `limit_remaining` TODO, `usage` TODO.
+
+**Account privacy settings at run time** (`/images` has no per-request
+`data_collection`, spec §3 / O3): TODO(owner): training toggle, logging toggle.
+
+### Catalogue deltas since 2026-09-30 (Step 0)
+
+**None.** `scripts/refresh_openrouter_models.py` reported **0 differences in
+5 curated models**; 50 catalogue models are not curated. The catalogue still
+lists **55** image models. None of the issue's stop conditions fired: the
+`google-ai-studio/global` tag, the `2K` / `4K` tiers and `3:4` are all still
+offered for `google/gemini-3-pro-image`. Vertex still offers only `1K` / `2K`.
+Neither Gemini endpoint advertises `seed` or `output_format`, and
+`openai/gpt-image-2` advertises neither. So calls A, C and D each send a
+parameter the endpoint does not advertise, on purpose.
+
+### Per-call records
+
+Common request headers: `Content-Type: application/json`,
+`X-OpenRouter-Title: holiday-card`,
+`HTTP-Referer: https://github.com/clostaunau/holiday-card`,
+`X-OpenRouter-App-Visibility: hidden`. The reference image (`__REF__`) is
+`data:image/png;base64,<64×64 flat RGB (46, 94, 62) PNG, 186 bytes>`.
+
+#### Call A: default candidate, `3:4` / `2K`, the §6.2 body shape
+
+```json
+{"model": "google/gemini-3-pro-image",
+ "prompt": "Watercolor pine bough border with red berries on a plain cream background. No text, no lettering.",
+ "n": 1, "aspect_ratio": "3:4", "resolution": "2K", "output_format": "png",
+ "input_references": [{"type": "image_url", "image_url": {"url": "__REF__"}}],
+ "provider": {"only": ["google-ai-studio/global"], "allow_fallbacks": false}}
+```
+
+- UTC / status / `time_total`: TODO(owner)
+- Response headers (minus `set-cookie`): TODO(owner)
+- Redacted body: TODO(owner)
+- Decode line (`media_type`, format, mode, W×H, frames): TODO(owner)
+- Native PPI at moo-a6, `min(w/1314, h/1824) × 300`: TODO(owner)
+- A2 (only if A was a 400 naming `output_format`; same body without it): TODO(owner) or "not needed"
+
+#### Call B: `4K`, run only if A is below 1314×1824 on either axis
+
+Same body as A with `"resolution": "4K"`.
+
+- Ran? TODO(owner): yes, or "not needed" because A decoded to W×H ≥ 1314×1824
+- UTC / status / `time_total`, headers, redacted body, decode line, native PPI: TODO(owner)
+
+#### Call C: unadvertised `seed` on `openai/gpt-image-2`, plus its `3:4` size
+
+```json
+{"model": "openai/gpt-image-2",
+ "prompt": "Watercolor pine bough border with red berries on a plain cream background. No text, no lettering.",
+ "n": 1, "aspect_ratio": "3:4", "quality": "low", "output_format": "png", "seed": 42,
+ "provider": {"only": ["openai"], "allow_fallbacks": false}}
+```
+
+`quality: low`. The spec's single data point (16:9 → 1536×864) used `high`.
+
+- UTC / status / `time_total`: TODO(owner)
+- Response headers (minus `set-cookie`): TODO(owner)
+- Redacted body, or the 400 envelope verbatim: TODO(owner)
+- Decode line and native PPI: TODO(owner)
+- C2 (only if C was a 400; same body without `seed`): TODO(owner) or "not needed"
+
+#### Call D: `size: "1328x1824"` on `openai/gpt-image-2`
+
+```json
+{"model": "openai/gpt-image-2",
+ "prompt": "Watercolor pine bough border with red berries on a plain cream background. No text, no lettering.",
+ "n": 1, "size": "1328x1824", "quality": "low", "output_format": "png",
+ "provider": {"only": ["openai"], "allow_fallbacks": false}}
+```
+
+The body has no `aspect_ratio` on purpose: the docs say an explicit size
+with a mismatched ratio is a 400.
+
+- UTC / status / `time_total`: TODO(owner)
+- Response headers (minus `set-cookie`): TODO(owner)
+- Redacted body: TODO(owner)
+- Decode line: TODO(owner). Honoured only if exactly 1328×1824.
+
+#### Call E: content-policy refusal shape
+
+```json
+{"model": "google/gemini-3-pro-image",
+ "prompt": "Mickey Mouse wearing a Santa hat, official Disney character art",
+ "n": 1, "aspect_ratio": "3:4", "resolution": "1K", "output_format": "png",
+ "provider": {"only": ["google-ai-studio/global"], "allow_fallbacks": false}}
+```
+
+This is the trademark prompt that the local rails already refuse
+(`tests/integration/test_ai_asset_cli.py`).
+
+- UTC / status / `time_total`: TODO(owner)
+- If 403: the full error envelope verbatim, including
+  `error.metadata.error_type` and `provider_code`: TODO(owner)
+- If 200: "upstream did not refuse". The image is deleted, and
+  `core/ai_rails.py` is then the only trademark guard: TODO(owner)
+
+#### Free follow-ups
+
+- `GET /api/v1/generation?id=<X-Generation-Id>`, only if a call returned the
+  header: `provider_name`, `model`, `total_cost`: TODO(owner)
+
+### Recommended default
+
+TODO(owner): fill in after calls A and B.
+
+| Field | Value |
+|---|---|
+| Model id | TODO |
+| Pinned `provider_tag` | TODO |
+| Aspect / resolution for moo-a6 | TODO |
+| Observed W×H | TODO |
+| Native PPI at moo-a6 | TODO. If it is below 300, name the tier or model that clears it. |
+| Observed cost (`usage.cost`) | TODO |
+| `input_references` range | 0–14 (catalogue, 2026-10-01) |
+
+### Consequences for later issues
+
+#148–#153 and #168 all landed on `main` before this verification ran. So
+each answer is checked against the shipped code. Wherever an answer
+contradicts it, a follow-up issue is filed; this docs-only PR changes no code.
+
+| Answer | Shipped behaviour | Consequence |
+|---|---|---|
+| Q1 | `ai_openrouter` reads `x-generation-id` when present (#149) | TODO |
+| Q2 / T1 | `PROVIDERS[OPENROUTER].default_model` is `google/gemini-3-pro-image` (#150); `2K` → 2048 long edge (#148) | TODO |
+| Q3 | a seed on an entry with `seed=False` is refused locally, before any call (#149) | TODO |
+| Q4 | 403 with `error_type` in {`content_policy_violation`, `refusal`} → provider refused (#149) | TODO |
+| Q5 | `size` is never sent (§5.3) | None: the rule stands whatever the answer |
+| Q6 | `output_format: "png"` is sent only when the entry lists `png` (#149); the Gemini entry lists none | TODO |
+| T2 | Gemini `2K` bound is 1120 output tokens (#151) | TODO |
